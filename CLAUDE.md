@@ -6,7 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Pre-alpha。Phase 9/11 完了（[docs/plan.md](docs/plan.md) の「実装フェーズ」節を参照）。設計は 5 ラウンドの監査を経て収束済み。設計変更時は `docs/plan.md` を更新し、`docs/audit.md` に記録されたパターンで再監査する。
 
-**`docs/plan.md` が設計の真実の源**。アーキテクチャ判断の前に必ず読む。`docs/audit.md` には過去に議論・却下した論点が残っているので蒸し返さない。
+**GitHub に push 済**:
+- Tool (public): https://github.com/kitepon-rgb/Caveat
+- Knowledge (private): https://github.com/kitepon-rgb/caveats-quo
+
+**`docs/plan.md` が設計の真実の源**。アーキテクチャ判断の前に必ず読む。`docs/audit.md` には過去に議論・却下した論点が残っているので蒸し返さない。`docs/archive/` には没案や別セッション由来の設計メモが置いてある（現役資料ではない）。
 
 ## コマンド
 
