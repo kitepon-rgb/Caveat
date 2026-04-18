@@ -373,7 +373,7 @@ caveat nlm-brief <topic>              # ターミナルから brief 生成
      - `docs/plan.md` の `C:\Users\kite_\...` 例は「Windows 開発環境の具体例」として意図的に残存。機微情報なし
    - **9b. GitHub push**（2026-04-18）: tool repo は **public** で [kitepon-rgb/Caveat](https://github.com/kitepon-rgb/Caveat)、knowledge repo は **private** で [kitepon-rgb/caveats-quo](https://github.com/kitepon-rgb/caveats-quo)。knowledge 側は初期は保守的に private、公開して問題ないエントリが貯まったら public 化を検討
 10. **Claude Code 統合** — MCP 登録 + hooks 追記 ✅ 完了（2026-04-18）。**注意**: MCP サーバは `~/.claude/settings.json` では定義できない（schema validation で reject される、`mcpServers` は有効フィールドではない）。正しくは `claude mcp add --scope user caveat node -- "--disable-warning=ExperimentalWarning" "<absolute-path>/apps/mcp/dist/server.js"` で `~/.claude.json` に書き込む。hooks は settings.json 側で OK。実機で `claude mcp list` → `caveat: ... ✓ Connected` を確認済。hooks は既存 throughline と並列に追加、`[caveat]` prefix 付き `<system-reminder>` 出力を実機 spawn テストで確認済。事前に `~/.claude/settings.backup-20260418.json` を取得
-11. **README 拡充** — セットアップ、他人の caveat repo を繋ぐ手順、OSS 公開時の CONTRIBUTING
+11. **README 拡充 + CONTRIBUTING** — セットアップ、他人の caveat repo を繋ぐ手順、OSS 公開時の CONTRIBUTING ✅ 完了（2026-04-18、README.md を v0 完成版に書き直し: Full setup の 5 ステップ（knowledge repo 作成 / `~/.caveatrc.json` 配線 / Claude Code MCP 登録 + hooks / pre-commit gate 有効化 / Obsidian セットアップ）、community インポート、frontmatter 仕様、development コマンド、ライセンス。CONTRIBUTING.md 新規: PR 基準、テスト要求、audit.md 参照、歓迎領域／却下領域の明示、security reporting）
 
 ## 検証
 

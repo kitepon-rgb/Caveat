@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクトの状態
 
-Pre-alpha。Phase 10/11 完了（Claude Code 統合 wire-up 済、MCP 接続と hooks 発火を実機確認）（[docs/plan.md](docs/plan.md) の「実装フェーズ」節を参照）。設計は 5 ラウンドの監査を経て収束済み。設計変更時は `docs/plan.md` を更新し、`docs/audit.md` に記録されたパターンで再監査する。
+**v0 feature-complete**。Phase 11/11 全完了（2026-04-18、4 ラウンドの設計監査 + 9 phase の実装 + 2 phase の wire-up / docs 仕上げ、135 tests passing）（[docs/plan.md](docs/plan.md) の「実装フェーズ」節を参照）。設計は 5 ラウンドの監査を経て収束済み。設計変更時は `docs/plan.md` を更新し、`docs/audit.md` に記録されたパターンで再監査する。
 
 **GitHub に push 済**:
 - Tool (public): https://github.com/kitepon-rgb/Caveat
