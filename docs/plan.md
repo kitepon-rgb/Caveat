@@ -251,25 +251,36 @@ END;
 
 ## Claude Code 統合
 
-### `~/.claude/settings.json` 追記
+### MCP サーバ登録（`~/.claude.json`）
+
+**`~/.claude/settings.json` に直書きできない**。Claude Code の settings.json schema は `mcpServers` を top-level フィールドとして受け付けず、validator で reject される。正しくは `claude mcp add` CLI 経由で `~/.claude.json` に書き込む:
+
+```sh
+claude mcp add --scope user caveat node \
+  -- "--disable-warning=ExperimentalWarning" \
+     "C:/Users/<you>/path/to/Caveat/apps/mcp/dist/server.js"
+
+# 確認:
+claude mcp list   # caveat: ... ✓ Connected
+claude mcp get caveat
+```
+
+`--disable-warning=ExperimentalWarning` は必須（`node:sqlite` が stdout ではなく stderr に warning を吐くが、MCP stdio の正しい運用のため抑止）。
+
+### `~/.claude/settings.json` の hooks 追記（こちらは settings.json に書く）
+
 ```jsonc
 {
-  "mcpServers": {
-    "caveat": {
-      "command": "node",
-      "args": ["C:\\Users\\kite_\\Documents\\Program\\Caveat\\apps\\mcp\\dist\\server.js"]
-    }
-  },
   "hooks": {
     "UserPromptSubmit": [
-      { /* 既存 throughline */ },
-      { "type": "command",
-        "command": "node C:\\Users\\kite_\\Documents\\Program\\Caveat\\hooks\\user-prompt-submit.mjs" }
+      { "hooks": [ /* 既存 throughline */ ] },
+      { "hooks": [ { "type": "command",
+          "command": "node C:/Users/<you>/path/to/Caveat/hooks/user-prompt-submit.mjs" } ] }
     ],
     "Stop": [
-      { /* 既存 throughline */ },
-      { "type": "command",
-        "command": "node C:\\Users\\kite_\\Documents\\Program\\Caveat\\hooks\\stop.mjs" }
+      { "hooks": [ /* 既存 throughline */ ] },
+      { "hooks": [ { "type": "command",
+          "command": "node C:/Users/<you>/path/to/Caveat/hooks/stop.mjs" } ] }
     ]
   }
 }
@@ -361,7 +372,7 @@ caveat nlm-brief <topic>              # ターミナルから brief 生成
      - CLAUDE.md の絶対パス例を `<you>` プレースホルダ化
      - `docs/plan.md` の `C:\Users\kite_\...` 例は「Windows 開発環境の具体例」として意図的に残存。機微情報なし
    - **9b. GitHub push**（2026-04-18）: tool repo は **public** で [kitepon-rgb/Caveat](https://github.com/kitepon-rgb/Caveat)、knowledge repo は **private** で [kitepon-rgb/caveats-quo](https://github.com/kitepon-rgb/caveats-quo)。knowledge 側は初期は保守的に private、公開して問題ないエントリが貯まったら public 化を検討
-10. **`~/.claude/settings.json` 更新** — MCP 登録 + hooks 追記（ユーザー承認後に実施）
+10. **Claude Code 統合** — MCP 登録 + hooks 追記 ✅ 完了（2026-04-18）。**注意**: MCP サーバは `~/.claude/settings.json` では定義できない（schema validation で reject される、`mcpServers` は有効フィールドではない）。正しくは `claude mcp add --scope user caveat node -- "--disable-warning=ExperimentalWarning" "<absolute-path>/apps/mcp/dist/server.js"` で `~/.claude.json` に書き込む。hooks は settings.json 側で OK。実機で `claude mcp list` → `caveat: ... ✓ Connected` を確認済。hooks は既存 throughline と並列に追加、`[caveat]` prefix 付き `<system-reminder>` 出力を実機 spawn テストで確認済。事前に `~/.claude/settings.backup-20260418.json` を取得
 11. **README 拡充** — セットアップ、他人の caveat repo を繋ぐ手順、OSS 公開時の CONTRIBUTING
 
 ## 検証

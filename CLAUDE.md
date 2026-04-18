@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクトの状態
 
-Pre-alpha。Phase 9/11 完了（[docs/plan.md](docs/plan.md) の「実装フェーズ」節を参照）。設計は 5 ラウンドの監査を経て収束済み。設計変更時は `docs/plan.md` を更新し、`docs/audit.md` に記録されたパターンで再監査する。
+Pre-alpha。Phase 10/11 完了（Claude Code 統合 wire-up 済、MCP 接続と hooks 発火を実機確認）（[docs/plan.md](docs/plan.md) の「実装フェーズ」節を参照）。設計は 5 ラウンドの監査を経て収束済み。設計変更時は `docs/plan.md` を更新し、`docs/audit.md` に記録されたパターンで再監査する。
 
 **GitHub に push 済**:
 - Tool (public): https://github.com/kitepon-rgb/Caveat
@@ -114,6 +114,12 @@ MCP stdio サーバは stdout に JSON-RPC 以外を書いてはいけない。`
 
 - **`packages/core` と `apps/mcp` は `bundle: false` + `entry: ['src/**/*.ts']`**。bundle すると esbuild が `node:` プレフィクスを dist 出力で剥がす（例: `from 'node:sqlite'` → `from 'sqlite'`）。`node:sqlite` は bare 名前では解決不能なので、consumer 側（vitest 4 / workspace 別パッケージ）で `Cannot find package 'sqlite'` として破綻する。bundle せずファイル個別出力にすれば保持される
 - `apps/cli` は bundle: true（default）でも動く。CLI が使う `node:` import は `os`/`path`/`fs`/`url` のみで、これらは Node が bare 名前も互換維持しているから。`node:sqlite` を import する core は別パッケージで、そちらは bundle: false なので問題なし
+
+## Claude Code 統合の配置（Phase 10）
+
+- **MCP サーバ**: `~/.claude.json`（`claude mcp add --scope user` で書き込み）。`~/.claude/settings.json` には書けない（schema validation で `mcpServers` フィールドが reject される）
+- **Hooks**: `~/.claude/settings.json` の `hooks.UserPromptSubmit` と `hooks.Stop` に既存 throughline と並ぶ形で追加。`[caveat]` prefix 付き `<system-reminder>` を stdout に出す
+- 実機確認: `claude mcp list` で `caveat: ... ✓ Connected` が出ればサーバ側 OK。hooks は spawn テストで fire を確認
 
 ## Hook 規約
 
