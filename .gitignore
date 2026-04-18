@@ -1,0 +1,28 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Caveat derived state
+.index/
+data/
+
+# Private entries (file-name axis, in addition to visibility frontmatter gate)
+*.private.md
+
+# Env
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor caches
+*.swp
+
+# IDE / Editor per-user config (personal absolute paths, auto-generated) — any depth
+**/.vscode/
+**/.idea/
+
+# Claude Code per-project settings (personal permission allowlist) — any depth
+**/.claude/

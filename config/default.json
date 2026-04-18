@@ -1,0 +1,6 @@
+{
+  "knowledgeRepo": "../caveats-quo",
+  "semverKeys": ["driver", "cuda", "node"],
+  "projectRoots": [],
+  "communitySources": []
+}

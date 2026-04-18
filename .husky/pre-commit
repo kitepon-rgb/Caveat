@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+# Caveat pre-commit gate: reject any staged entries/**/*.md with visibility: private.
+# Activated when this repo has core.hooksPath=.husky (husky sets this via `prepare` script).
+# To bypass in emergencies, use git's standard: `git commit --no-verify`.
+
+exec node "$(dirname "$0")/../hooks/pre-commit-visibility-gate.mjs"
