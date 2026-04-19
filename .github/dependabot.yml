@@ -1,0 +1,29 @@
+version: 2
+updates:
+  # Root + every workspace package (pnpm is auto-detected)
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    # Group dev-only bumps so they arrive as a single PR
+    groups:
+      dev-dependencies:
+        dependency-type: development
+    # TypeScript and tsup coupling is fragile — review by hand, not bulk upgrade
+    ignore:
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      - dependency-name: tsup
+        update-types: [version-update:semver-major]
+      - dependency-name: vite
+        update-types: [version-update:semver-major]
+      - dependency-name: vitest
+        update-types: [version-update:semver-major]
+
+  # GitHub Actions pinning
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

@@ -1,0 +1,13 @@
+# Default: author reviews all PRs.
+*       @kitepon-rgb
+
+# Security-sensitive surfaces: require owner review even if CODEOWNERS is later
+# relaxed.
+/packages/core/src/community.ts      @kitepon-rgb
+/packages/core/src/push.ts           @kitepon-rgb
+/packages/core/src/frontmatter.ts    @kitepon-rgb
+/packages/core/src/update.ts         @kitepon-rgb
+/hooks/pre-commit-visibility-gate.mjs @kitepon-rgb
+/apps/cli/src/claudeInstall.ts       @kitepon-rgb
+/SECURITY.md                         @kitepon-rgb
+/.github/workflows/**                @kitepon-rgb

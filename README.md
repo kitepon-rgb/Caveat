@@ -1,13 +1,18 @@
 # Caveat
 
+[![npm](https://img.shields.io/npm/v/caveat-cli?color=cb3837&label=caveat-cli)](https://www.npmjs.com/package/caveat-cli)
+[![CI](https://github.com/kitepon-rgb/Caveat/actions/workflows/ci.yml/badge.svg)](https://github.com/kitepon-rgb/Caveat/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/caveat-cli?color=blue)](LICENSE)
+[![node](https://img.shields.io/node/v/caveat-cli?color=339933&logo=node.js&logoColor=white)](https://nodejs.org/)
+
 External spec gotcha knowledge base. Accumulate the "traps" of GPU drivers, IDE quirks, Claude Code hook availability, and tool version constraints so you don't rediscover them.
 
-**Status**: v0.5 unified. This one repo is **both** the tool source (`packages/`, `apps/`) **and** the shared knowledge DB (`entries/`). `npm i -g caveat-cli && caveat init` auto-subscribes you; `caveat pull` receives others' merged contributions, `caveat push <id>` contributes via fork + PR (requires gh CLI). 137 tests passing.
+**Status**: v0.6.1. One repo is **both** the tool source (`packages/`, `apps/`) **and** the shared knowledge DB (`entries/`). `npm i -g caveat-cli && caveat init` auto-subscribes you; `caveat pull` receives others' merged contributions, `caveat push <id>` contributes via fork + PR (requires gh CLI). 136 tests passing.
 
 ## Concept
 
 - **`markdown-in-git` is the source of truth.** SQLite (FTS5 trigram) is a rebuildable derived index, gitignored.
-- **Tool repo / knowledge repo split.** This repo is the tool. Your caveats live in a separate repo (e.g. `caveats-<you>`) pointed at via `config/default.json` + `~/.caveatrc.json`. You can `caveat community add <github-url>` to import someone else's caveats.
+- **Unified repo.** The tool source and the shared community knowledge DB live together. Users write to their own entries in `~/.caveat/own/`, then `caveat push <id>` opens a PR to this repo. Subscribers receive merged entries via `caveat pull`. Opt into an additional source with `caveat community add <github-url>`.
 - **`visibility: public | private`** frontmatter + `.husky/pre-commit` gate keeps private entries out of public knowledge repos.
 - **Claude Code integration.** An MCP server exposes 7 tools (`caveat_search` / `caveat_get` / `caveat_record` / `caveat_update` / `caveat_list_recent` / `caveat_pull` / `caveat_push`). Two hooks (`UserPromptSubmit` keyword-triggered, `Stop` unconditional) remind Claude to search before work and record after.
 - **Obsidian-compatible.** The knowledge repo is a valid Obsidian vault — open it as a folder, edit with Obsidian's graph/backlinks/Dataview, the tool re-indexes on `caveat index`.
