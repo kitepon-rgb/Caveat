@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   communityAdd,
@@ -17,11 +17,6 @@ const KNOWLEDGE_GITIGNORE = [
   '',
   '# Obsidian per-user config: workspace layout, theme, plugin state, cache.',
   '.obsidian/',
-  '',
-  '# community/ is a local cache of shallow-cloned third-party caveat repos',
-  '# (populated by `caveat community add`). Each contains its own .git and is not',
-  "# part of this repo's tracked knowledge.",
-  'community/',
   '',
 ].join('\n');
 import type { CliContext } from '../context.js';
@@ -51,6 +46,8 @@ export async function runInit(
   } else {
     ctx.logger.info(`knowledge repo: ${ctx.paths.knowledgeRepo}`);
   }
+
+  migrateLegacyCommunityDir(ctx);
 
   const gitignorePath = join(ctx.paths.knowledgeRepo, '.gitignore');
   if (!existsSync(gitignorePath)) {
@@ -91,6 +88,37 @@ export async function runInit(
     logger: ctx.logger,
   });
   reportInstallResult(ctx, result, opts.dryRun);
+}
+
+/**
+ * v0.6.1 の paths 修正で `community/` の位置が `<knowledgeRepo>/community/` から
+ * `<caveatHome>/community/` に移った。既存インストールは旧位置に clone を持つので、
+ * 1 回だけ自動で移す。現行位置が既に存在する場合は何もしない（冪等）。
+ */
+function migrateLegacyCommunityDir(ctx: CliContext): void {
+  const legacy = join(ctx.paths.knowledgeRepo, 'community');
+  const current = ctx.paths.communityDir;
+  if (legacy === current) return;
+  if (!existsSync(legacy)) return;
+  if (existsSync(current)) {
+    // New location already populated (fresh install or prior migration) — leave
+    // legacy alone; user can rm -rf it manually if they notice.
+    ctx.logger.warn(
+      `legacy community dir still exists at ${legacy} — remove manually (new location in use)`,
+    );
+    return;
+  }
+  mkdirSync(current, { recursive: true });
+  for (const entry of readdirSync(legacy, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    renameSync(join(legacy, entry.name), join(current, entry.name));
+  }
+  try {
+    rmdirSync(legacy);
+  } catch {
+    // legacy dir has leftover files we didn't touch — leave it
+  }
+  ctx.logger.info(`migrated legacy community/ → ${current}`);
 }
 
 async function subscribeSharedRepo(

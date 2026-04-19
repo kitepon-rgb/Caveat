@@ -173,7 +173,7 @@ See [docs/plan.md](docs/plan.md) for the full schema, semver matching rules, and
 ## Development
 
 ```sh
-corepack pnpm -r test            # 133 tests across 5 packages
+corepack pnpm -r test            # 136 tests across 5 packages
 corepack pnpm -r typecheck
 corepack pnpm -r build
 ```

@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import type { Confidence, Source } from '@caveat/core';
 import { buildContext } from './context.js';
+import { CAVEAT_VERSION } from './version.js';
 import { stdoutLogger } from './logger.js';
 import { runInit, runUninstall } from './commands/init.js';
 import { runIndex } from './commands/indexCmd.js';
@@ -23,7 +24,7 @@ const program = new Command();
 program
   .name('caveat')
   .description('External spec gotcha knowledge base CLI')
-  .version('0.6.0');
+  .version(CAVEAT_VERSION);
 
 program
   .command('init')

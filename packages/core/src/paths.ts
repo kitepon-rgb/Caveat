@@ -55,6 +55,10 @@ export function resolvePaths(
     knowledgeRepo: resolved,
     dbPath: join(caveatHome, 'index', 'caveat.db'),
     entriesDir: join(resolved, 'entries'),
-    communityDir: join(resolved, 'community'),
+    // community/ lives at caveatHome level, NOT inside knowledgeRepo. Community
+    // clones are external knowledge caches — not semantically "owned" by the
+    // user — and they embed their own .git dirs which would otherwise nest
+    // inside the user's git-tracked knowledge repo.
+    communityDir: join(caveatHome, 'community'),
   };
 }

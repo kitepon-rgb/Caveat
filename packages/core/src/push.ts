@@ -93,19 +93,19 @@ export async function pushEntry(opts: PushEntryOptions): Promise<PushEntryResult
     ensureStagingClone(stagingDir, ghUser, sharedName, sharedOwner);
 
     const branch = `caveat-push-${owned.id}-${Date.now().toString(36)}`;
-    run('git', ['checkout', '-b', branch], { cwd: stagingDir });
+    runOrThrow('git', ['checkout', '-b', branch], { cwd: stagingDir });
 
     const destPath = join(stagingDir, 'entries', owned.relPath);
     mkdirSync(dirname(destPath), { recursive: true });
     copyFileSync(owned.absPath, destPath);
 
-    run('git', ['add', join('entries', owned.relPath)], { cwd: stagingDir });
+    runOrThrow('git', ['add', join('entries', owned.relPath)], { cwd: stagingDir });
 
     const isUpdate = upstreamAlreadyHas(stagingDir, 'entries/' + owned.relPath);
     const verb = isUpdate ? 'update' : 'add';
     const commitMsg = `${verb}: ${owned.title}`;
-    run('git', ['commit', '-m', commitMsg], { cwd: stagingDir });
-    run('git', ['push', '--set-upstream', 'origin', branch], { cwd: stagingDir });
+    runOrThrow('git', ['commit', '-m', commitMsg], { cwd: stagingDir });
+    runOrThrow('git', ['push', '--set-upstream', 'origin', branch], { cwd: stagingDir });
 
     const prTitle = `${verb}: ${owned.title}`;
     const prBody = [
@@ -117,7 +117,7 @@ export async function pushEntry(opts: PushEntryOptions): Promise<PushEntryResult
       "Merged PRs will appear in subscribers' repos on their next `caveat pull`.",
     ].join('\n');
 
-    const pr = spawnSync(
+    const pr = runCapture(
       'gh',
       [
         'pr',
@@ -133,18 +133,15 @@ export async function pushEntry(opts: PushEntryOptions): Promise<PushEntryResult
         '--body',
         prBody,
       ],
-      { cwd: stagingDir, encoding: 'utf-8', shell: true },
+      { cwd: stagingDir },
     );
     if (pr.status !== 0) {
       return {
         status: 'failed',
-        detail: (typeof pr.stderr === 'string' ? pr.stderr : String(pr.stderr ?? ''))
-          .trim() || 'gh pr create failed',
+        detail: (pr.stderr || 'gh pr create failed').trim(),
       };
     }
-    const prUrl = (typeof pr.stdout === 'string' ? pr.stdout : String(pr.stdout ?? ''))
-      .trim();
-    return { status: 'ok', prUrl };
+    return { status: 'ok', prUrl: pr.stdout.trim() };
   } catch (err) {
     return {
       status: 'failed',
@@ -153,23 +150,71 @@ export async function pushEntry(opts: PushEntryOptions): Promise<PushEntryResult
   }
 }
 
+/**
+ * Cross-platform quoting for shell: true single-string invocation. We control
+ * every input (no user-supplied values), so only whitespace and shell
+ * metacharacters need wrapping. Double-quote embedded `"` by doubling for cmd
+ * compatibility — not needed for our fixed inputs but keeps the helper honest.
+ */
+function shellQuote(s: string): string {
+  if (!/[\s&|<>^()"`$!*?\[\]{}\\]/.test(s)) return s;
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
+interface SpawnResult {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * Invoke a command via the platform shell, passing a single command string so
+ * Node 24's "shell: true + args array" deprecation does not fire. Also lets
+ * Windows resolve `.cmd` shims (gh.cmd, git.cmd) without explicit extensions.
+ */
+function runCapture(
+  command: string,
+  args: string[],
+  opts: { cwd?: string } = {},
+): SpawnResult {
+  const line = [command, ...args].map(shellQuote).join(' ');
+  const r = spawnSync(line, {
+    encoding: 'utf-8',
+    cwd: opts.cwd,
+    shell: true,
+  });
+  return {
+    status: r.status,
+    stdout: typeof r.stdout === 'string' ? r.stdout : '',
+    stderr: typeof r.stderr === 'string' ? r.stderr : '',
+  };
+}
+
+function runOrThrow(
+  command: string,
+  args: string[],
+  opts: { cwd?: string } = {},
+): void {
+  const r = runCapture(command, args, opts);
+  if (r.status !== 0) {
+    throw new Error(
+      `${command} ${args.join(' ')} failed: ${(r.stderr || r.stdout || 'unknown').trim()}`,
+    );
+  }
+}
+
 function checkGhAvailable(): boolean {
-  const r = spawnSync('gh', ['--version'], { encoding: 'utf-8', shell: true });
-  return r.status === 0;
+  return runCapture('gh', ['--version']).status === 0;
 }
 
 function checkGhAuthed(): boolean {
-  const r = spawnSync('gh', ['auth', 'status'], { encoding: 'utf-8', shell: true });
-  return r.status === 0;
+  return runCapture('gh', ['auth', 'status']).status === 0;
 }
 
 function resolveGhUser(): string | undefined {
-  const r = spawnSync('gh', ['api', 'user', '--jq', '.login'], {
-    encoding: 'utf-8',
-    shell: true,
-  });
+  const r = runCapture('gh', ['api', 'user', '--jq', '.login']);
   if (r.status !== 0) return undefined;
-  return typeof r.stdout === 'string' ? r.stdout.trim() : '';
+  return r.stdout.trim() || undefined;
 }
 
 function parseOwnerRepo(url: string): [string | undefined, string | undefined] {
@@ -207,11 +252,7 @@ function forkStagingDir(caveatHome: string): string {
 
 function ensureFork(owner: string, repo: string): void {
   // Idempotent via gh: "already exists" message on stderr if the fork exists.
-  spawnSync(
-    'gh',
-    ['repo', 'fork', `${owner}/${repo}`, '--clone=false', '--remote=false'],
-    { encoding: 'utf-8', shell: true },
-  );
+  runCapture('gh', ['repo', 'fork', `${owner}/${repo}`, '--clone=false', '--remote=false']);
 }
 
 function ensureStagingClone(
@@ -223,33 +264,20 @@ function ensureStagingClone(
   if (!existsSync(stagingDir)) {
     mkdirSync(dirname(stagingDir), { recursive: true });
     const forkUrl = `https://github.com/${ghUser}/${sharedName}.git`;
-    run('git', ['clone', '--depth', '30', forkUrl, stagingDir]);
-    run(
+    runOrThrow('git', ['clone', '--depth', '30', forkUrl, stagingDir]);
+    runOrThrow(
       'git',
       ['remote', 'add', 'upstream', `https://github.com/${upstreamOwner}/${sharedName}.git`],
       { cwd: stagingDir },
     );
   } else {
-    run('git', ['checkout', 'main'], { cwd: stagingDir });
-    run('git', ['fetch', 'upstream', 'main'], { cwd: stagingDir });
-    run('git', ['reset', '--hard', 'upstream/main'], { cwd: stagingDir });
-    run('git', ['push', 'origin', 'main', '--force-with-lease'], { cwd: stagingDir });
+    runOrThrow('git', ['checkout', 'main'], { cwd: stagingDir });
+    runOrThrow('git', ['fetch', 'upstream', 'main'], { cwd: stagingDir });
+    runOrThrow('git', ['reset', '--hard', 'upstream/main'], { cwd: stagingDir });
+    runOrThrow('git', ['push', 'origin', 'main', '--force-with-lease'], { cwd: stagingDir });
   }
 }
 
 function upstreamAlreadyHas(stagingDir: string, relFromRoot: string): boolean {
   return existsSync(join(stagingDir, relFromRoot));
-}
-
-function run(command: string, args: string[], opts: { cwd?: string } = {}): void {
-  const r = spawnSync(command, args, {
-    encoding: 'utf-8',
-    cwd: opts.cwd,
-    shell: true,
-  });
-  if (r.status !== 0) {
-    const stderr = typeof r.stderr === 'string' ? r.stderr : String(r.stderr ?? '');
-    const stdout = typeof r.stdout === 'string' ? r.stdout : String(r.stdout ?? '');
-    throw new Error(`${command} ${args.join(' ')} failed: ${(stderr || stdout || 'unknown').trim()}`);
-  }
 }

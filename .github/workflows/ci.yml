@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }} / Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ['22.5', '24']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Setup Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Build
+        run: corepack pnpm -r build
+
+      - name: Typecheck
+        run: corepack pnpm -r typecheck
+
+      - name: Test
+        run: corepack pnpm -r test
