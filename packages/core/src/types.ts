@@ -53,4 +53,5 @@ export interface CoreConfig {
   knowledgeRepo: string;
   semverKeys: string[];
   communitySources: string[];
+  sharedRepo: string;
 }

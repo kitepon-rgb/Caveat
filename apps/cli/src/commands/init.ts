@@ -1,6 +1,14 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { openDb, ensureUserConfig } from '@caveat/core';
+import {
+  communityAdd,
+  openDb,
+  ensureUserConfig,
+  rebuildAll,
+  scanSource,
+  validateCommunityUrl,
+  type Source,
+} from '@caveat/core';
 
 const KNOWLEDGE_GITIGNORE = [
   '# Never commit entries flagged private (visibility: private is enforced by the',
@@ -25,10 +33,14 @@ import {
 
 export interface InitOptions {
   skipClaude: boolean;
+  skipShared: boolean;
   dryRun: boolean;
 }
 
-export function runInit(ctx: CliContext, opts: InitOptions = { skipClaude: false, dryRun: false }): void {
+export async function runInit(
+  ctx: CliContext,
+  opts: InitOptions = { skipClaude: false, skipShared: false, dryRun: false },
+): Promise<void> {
   ensureUserConfig(ctx.userConfigPath);
   ctx.logger.info(`user config: ${ctx.userConfigPath}`);
 
@@ -47,7 +59,17 @@ export function runInit(ctx: CliContext, opts: InitOptions = { skipClaude: false
   }
 
   const db = openDb({ path: ctx.paths.dbPath, logger: ctx.logger });
-  db.close();
+  try {
+    if (!opts.skipShared && !opts.dryRun) {
+      await subscribeSharedRepo(ctx, db);
+    } else if (opts.skipShared) {
+      ctx.logger.info('shared community DB subscription skipped (--skip-shared)');
+    } else if (opts.dryRun) {
+      ctx.logger.info(`[dry-run] would subscribe to shared community DB: ${ctx.config.sharedRepo}`);
+    }
+  } finally {
+    db.close();
+  }
   ctx.logger.info(`db initialized: ${ctx.paths.dbPath}`);
 
   if (opts.skipClaude) {
@@ -69,6 +91,59 @@ export function runInit(ctx: CliContext, opts: InitOptions = { skipClaude: false
     logger: ctx.logger,
   });
   reportInstallResult(ctx, result, opts.dryRun);
+}
+
+async function subscribeSharedRepo(
+  ctx: CliContext,
+  db: ReturnType<typeof openDb>,
+): Promise<void> {
+  const url = ctx.config.sharedRepo;
+  const validation = validateCommunityUrl(url);
+  if (!validation.valid) {
+    ctx.logger.warn(
+      `sharedRepo is not a valid GitHub URL — skipping: ${validation.reason}`,
+    );
+    return;
+  }
+  const handle = validation.handle!;
+  const target = join(ctx.paths.communityDir, handle);
+
+  if (!existsSync(target)) {
+    if (!existsSync(ctx.paths.communityDir)) {
+      mkdirSync(ctx.paths.communityDir, { recursive: true });
+    }
+    try {
+      await communityAdd({
+        url,
+        communityDir: ctx.paths.communityDir,
+        logger: ctx.logger,
+      });
+      ctx.logger.info(`shared community DB subscribed: ${url} → community/${handle}/`);
+    } catch (err) {
+      ctx.logger.warn(
+        `shared community DB subscription failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+  } else {
+    ctx.logger.info(`shared community DB already subscribed: community/${handle}/`);
+  }
+
+  // Index the shared repo so entries are searchable immediately.
+  if (existsSync(ctx.paths.communityDir)) {
+    rebuildAll(db);
+    if (existsSync(ctx.paths.entriesDir)) {
+      scanSource({ db, source: 'own', entriesRoot: ctx.paths.entriesDir });
+    }
+    for (const entry of readdirSync(ctx.paths.communityDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const source: Source = `community/${entry.name}`;
+      const root = join(ctx.paths.communityDir, entry.name, 'entries');
+      if (!existsSync(root)) continue;
+      const result = scanSource({ db, source, entriesRoot: root });
+      ctx.logger.info(`indexed ${source}: +${result.added}`);
+    }
+  }
 }
 
 export interface UninstallOptions {

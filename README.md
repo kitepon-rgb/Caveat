@@ -2,7 +2,7 @@
 
 External spec gotcha knowledge base. Accumulate the "traps" of GPU drivers, IDE quirks, Claude Code hook availability, and tool version constraints so you don't rediscover them.
 
-**Status**: v0.1 NPM-distributable. 141 tests passing across 5 packages (core 84, hooks 24, mcp 10, web 13, cli 10). The CLI is a single `caveat-cli` package on npm with no private workspace deps at install time — `npm i -g caveat-cli` and `caveat init` is all a user needs. See [docs/plan.md](docs/plan.md) for the full design.
+**Status**: v0.3 shared-knowledge. `npm i -g caveat-cli && caveat init` auto-subscribes you to the public [caveats-quo](https://github.com/kitepon-rgb/caveats-quo) shared DB; `caveat pull` receives, `caveat push <id>` contributes (fork + PR via gh CLI). 137 tests passing.
 
 ## Concept
 
@@ -43,22 +43,36 @@ docs/archive/         Superseded drafts (legacy brainstorms, etc.)
 ## Quick start (NPM user)
 
 ```sh
-# Once caveat-cli is on npm:
 npm install -g caveat-cli
-caveat init                   # scaffolds ~/.caveat/ + registers MCP + merges hooks into
-                              # ~/.claude/settings.json (with backup). Idempotent.
-caveat search "rtx"           # empty at first — record some entries via MCP or edit md
-                              # files directly under ~/.caveat/own/entries/
+caveat init                   # full setup (see below)
+caveat search "rtx"           # search across your entries + the shared community DB
+caveat pull                   # fetch new community contributions and re-index
+caveat push <id>              # contribute your entry to the shared DB via PR (requires gh)
 caveat serve                  # http://localhost:4242/ read-only share portal
 ```
 
 What `caveat init` does on first run:
 - Writes `~/.caveatrc.json` (empty `{}` — defaults come from a constant in the CLI)
 - Scaffolds `~/.caveat/own/` (your knowledge repo root) + `~/.caveat/index/caveat.db`
+- **Subscribes to the shared community DB** [kitepon-rgb/caveats-quo](https://github.com/kitepon-rgb/caveats-quo): shallow-clones into `~/.caveat/community/caveats-quo/` and indexes so entries are immediately searchable
 - Runs `claude mcp add --scope user caveat -- <node> --disable-warning=ExperimentalWarning <cliPath> mcp-server`
-- Merges `UserPromptSubmit` / `Stop` hook entries into `~/.claude/settings.json` (existing entries preserved; a backup is written before any change)
+- Merges `UserPromptSubmit` / `Stop` hook entries into `~/.claude/settings.json` (existing entries preserved; backup written before any change)
 
-Use `caveat init --skip-claude` to skip Claude Code wiring, or `--dry-run` to preview without writing. `caveat uninstall` reverses all Claude Code changes without touching `~/.caveat/`.
+Use `--skip-claude` to skip Claude Code wiring, `--skip-shared` to opt out of the community DB, or `--dry-run` to preview. `caveat uninstall` reverses Claude Code changes without touching `~/.caveat/`.
+
+### Contributing a caveat
+
+```sh
+caveat push <entry-id>        # requires `gh` CLI + `gh auth login`
+```
+
+`caveat push` forks the shared repo under your GitHub account (once), creates a branch, commits the entry md, pushes, and opens a PR. Merged PRs propagate to all subscribers on their next `caveat pull`.
+
+To point at a different shared DB (e.g. internal enterprise repo), set `sharedRepo` in `~/.caveatrc.json`:
+
+```json
+{ "sharedRepo": "https://github.com/your-org/your-caveats" }
+```
 
 ### Using an existing knowledge repo instead of `~/.caveat/own/`
 

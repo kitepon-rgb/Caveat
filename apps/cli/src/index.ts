@@ -11,6 +11,8 @@ import { runStats } from './commands/stats.js';
 import { runServe } from './commands/serve.js';
 import { runMcpServer } from './commands/mcpServer.js';
 import { runHook, type HookName } from './commands/hookCmd.js';
+import { runPull } from './commands/pull.js';
+import { runPush } from './commands/push.js';
 import {
   runCommunityAdd,
   runCommunityList,
@@ -21,18 +23,23 @@ const program = new Command();
 program
   .name('caveat')
   .description('External spec gotcha knowledge base CLI')
-  .version('0.2.1');
+  .version('0.3.0');
 
 program
   .command('init')
   .description(
-    'Initialize ~/.caveatrc.json, ~/.caveat/, and register Claude Code integration',
+    'Initialize ~/.caveatrc.json, ~/.caveat/, subscribe to the shared community DB, and register Claude Code integration',
   )
   .option('--skip-claude', 'skip Claude Code MCP + hook registration', false)
+  .option('--skip-shared', 'skip subscribing to the shared community DB', false)
   .option('--dry-run', 'show planned changes without writing', false)
-  .action((opts: { skipClaude: boolean; dryRun: boolean }) => {
+  .action(async (opts: { skipClaude: boolean; skipShared: boolean; dryRun: boolean }) => {
     const ctx = buildContext(stdoutLogger);
-    runInit(ctx, { skipClaude: opts.skipClaude, dryRun: opts.dryRun });
+    await runInit(ctx, {
+      skipClaude: opts.skipClaude,
+      skipShared: opts.skipShared,
+      dryRun: opts.dryRun,
+    });
   });
 
 program
@@ -104,6 +111,26 @@ program
   .action(() => {
     const ctx = buildContext(stdoutLogger);
     runStats(ctx);
+  });
+
+program
+  .command('pull')
+  .description(
+    'Refresh all subscribed community repos (incl. shared DB) and re-index. Use this to receive contributions others have merged.',
+  )
+  .action(async () => {
+    const ctx = buildContext(stdoutLogger);
+    await runPull(ctx);
+  });
+
+program
+  .command('push')
+  .description('Contribute a caveat to the shared community DB via fork + PR (requires gh CLI).')
+  .argument('<id>', 'entry id (from `caveat list`)')
+  .option('--dry-run', 'show planned steps without making GitHub changes', false)
+  .action(async (id: string, opts: { dryRun: boolean }) => {
+    const ctx = buildContext(stdoutLogger);
+    await runPush(ctx, { id, dryRun: opts.dryRun });
   });
 
 program

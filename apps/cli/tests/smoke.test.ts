@@ -80,23 +80,23 @@ describe('init', () => {
     cleanup(fx);
   });
 
-  it('creates ~/.caveatrc.json if missing and initializes .index/caveat.db', () => {
+  it('creates ~/.caveatrc.json if missing and initializes .index/caveat.db', async () => {
     const ctx = buildContext(silentLogger, { caveatHome: fx.caveatHome, userHome: fx.userHome });
-    runInit(ctx, { skipClaude: true, dryRun: false });
+    await runInit(ctx, { skipClaude: true, skipShared: true, dryRun: false });
 
     expect(existsSync(join(fx.userHome, '.caveatrc.json'))).toBe(true);
     expect(readFileSync(join(fx.userHome, '.caveatrc.json'), 'utf-8').trim()).toBe('{}');
     expect(existsSync(join(fx.caveatHome, 'index', 'caveat.db'))).toBe(true);
   });
 
-  it('preserves existing user config content', () => {
+  it('preserves existing user config content', async () => {
     writeFileSync(
       join(fx.userHome, '.caveatrc.json'),
       JSON.stringify({ knowledgeRepo: '/custom/path' }),
       'utf-8',
     );
     const ctx = buildContext(silentLogger, { caveatHome: fx.caveatHome, userHome: fx.userHome });
-    runInit(ctx, { skipClaude: true, dryRun: false });
+    await runInit(ctx, { skipClaude: true, skipShared: true, dryRun: false });
 
     const after = JSON.parse(readFileSync(join(fx.userHome, '.caveatrc.json'), 'utf-8')) as {
       knowledgeRepo: string;
@@ -114,7 +114,7 @@ describe('index', () => {
     cleanup(fx);
   });
 
-  it('picks up md files under entries/', () => {
+  it('picks up md files under entries/', async () => {
     writeFileSync(
       join(fx.knowledgeRepo, 'entries', 'gpu', 'foo.md'),
       sampleCaveat('foo', 'Foo title'),
@@ -122,7 +122,7 @@ describe('index', () => {
     );
 
     const ctx = buildContext(silentLogger, { caveatHome: fx.caveatHome, userHome: fx.userHome });
-    runInit(ctx, { skipClaude: true, dryRun: false });
+    await runInit(ctx, { skipClaude: true, skipShared: true, dryRun: false });
     runIndex(ctx, { full: false });
 
     // Read back via opened db
@@ -139,7 +139,7 @@ describe('index', () => {
     }
   });
 
-  it('--full DELETEs existing entries before rescan', () => {
+  it('--full DELETEs existing entries before rescan', async () => {
     writeFileSync(
       join(fx.knowledgeRepo, 'entries', 'gpu', 'a.md'),
       sampleCaveat('a', 'A'),
@@ -147,7 +147,7 @@ describe('index', () => {
     );
 
     const ctx = buildContext(silentLogger, { caveatHome: fx.caveatHome, userHome: fx.userHome });
-    runInit(ctx, { skipClaude: true, dryRun: false });
+    await runInit(ctx, { skipClaude: true, skipShared: true, dryRun: false });
     runIndex(ctx, { full: false });
 
     // Verify 'a' was inserted
