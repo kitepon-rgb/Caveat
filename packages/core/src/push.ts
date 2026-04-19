@@ -26,7 +26,14 @@ export interface PushEntryOptions {
 }
 
 export interface PushEntryResult {
-  status: 'ok' | 'dry-run' | 'not-found' | 'gh-missing' | 'gh-unauthed' | 'failed';
+  status:
+    | 'ok'
+    | 'dry-run'
+    | 'not-found'
+    | 'gh-missing'
+    | 'gh-unauthed'
+    | 'visibility-private'
+    | 'failed';
   detail?: string;
   prUrl?: string;
   plannedSteps?: string[];
@@ -37,6 +44,7 @@ interface OwnedEntry {
   title: string;
   absPath: string;
   relPath: string;
+  visibility: string;
 }
 
 export async function pushEntry(opts: PushEntryOptions): Promise<PushEntryResult> {
@@ -67,6 +75,13 @@ export async function pushEntry(opts: PushEntryOptions): Promise<PushEntryResult
     return {
       status: 'not-found',
       detail: `entry id=${opts.id} not found under ${opts.entriesDir}`,
+    };
+  }
+
+  if (owned.visibility === 'private') {
+    return {
+      status: 'visibility-private',
+      detail: `entry id=${opts.id} has visibility: private and cannot be pushed to the public community DB. Update the entry to visibility: public first (the user declared this entry local-only).`,
     };
   }
 
@@ -236,7 +251,13 @@ function findOwnedEntry(entriesDir: string, id: string): OwnedEntry | undefined 
         const parsed = parseMarkdown(raw);
         if (parsed.frontmatter.id === id) {
           const relPath = relative(entriesDir, absPath).replace(/\\/g, '/');
-          return { id, title: parsed.frontmatter.title, absPath, relPath };
+          return {
+            id,
+            title: parsed.frontmatter.title,
+            absPath,
+            relPath,
+            visibility: parsed.frontmatter.visibility,
+          };
         }
       } catch {
         // ignore unparseable

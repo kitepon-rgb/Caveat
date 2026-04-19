@@ -26,7 +26,12 @@ function makeFx(): Fx {
   return { root, caveatHome, entriesDir };
 }
 
-function writeEntry(fx: Fx, category: string, slug: string): void {
+function writeEntry(
+  fx: Fx,
+  category: string,
+  slug: string,
+  visibility: 'public' | 'private' = 'public',
+): void {
   const dir = join(fx.entriesDir, category);
   mkdirSync(dir, { recursive: true });
   writeFileSync(
@@ -34,7 +39,7 @@ function writeEntry(fx: Fx, category: string, slug: string): void {
     `---
 id: ${slug}
 title: ${slug} sample title
-visibility: public
+visibility: ${visibility}
 confidence: tentative
 outcome: resolved
 tags: [test]
@@ -103,6 +108,25 @@ describe('pushEntry', () => {
     if (result.status === 'gh-unauthed') return;
     expect(result.status).toBe('not-found');
     expect(result.detail).toMatch(/does-not-exist/);
+  });
+
+  it('rejects visibility: private entries before any GitHub action', async () => {
+    writeEntry(fx, 'gpu', 'rtx-private', 'private');
+    const result = await pushEntry({
+      entriesDir: fx.entriesDir,
+      caveatHome: fx.caveatHome,
+      sharedRepoUrl: 'https://github.com/kitepon-rgb/Caveat',
+      id: 'rtx-private',
+      dryRun: true,
+      logger: silentLogger,
+    });
+    if (!GH_AVAILABLE) {
+      expect(result.status).toBe('gh-missing');
+      return;
+    }
+    if (result.status === 'gh-unauthed') return;
+    expect(result.status).toBe('visibility-private');
+    expect(result.detail).toMatch(/private/);
   });
 
   it('rejects an invalid sharedRepoUrl', async () => {

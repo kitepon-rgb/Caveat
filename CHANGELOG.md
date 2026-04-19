@@ -2,6 +2,15 @@
 
 All notable changes are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] — 2026-04-19
+
+### Changed
+- **MCP tool descriptions rewritten for AI-correctness**. Every tool now defines what a "caveat" is in its own description (time-wasting traps in external specs — GPU/driver/CUDA versions, native-module builds, IDE/shell quirks, platform-specific behavior) so the tool is usable without shared context. Fixed the silent-not-found gotcha on `caveat_get` (IMPORTANT: pass `source` from search result). Clarified: `caveat_search` query has no FTS5 operators (plain tokens only); `caveat_update` array fields REPLACE rather than append; `caveat_pull` should not be called reflexively at session start; `caveat_record` must search first for duplicates and qualify entries before creating; `caveat_push` is a PUBLIC irreversible action requiring user confirmation.
+
+### Added
+- **`caveat_record` visibility is now REQUIRED in the MCP schema** — the AI must ask the user whether the entry is `public` (shareable to community DB) or `private` (local-only) before calling. No auto-classification: the user owns the knowledge and decides its reach.
+- **`pushEntry` rejects `visibility: private` entries** with `status=visibility-private` before touching GitHub. Previously private entries could be silently pushed to the public community DB — the pre-commit hook only guarded the tool repo itself. Regression test added.
+
 ## [0.6.1] — 2026-04-19
 
 ### Fixed

@@ -15,7 +15,9 @@ export const recordInputShape = {
   context: z.string().optional(),
   confidence: confidenceSchema.optional(),
   outcome: outcomeSchema.optional(),
-  visibility: visibilitySchema.optional(),
+  visibility: visibilitySchema.describe(
+    'REQUIRED. Ask the user "public (share to community) or private (keep local only)?" before calling — never auto-classify. The user owns the knowledge; they decide its reach.',
+  ),
   tags: z.array(z.string()).optional(),
   environment: z.record(z.string(), z.string()).optional(),
   category: z.string().optional().describe('Directory under entries/ (e.g., gpu, claude-code). Default: misc'),
@@ -30,7 +32,7 @@ export type RecordArgs = {
   context?: string;
   confidence?: 'confirmed' | 'reproduced' | 'tentative';
   outcome?: 'resolved' | 'impossible';
-  visibility?: 'public' | 'private';
+  visibility: 'public' | 'private';
   tags?: string[];
   environment?: Record<string, string>;
   category?: string;
