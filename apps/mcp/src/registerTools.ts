@@ -11,6 +11,8 @@ import {
   ingestResearchInputShape,
   type IngestResearchArgs,
 } from './tools/ingestResearch.js';
+import { handlePull, pullInputShape, type PullArgs } from './tools/pull.js';
+import { handlePush, pushInputShape, type PushArgs } from './tools/push.js';
 
 function jsonResult(data: unknown) {
   return {
@@ -97,5 +99,27 @@ export function registerAllTools(server: McpServer, ctx: McpContext): void {
       inputSchema: ingestResearchInputShape,
     },
     async (args) => jsonResult(handleIngestResearch(ctx, args as IngestResearchArgs)),
+  );
+
+  server.registerTool(
+    'caveat_pull',
+    {
+      title: 'caveat_pull',
+      description:
+        'git-pull all subscribed community caveat repos (incl. the shared DB) and re-index. Call this when the user asks if others have documented a similar trap, or at the start of a session that might benefit from fresh external knowledge. Safe and idempotent — re-running is cheap.',
+      inputSchema: pullInputShape,
+    },
+    async (args) => jsonResult(await handlePull(ctx, args as PullArgs)),
+  );
+
+  server.registerTool(
+    'caveat_push',
+    {
+      title: 'caveat_push',
+      description:
+        "Contribute a user-owned caveat to the shared community DB via fork + PR. Call this after caveat_record when the entry looks genuinely reusable by others (not a one-off project tie-in, not duplicated by existing community entries). Requires the `gh` CLI on the user's machine; returns status=gh-missing or gh-unauthed when unavailable. Use dry_run=true to preview without touching GitHub.",
+      inputSchema: pushInputShape,
+    },
+    async (args) => jsonResult(await handlePush(ctx, args as PushArgs)),
   );
 }

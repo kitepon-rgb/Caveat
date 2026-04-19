@@ -1,19 +1,7 @@
-import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
-import {
-  openDb,
-  communityPull,
-  rebuildAll,
-  scanSource,
-  type Source,
-} from '@caveat/core';
+import { existsSync } from 'node:fs';
+import { openDb, pullShared } from '@caveat/core';
 import type { CliContext } from '../context.js';
 
-/**
- * Convenience: pull all community repos (including the shared DB) and re-index.
- * For users who don't care about the distinction between `community pull` and
- * `index` — they just want `caveat pull` to refresh their knowledge base.
- */
 export async function runPull(ctx: CliContext): Promise<void> {
   if (!existsSync(ctx.paths.communityDir)) {
     ctx.logger.info(
@@ -23,32 +11,23 @@ export async function runPull(ctx: CliContext): Promise<void> {
     return;
   }
 
-  const results = await communityPull({
-    communityDir: ctx.paths.communityDir,
-    logger: ctx.logger,
-  });
-  for (const r of results) {
-    if (r.status === 'ok') {
-      ctx.logger.info(`${r.handle}: pulled`);
-    } else {
-      ctx.logger.warn(`${r.handle}: FAILED — ${r.message ?? 'unknown'}`);
-    }
-  }
-
   const db = openDb({ path: ctx.paths.dbPath, logger: ctx.logger });
   try {
-    rebuildAll(db);
-    if (existsSync(ctx.paths.entriesDir)) {
-      const ownResult = scanSource({ db, source: 'own', entriesRoot: ctx.paths.entriesDir });
-      ctx.logger.info(`own: +${ownResult.added}`);
+    const result = await pullShared({
+      communityDir: ctx.paths.communityDir,
+      entriesDir: ctx.paths.entriesDir,
+      db,
+      logger: ctx.logger,
+    });
+    for (const p of result.pulled) {
+      if (p.status === 'ok') {
+        ctx.logger.info(`${p.handle}: pulled`);
+      } else {
+        ctx.logger.warn(`${p.handle}: FAILED — ${p.message ?? 'unknown'}`);
+      }
     }
-    for (const entry of readdirSync(ctx.paths.communityDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const source: Source = `community/${entry.name}`;
-      const root = join(ctx.paths.communityDir, entry.name, 'entries');
-      if (!existsSync(root)) continue;
-      const scan = scanSource({ db, source, entriesRoot: root });
-      ctx.logger.info(`${source}: +${scan.added}`);
+    for (const i of result.indexed) {
+      ctx.logger.info(`${i.source}: +${i.added}`);
     }
   } finally {
     db.close();
