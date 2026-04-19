@@ -20,7 +20,6 @@ export interface RecordInput {
   tags?: string[];
   environment?: Record<string, string>;
   id?: string;
-  brief_id?: string;
   category?: string;
 }
 
@@ -66,7 +65,6 @@ export function recordEntry(input: RecordInput, opts: RecordOptions): RecordResu
     created_at: ymd,
     updated_at: ymd,
     last_verified: ymd,
-    ...(input.brief_id !== undefined ? { brief_id: input.brief_id } : {}),
   };
 
   const sections: Record<string, string> = {};

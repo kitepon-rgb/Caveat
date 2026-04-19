@@ -10,8 +10,6 @@ import { handleGet } from '../src/tools/get.js';
 import { handleRecord } from '../src/tools/record.js';
 import { handleUpdate } from '../src/tools/update.js';
 import { handleListRecent } from '../src/tools/listRecent.js';
-import { handleNlmBriefFor } from '../src/tools/nlmBriefFor.js';
-import { handleIngestResearch } from '../src/tools/ingestResearch.js';
 
 interface Fx {
   root: string;
@@ -166,29 +164,4 @@ describe('MCP tool handlers', () => {
     });
   });
 
-  describe('nlm_brief_for', () => {
-    it('returns brief_id and formatted text', () => {
-      const result = handleNlmBriefFor(f.ctx, { topic: 'CUDA 12.5 Blackwell' });
-      expect(result.brief_id).toMatch(/^brf-/);
-      expect(result.text).toContain('CUDA 12.5 Blackwell');
-      expect(result.text).toContain(`brief_id: ${result.brief_id}`);
-    });
-  });
-
-  describe('ingest_research', () => {
-    it('creates caveat with confidence: tentative', () => {
-      const result = handleIngestResearch(f.ctx, {
-        title: 'research finding',
-        symptom: 'new symptom',
-        resolution: 'use version X',
-        evidence: ['https://example.com/1', 'https://example.com/2'],
-        brief_id: 'brf-test-1',
-      });
-      const got = handleGet(f.ctx, { id: result.id });
-      expect(got.frontmatter.confidence).toBe('tentative');
-      expect(got.frontmatter.brief_id).toBe('brf-test-1');
-      expect(got.sections['Evidence']).toContain('https://example.com/1');
-      expect(got.sections['Evidence']).toContain('https://example.com/2');
-    });
-  });
 });

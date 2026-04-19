@@ -32,11 +32,11 @@ caveat community add <url>  # subscribe to an additional community repo
 caveat uninstall            # reverse `caveat init` Claude integration
 ```
 
-## MCP tools (9)
+## MCP tools (7)
 
 Exposed to Claude Code via the MCP server that `caveat init` registers:
 
-`caveat_search`, `caveat_get`, `caveat_record`, `caveat_update`, `caveat_list_recent`, `nlm_brief_for`, `ingest_research`, `caveat_pull`, `caveat_push`.
+`caveat_search`, `caveat_get`, `caveat_record`, `caveat_update`, `caveat_list_recent`, `caveat_pull`, `caveat_push`.
 
 Claude can autonomously pull community updates (safe, idempotent) and push your recorded caveats (gated by Claude Code's tool permission prompt for user consent — contribution is a public action).
 

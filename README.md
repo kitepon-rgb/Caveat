@@ -9,14 +9,14 @@ External spec gotcha knowledge base. Accumulate the "traps" of GPU drivers, IDE 
 - **`markdown-in-git` is the source of truth.** SQLite (FTS5 trigram) is a rebuildable derived index, gitignored.
 - **Tool repo / knowledge repo split.** This repo is the tool. Your caveats live in a separate repo (e.g. `caveats-<you>`) pointed at via `config/default.json` + `~/.caveatrc.json`. You can `caveat community add <github-url>` to import someone else's caveats.
 - **`visibility: public | private`** frontmatter + `.husky/pre-commit` gate keeps private entries out of public knowledge repos.
-- **Claude Code integration.** An MCP server exposes 7 tools (`caveat_search` / `caveat_get` / `caveat_record` / `caveat_update` / `caveat_list_recent` / `nlm_brief_for` / `ingest_research`). Two hooks (`UserPromptSubmit` keyword-triggered, `Stop` unconditional) remind Claude to search before work and record after.
+- **Claude Code integration.** An MCP server exposes 7 tools (`caveat_search` / `caveat_get` / `caveat_record` / `caveat_update` / `caveat_list_recent` / `caveat_pull` / `caveat_push`). Two hooks (`UserPromptSubmit` keyword-triggered, `Stop` unconditional) remind Claude to search before work and record after.
 - **Obsidian-compatible.** The knowledge repo is a valid Obsidian vault — open it as a folder, edit with Obsidian's graph/backlinks/Dataview, the tool re-indexes on `caveat index`.
 
 ## Layout
 
 ```
 packages/core/        @caveat/core — DB (node:sqlite + FTS5 trigram), indexer, frontmatter,
-                      env fingerprint, repository, record/update, brief, community, paths,
+                      env fingerprint, repository, record/update, community, paths,
                       Claude Code hook logic (claudeHooks.ts)
 apps/cli/             caveat-cli (published to npm) — bundled CLI with subcommands:
                         init / uninstall / index [--full] / search / list / show / stats /
@@ -173,7 +173,7 @@ See [docs/plan.md](docs/plan.md) for the full schema, semver matching rules, and
 ## Development
 
 ```sh
-corepack pnpm -r test            # 137 tests across 5 packages
+corepack pnpm -r test            # 133 tests across 5 packages
 corepack pnpm -r typecheck
 corepack pnpm -r build
 ```

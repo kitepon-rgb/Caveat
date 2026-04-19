@@ -21,7 +21,6 @@ export interface Frontmatter {
   created_at: string;
   updated_at: string;
   last_verified?: string;
-  brief_id?: string;
 }
 
 export interface SearchResult {

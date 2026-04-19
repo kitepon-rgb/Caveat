@@ -8,7 +8,6 @@ export * from './id.js';
 export * from './writer.js';
 export * from './record.js';
 export * from './update.js';
-export * from './brief.js';
 export * from './paths.js';
 export * from './config.js';
 export * from './community.js';

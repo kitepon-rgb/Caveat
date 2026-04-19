@@ -19,7 +19,6 @@ export const recordInputShape = {
   tags: z.array(z.string()).optional(),
   environment: z.record(z.string(), z.string()).optional(),
   category: z.string().optional().describe('Directory under entries/ (e.g., gpu, claude-code). Default: misc'),
-  brief_id: z.string().optional(),
 };
 
 export type RecordArgs = {
@@ -35,7 +34,6 @@ export type RecordArgs = {
   tags?: string[];
   environment?: Record<string, string>;
   category?: string;
-  brief_id?: string;
 };
 
 export function handleRecord(ctx: McpContext, args: RecordArgs) {

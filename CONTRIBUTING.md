@@ -31,7 +31,7 @@ Requires Node 22.5+ and pnpm 10 (via corepack). Windows, macOS, and Linux are al
 ```sh
 corepack pnpm install
 corepack pnpm -r build
-corepack pnpm -r test        # expect 137 tests green
+corepack pnpm -r test        # expect 133 tests green
 corepack pnpm -r typecheck
 ```
 
@@ -52,7 +52,7 @@ corepack pnpm -r typecheck
 
 ## Areas that welcome contribution
 
-- **New MCP tool additions.** The v0.5 9-tool set (`caveat_search`, `_get`, `_record`, `_update`, `_list_recent`, `nlm_brief_for`, `ingest_research`, `caveat_pull`, `caveat_push`) is the baseline. Ideas like `caveat_diff` or `caveat_merge` between community sources could be useful — propose via issue with motivation.
+- **New MCP tool additions.** The v0.6 7-tool set (`caveat_search`, `_get`, `_record`, `_update`, `_list_recent`, `caveat_pull`, `caveat_push`) is the baseline. Ideas like `caveat_diff` or `caveat_merge` between community sources could be useful — propose via issue with motivation.
 - **Community caveat format compatibility.** If you're building a similar tool and want interop, open an issue discussing the shared frontmatter subset.
 - **Obsidian plugin bridges.** A plugin that shells out to `caveat search` or `caveat_record` could smooth vault editing. Separate repo, referenced from README.
 - **Indexing performance.** `scanSource` does a full re-walk per source. If your knowledge repo has >10k entries and indexing is slow, a git-log-based incremental path would be welcome.
@@ -65,7 +65,7 @@ These are intentionally out-of-scope for v1:
 - **Custom YAML tags in frontmatter.** `gray-matter` is configured with `JSON_SCHEMA` specifically to reject `!!js/function` etc. Loosening that re-opens CVE class.
 - **Stringly-typed frontmatter.** The `Frontmatter` type and zod schemas in MCP tools are the canonical shape. Don't bypass via `Record<string, unknown>`.
 - **Auto-push on `caveat community add`.** Community repos are added as local clones only. Push / sync back to origin is out of scope for v1.
-- **NotebookLM full automation.** `nlm_brief_for` + `ingest_research` is deliberately half-automated (human pastes between Claude and NotebookLM). Reverse-engineered NLM APIs are not welcome.
+- **NotebookLM-specific tooling.** `nlm_brief_for` + `ingest_research` were removed in v0.6 as thin wrappers over `caveat_record`. Claude can generate research prompts in-context and record results with `confidence: tentative` directly. Don't re-add.
 
 ## Filing issues
 

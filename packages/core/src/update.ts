@@ -11,7 +11,6 @@ const IMMUTABLE_KEYS: ReadonlySet<keyof Frontmatter> = new Set([
   'created_at',
   'source_session',
   'source_project',
-  'brief_id',
 ]);
 
 export interface UpdatePatch {
@@ -73,9 +72,6 @@ export function updateEntry(id: string, patch: UpdatePatch, opts: UpdateOptions)
   };
   if (patch.frontmatter?.tags !== undefined) {
     mergedFrontmatter.tags = patch.frontmatter.tags;
-  }
-  if (parsed.frontmatter.brief_id !== undefined) {
-    mergedFrontmatter.brief_id = parsed.frontmatter.brief_id;
   }
 
   const mergedSections: Record<string, string> = { ...parsed.sections };

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクトの状態
 
-**v0.5.0**（2026-04-19、137 tests passing）。tool 本体 + 共有ナレッジ DB を本 repo に統合し、[caveat-cli](https://www.npmjs.com/package/caveat-cli) として NPM に publish 済。`npm i -g caveat-cli && caveat init` でユーザは自動で共有 DB を購読、`caveat push <id>` で PR を投げ、`caveat pull` でマージ済の他人の貢献を取り込める。MCP tool は 9 種（search/get/record/update/list_recent/nlm_brief_for/ingest_research/**pull/push**）— Claude が自律的に pull/push を判断可能。
+**v0.6.0**（2026-04-19、133 tests passing）。tool 本体 + 共有ナレッジ DB を本 repo に統合し、[caveat-cli](https://www.npmjs.com/package/caveat-cli) として NPM に publish 済。`npm i -g caveat-cli && caveat init` でユーザは自動で共有 DB を購読、`caveat push <id>` で PR を投げ、`caveat pull` でマージ済の他人の貢献を取り込める。MCP tool は 7 種（search/get/record/update/list_recent/pull/push）— v0.6 で NLM 2 tools（`nlm_brief_for` / `ingest_research`）を `caveat_record` の薄いラッパとして削除。
 
 **GitHub に push 済**:
 - Tool (public): https://github.com/kitepon-rgb/Caveat
