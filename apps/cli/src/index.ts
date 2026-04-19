@@ -21,7 +21,7 @@ const program = new Command();
 program
   .name('caveat')
   .description('External spec gotcha knowledge base CLI')
-  .version('0.0.0');
+  .version('0.2.0');
 
 program
   .command('init')

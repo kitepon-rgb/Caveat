@@ -20,13 +20,11 @@ export interface McpContext {
   paths: ResolvedPaths;
   logger: Logger;
   db: DatabaseSync;
-  cwd: string;
 }
 
 export interface McpContextOverrides {
   caveatHome?: string;
   userHome?: string;
-  cwd?: string;
   logger?: Logger;
 }
 
@@ -37,7 +35,6 @@ export function buildMcpContext(overrides: McpContextOverrides = {}): McpContext
   const logger = overrides.logger ?? stderrLogger;
   const config = loadConfig(userConfigPath);
   const paths = resolvePaths(caveatHome, config.knowledgeRepo, userHome);
-  const cwd = overrides.cwd ?? process.cwd();
   const db = openDb({ path: paths.dbPath, logger });
-  return { caveatHome, userHome, userConfigPath, config, paths, logger, db, cwd };
+  return { caveatHome, userHome, userConfigPath, config, paths, logger, db };
 }

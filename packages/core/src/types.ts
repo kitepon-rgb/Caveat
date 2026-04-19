@@ -52,6 +52,5 @@ export interface GetResult {
 export interface CoreConfig {
   knowledgeRepo: string;
   semverKeys: string[];
-  projectRoots: string[];
   communitySources: string[];
 }

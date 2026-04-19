@@ -66,12 +66,11 @@ Write `~/.caveatrc.json`:
 
 ```json
 {
-  "knowledgeRepo": "/absolute/path/to/your/caveats-repo",
-  "projectRoots": ["/abs/path/to/program/"]
+  "knowledgeRepo": "/absolute/path/to/your/caveats-repo"
 }
 ```
 
-`projectRoots` tells `caveat_record` how to infer `source_project` from your cwd. Empty array disables auto-detection.
+(v0.2+) `source_project` is always written as `null` by `caveat_record`. It used to be auto-inferred from cwd via a `projectRoots` config field, but that leaked per-user project names into publicly-shared knowledge repos and has been removed. Set it manually in the md file if you want personal traceability on private entries.
 
 ## Quick start (dev — contributing to Caveat itself)
 

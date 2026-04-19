@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { envMatch, inferSourceProject, normalizePath, fingerprint } from '../src/env.js';
+import { envMatch, normalizePath, fingerprint } from '../src/env.js';
 
 describe('envMatch', () => {
   it('matches substring for non-semver keys', () => {
@@ -25,30 +25,6 @@ describe('envMatch', () => {
 
   it('returns true for empty required', () => {
     expect(envMatch({ os: 'windows-11' }, {})).toBe(true);
-  });
-});
-
-describe('inferSourceProject', () => {
-  const roots = ['c:/users/alice/workspace/', '/home/alice/workspace/'];
-
-  it('extracts first segment under project root (windows)', () => {
-    expect(
-      inferSourceProject('C:\\Users\\alice\\Workspace\\Caveat\\packages\\core', roots),
-    ).toBe('caveat');
-    expect(inferSourceProject('C:/Users/alice/Workspace/MyTool/src', roots)).toBe('mytool');
-  });
-
-  it('extracts first segment under project root (posix)', () => {
-    expect(inferSourceProject('/home/alice/workspace/foo/bar', roots)).toBe('foo');
-  });
-
-  it('returns null outside project roots', () => {
-    expect(inferSourceProject('/tmp/foo', roots)).toBe(null);
-    expect(inferSourceProject('D:/Other/Path', roots)).toBe(null);
-  });
-
-  it('returns null when default (empty) project roots', () => {
-    expect(inferSourceProject('C:/any/path/somewhere')).toBe(null);
   });
 });
 

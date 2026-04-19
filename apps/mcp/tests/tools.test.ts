@@ -51,7 +51,6 @@ function makeFx(): Fx {
     paths,
     logger: silentLogger,
     db,
-    cwd: root,
   };
   return { root, caveatHome, userHome, knowledgeRepo, ctx, db };
 }

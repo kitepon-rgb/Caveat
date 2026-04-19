@@ -39,12 +39,8 @@ export type RecordArgs = {
 };
 
 export function handleRecord(ctx: McpContext, args: RecordArgs) {
-  return recordEntry(
-    { ...args, cwd: ctx.cwd },
-    {
-      db: ctx.db,
-      entriesRoot: ctx.paths.entriesDir,
-      projectRoots: ctx.config.projectRoots,
-    },
-  );
+  return recordEntry(args, {
+    db: ctx.db,
+    entriesRoot: ctx.paths.entriesDir,
+  });
 }

@@ -2,9 +2,6 @@ import semver from 'semver';
 import type { Environment } from './types.js';
 
 export const DEFAULT_SEMVER_KEYS = ['driver', 'cuda', 'node'];
-// Intentionally empty. Users set personal workspace roots via ~/.caveatrc.json's
-// projectRoots; the default must not ship absolute paths with someone's username.
-export const DEFAULT_PROJECT_ROOTS: string[] = [];
 
 export interface Fingerprint extends Environment {
   os: string;
@@ -59,20 +56,4 @@ function matchSemver(current: string, required: string): boolean {
 
 export function normalizePath(p: string): string {
   return p.replace(/\\/g, '/').toLowerCase();
-}
-
-export function inferSourceProject(
-  cwd: string,
-  projectRoots: string[] = DEFAULT_PROJECT_ROOTS,
-): string | null {
-  const normalized = normalizePath(cwd);
-  for (const root of projectRoots) {
-    const normalizedRoot = normalizePath(root);
-    if (normalized.startsWith(normalizedRoot)) {
-      const rest = normalized.slice(normalizedRoot.length);
-      const first = rest.split('/')[0];
-      if (first) return first;
-    }
-  }
-  return null;
 }

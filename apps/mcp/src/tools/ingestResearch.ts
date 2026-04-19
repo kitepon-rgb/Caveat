@@ -41,12 +41,10 @@ export function handleIngestResearch(ctx: McpContext, args: IngestResearchArgs) 
       tags: args.tags,
       category: args.category,
       brief_id: args.brief_id,
-      cwd: ctx.cwd,
     },
     {
       db: ctx.db,
       entriesRoot: ctx.paths.entriesDir,
-      projectRoots: ctx.config.projectRoots,
     },
   );
 }

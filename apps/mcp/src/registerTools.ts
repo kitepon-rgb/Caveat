@@ -50,7 +50,7 @@ export function registerAllTools(server: McpServer, ctx: McpContext): void {
     {
       title: 'caveat_record',
       description:
-        'Create a new caveat markdown file. Auto-fills source_session, source_project (from cwd), and environment fingerprint for unspecified keys.',
+        'Create a new caveat markdown file. Auto-fills source_session and environment fingerprint for unspecified keys. source_project is left null by design (publicly-shared knowledge should not leak per-user project names).',
       inputSchema: recordInputShape,
     },
     async (args) => jsonResult(handleRecord(ctx, args as RecordArgs)),

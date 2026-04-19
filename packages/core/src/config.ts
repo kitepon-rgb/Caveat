@@ -3,14 +3,12 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 export interface CaveatConfig {
   knowledgeRepo: string;
   semverKeys: string[];
-  projectRoots: string[];
   communitySources: string[];
 }
 
 export const DEFAULT_CONFIG: CaveatConfig = {
   knowledgeRepo: 'own',
   semverKeys: ['driver', 'cuda', 'node'],
-  projectRoots: [],
   communitySources: [],
 };
 

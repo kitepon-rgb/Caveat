@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import type { Frontmatter, Source, Confidence, Outcome, Visibility } from './types.js';
 import { slugify, resolveCollision, generateSourceSession } from './id.js';
-import { fingerprint, inferSourceProject } from './env.js';
+import { fingerprint } from './env.js';
 import { buildEntry, writeEntryFile } from './writer.js';
 import { upsertEntry } from './indexer.js';
 
@@ -21,14 +21,12 @@ export interface RecordInput {
   environment?: Record<string, string>;
   id?: string;
   brief_id?: string;
-  cwd?: string;
   category?: string;
 }
 
 export interface RecordOptions {
   db: DatabaseSync;
   entriesRoot: string;
-  projectRoots?: string[];
   now?: () => Date;
   source?: Source;
 }
@@ -55,8 +53,6 @@ export function recordEntry(input: RecordInput, opts: RecordOptions): RecordResu
     ...(input.environment ?? {}),
   };
 
-  const sourceProject = input.cwd ? inferSourceProject(input.cwd, opts.projectRoots) : null;
-
   const frontmatter: Frontmatter = {
     id,
     title: input.title,
@@ -65,7 +61,7 @@ export function recordEntry(input: RecordInput, opts: RecordOptions): RecordResu
     outcome: input.outcome ?? 'resolved',
     tags: input.tags ?? [],
     environment: mergedEnv,
-    source_project: sourceProject,
+    source_project: null,
     source_session: generateSourceSession(now),
     created_at: ymd,
     updated_at: ymd,
