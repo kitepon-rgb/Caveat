@@ -1,6 +1,21 @@
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { openDb, ensureUserConfig } from '@caveat/core';
+
+const KNOWLEDGE_GITIGNORE = [
+  '# Never commit entries flagged private (visibility: private is enforced by the',
+  '# pre-commit gate, but this is a filename-level backup guard).',
+  '*.private.md',
+  '',
+  '# Obsidian per-user config: workspace layout, theme, plugin state, cache.',
+  '.obsidian/',
+  '',
+  '# community/ is a local cache of shallow-cloned third-party caveat repos',
+  '# (populated by `caveat community add`). Each contains its own .git and is not',
+  "# part of this repo's tracked knowledge.",
+  'community/',
+  '',
+].join('\n');
 import type { CliContext } from '../context.js';
 import {
   installClaudeIntegration,
@@ -23,6 +38,12 @@ export function runInit(ctx: CliContext, opts: InitOptions = { skipClaude: false
     ctx.logger.info(`knowledge repo scaffolded: ${ctx.paths.knowledgeRepo}`);
   } else {
     ctx.logger.info(`knowledge repo: ${ctx.paths.knowledgeRepo}`);
+  }
+
+  const gitignorePath = join(ctx.paths.knowledgeRepo, '.gitignore');
+  if (!existsSync(gitignorePath)) {
+    writeFileSync(gitignorePath, KNOWLEDGE_GITIGNORE, 'utf-8');
+    ctx.logger.info(`.gitignore created: ${gitignorePath}`);
   }
 
   const db = openDb({ path: ctx.paths.dbPath, logger: ctx.logger });
