@@ -9,6 +9,16 @@ data/
 # Private entries (file-name axis, in addition to visibility frontmatter gate)
 *.private.md
 
+# Obsidian per-user vault config (tool repo now hosts entries/ as an
+# Obsidian-compatible knowledge vault — personal workspace state must not be
+# committed)
+.obsidian/
+
+# Community cache: if this repo is ever shallow-cloned as a community source
+# under another checkout, its `community/` would be a nested cache of others'
+# repos. Harmless to exclude defensively.
+community/
+
 # Env
 .env
 .env.local

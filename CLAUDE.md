@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **GitHub に push 済**:
 - Tool (public): https://github.com/kitepon-rgb/Caveat
-- Knowledge (private): https://github.com/kitepon-rgb/caveats-quo
+- v0.5 で tool + 共有ナレッジ DB を [kitepon-rgb/Caveat](https://github.com/kitepon-rgb/Caveat) に統合（`entries/` がこの repo 内）。旧 `kitepon-rgb/caveats-quo` は retire 予定（archived）
 
 **`docs/plan.md` が設計の真実の源**。アーキテクチャ判断の前に必ず読む。`docs/audit.md` には過去に議論・却下した論点が残っているので蒸し返さない。`docs/archive/` には没案や別セッション由来の設計メモが置いてある（現役資料ではない）。
 

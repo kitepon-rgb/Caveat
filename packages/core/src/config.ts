@@ -15,7 +15,7 @@ export interface CaveatConfig {
   sharedRepo: string;
 }
 
-export const SHARED_REPO_URL = 'https://github.com/kitepon-rgb/caveats-quo';
+export const SHARED_REPO_URL = 'https://github.com/kitepon-rgb/Caveat';
 
 export const DEFAULT_CONFIG: CaveatConfig = {
   knowledgeRepo: 'own',
