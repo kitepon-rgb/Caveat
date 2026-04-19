@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **GitHub に push 済**:
 - Tool (public): https://github.com/kitepon-rgb/Caveat
-- v0.5 で tool + 共有ナレッジ DB を [kitepon-rgb/Caveat](https://github.com/kitepon-rgb/Caveat) に統合（`entries/` がこの repo 内）。旧 `kitepon-rgb/caveats-quo` は retire 予定（archived）
+- v0.5 で tool + 共有ナレッジ DB を [kitepon-rgb/Caveat](https://github.com/kitepon-rgb/Caveat) に統合（`entries/` がこの repo 内）。旧 `kitepon-rgb/caveats-quo` は削除済
 
 **`docs/plan.md` が設計の真実の源**。アーキテクチャ判断の前に必ず読む。`docs/audit.md` には過去に議論・却下した論点が残っているので蒸し返さない。`docs/archive/` には没案や別セッション由来の設計メモが置いてある（現役資料ではない）。
 
@@ -47,7 +47,7 @@ node apps/cli/dist/caveat.js mcp-server            # MCP stdio（手動テスト
 
 **`markdown-in-git` が真実の源**。SQLite は再構築可能な派生 FTS5 インデックスで `<caveatHome>/index/caveat.db`（gitignore）。SQLite DB を権威扱いしない — 必ず markdown から再生成できる状態を保つ。
 
-**2 repo 分離**: 本 repo は tool（`Caveat`）。knowledge repo は別 repo で、default は `<caveatHome>/own/`（`~/.caveat/own/`）。`~/.caveatrc.json` の `knowledgeRepo` で絶対パス上書き可（例: 既存の `caveats-quo` を使い続けたい場合）。個人の絶対パスを tool repo に書かない。
+**単一 repo**: v0.5 から tool 本体と共有ナレッジ DB を本 repo に統合（`entries/` が共有 DB 本体）。ユーザ個人の repo は `<caveatHome>/own/`（`~/.caveat/own/`）、`~/.caveatrc.json` の `knowledgeRepo` で絶対パス上書き可。個人の絶対パスを tool repo に書かない。
 
 **caveatHome の解決**: `findCaveatHome(userHome)` → `process.env.CAVEAT_HOME ?? join(userHome, '.caveat')`。NPM グローバルインストール時、tool の実体は `node_modules/caveat-cli/` に置かれるが、**ユーザーデータ（DB・own repo）は常に `~/.caveat/` 側**。テストは `CAVEAT_HOME` override で一時ディレクトリに隔離する。
 

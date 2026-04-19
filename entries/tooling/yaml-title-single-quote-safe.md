@@ -65,7 +65,7 @@ title: '<one-line title>'
 
 bulk 修正スクリプト（backtick 除去 + 既存 `'` を `''` に escape）:
 ```bash
-grep -rln "^title: " caveats-quo/entries/ | while read f; do
+grep -rln "^title: " entries/ | while read f; do
   title=$(sed -n 's/^title: //p' "$f" | head -1)
   cleaned=$(echo "$title" | sed 's/`//g')
   escaped=$(echo "$cleaned" | sed "s/'/''/g")
