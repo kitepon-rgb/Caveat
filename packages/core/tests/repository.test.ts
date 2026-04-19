@@ -3,9 +3,9 @@ import { openDb } from '../src/db.js';
 import { upsertEntry } from '../src/indexer.js';
 import { search, get, listRecent } from '../src/repository.js';
 
-const insert = (db: ReturnType<typeof openDb>, id: string, source: 'own' | `community/${string}` = 'own', overrides: Partial<{ title: string; body: string; tags: string[]; confidence: string; updated_at: string }> = {}) => {
+const insert = (db: ReturnType<typeof openDb>, id: string, source: 'own' | `community/${string}` = 'own', overrides: Partial<{ title: string; body: string; tags: string[]; confidence: string; updated_at: string; visibility: string }> = {}) => {
   const fm = {
-    id, title: overrides.title ?? `Title ${id}`, visibility: 'public',
+    id, title: overrides.title ?? `Title ${id}`, visibility: overrides.visibility ?? 'public',
     confidence: overrides.confidence ?? 'reproduced',
     tags: overrides.tags ?? ['gpu'],
     environment: { os: 'windows-11' },
@@ -69,6 +69,55 @@ describe('search', () => {
     insert(db, 'a', 'own', { body: '## Symptom\nthe problem\n\n## Cause\nthe reason' });
     const r = search(db);
     expect(r[0]!.symptomExcerpt).toBe('the problem');
+  });
+
+  it('filters by visibility=public excludes private entries', () => {
+    const db = openDb({ path: ':memory:' });
+    insert(db, 'pub', 'own', { visibility: 'public' });
+    insert(db, 'priv', 'own', { visibility: 'private' });
+    const r = search(db, { filters: { visibility: 'public' } });
+    expect(r.map((x) => x.id)).toEqual(['pub']);
+  });
+
+  it('filters by visibility=private excludes public entries', () => {
+    const db = openDb({ path: ':memory:' });
+    insert(db, 'pub', 'own', { visibility: 'public' });
+    insert(db, 'priv', 'own', { visibility: 'private' });
+    const r = search(db, { filters: { visibility: 'private' } });
+    expect(r.map((x) => x.id)).toEqual(['priv']);
+  });
+
+  it('visibility=all (or omitted) returns both', () => {
+    const db = openDb({ path: ':memory:' });
+    insert(db, 'pub', 'own', { visibility: 'public' });
+    insert(db, 'priv', 'own', { visibility: 'private' });
+    expect(search(db, { filters: { visibility: 'all' } }).length).toBe(2);
+    expect(search(db).length).toBe(2);
+  });
+
+  it('result includes visibility field', () => {
+    const db = openDb({ path: ':memory:' });
+    insert(db, 'priv', 'own', { visibility: 'private' });
+    const r = search(db);
+    expect(r[0]!.visibility).toBe('private');
+  });
+
+  it('orders by updated_at DESC when no FTS query', () => {
+    const db = openDb({ path: ':memory:' });
+    insert(db, 'a', 'own', { updated_at: '2026-04-10' });
+    insert(db, 'b', 'own', { updated_at: '2026-04-18' });
+    insert(db, 'c', 'own', { updated_at: '2026-04-15' });
+    const r = search(db);
+    expect(r.map((x) => x.id)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('visibility filter combines with source filter', () => {
+    const db = openDb({ path: ':memory:' });
+    insert(db, 'op', 'own', { visibility: 'public' });
+    insert(db, 'opv', 'own', { visibility: 'private' });
+    insert(db, 'cp', 'community/alice', { visibility: 'public' });
+    const r = search(db, { filters: { source: 'own', visibility: 'public' } });
+    expect(r.map((x) => x.id)).toEqual(['op']);
   });
 });
 

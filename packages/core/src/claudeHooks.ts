@@ -30,6 +30,5 @@ export function stopReminderText(): string {
     '[caveat] このセッションで外部仕様の罠（GPU/ドライバ/ツールバージョン/IDE/再現性）を踏み、次回の自分の調査が短縮できそうなら mcp__caveat__caveat_record で登録を検討してください。',
     '解決したケースだけでなく、「現状の制約では不可能と判定した」結論も outcome: impossible として記録対象。次回同じ 3 時間を溶かさないために。',
     '既に同等の caveat がある場合は caveat_update で上書き、または last_verified だけ更新。',
-    '記録した罠が他のユーザにも再利用価値があるなら mcp__caveat__caveat_push で共有 DB に PR を投げることも検討（個人プロジェクト固有の物は push しない）。',
   ].join('\n');
 }

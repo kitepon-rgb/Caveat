@@ -29,6 +29,7 @@ export interface SearchResult {
   title: string;
   symptomExcerpt: string;
   confidence: Confidence;
+  visibility: Visibility;
   environment: Environment;
 }
 
@@ -36,6 +37,7 @@ export interface SearchFilters {
   tags?: string[];
   confidence?: Confidence[];
   source?: 'own' | 'community' | 'all';
+  visibility?: 'public' | 'private' | 'all';
   env?: Environment;
 }
 
@@ -52,5 +54,4 @@ export interface CoreConfig {
   knowledgeRepo: string;
   semverKeys: string[];
   communitySources: string[];
-  sharedRepo: string;
 }

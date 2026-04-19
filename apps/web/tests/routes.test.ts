@@ -144,6 +144,65 @@ describe('web routes', () => {
     });
   });
 
+  describe('visibility filter and badge', () => {
+    it('shows public and private badges for entries on the list', async () => {
+      recordEntry(
+        { title: 'public one', symptom: 'p', visibility: 'public' },
+        { db: f.db, entriesRoot: f.ctx.paths.entriesDir },
+      );
+      recordEntry(
+        { title: 'private one', symptom: 'q', visibility: 'private' },
+        { db: f.db, entriesRoot: f.ctx.paths.entriesDir },
+      );
+      const res = await f.app.request('/');
+      const html = await res.text();
+      expect(html).toContain('badge public');
+      expect(html).toContain('badge private');
+      expect(html).toContain('private one');
+      expect(html).toContain('public one');
+    });
+
+    it('?visibility=public hides private entries', async () => {
+      recordEntry(
+        { title: 'public one', symptom: 'p', visibility: 'public' },
+        { db: f.db, entriesRoot: f.ctx.paths.entriesDir },
+      );
+      recordEntry(
+        { title: 'private one', symptom: 'q', visibility: 'private' },
+        { db: f.db, entriesRoot: f.ctx.paths.entriesDir },
+      );
+      const res = await f.app.request('/?visibility=public');
+      const html = await res.text();
+      expect(html).toContain('public one');
+      expect(html).not.toContain('private one');
+    });
+
+    it('?visibility=private hides public entries', async () => {
+      recordEntry(
+        { title: 'public one', symptom: 'p', visibility: 'public' },
+        { db: f.db, entriesRoot: f.ctx.paths.entriesDir },
+      );
+      recordEntry(
+        { title: 'private one', symptom: 'q', visibility: 'private' },
+        { db: f.db, entriesRoot: f.ctx.paths.entriesDir },
+      );
+      const res = await f.app.request('/?visibility=private');
+      const html = await res.text();
+      expect(html).toContain('private one');
+      expect(html).not.toContain('public one');
+    });
+
+    it('detail page renders visibility badge instead of plain text', async () => {
+      recordEntry(
+        { title: 'private detail', symptom: 's', visibility: 'private' },
+        { db: f.db, entriesRoot: f.ctx.paths.entriesDir },
+      );
+      const res = await f.app.request('/g/private-detail');
+      const html = await res.text();
+      expect(html).toContain('badge private');
+    });
+  });
+
   describe('GET /community', () => {
     it('shows empty state when no community repos', async () => {
       const res = await f.app.request('/community');

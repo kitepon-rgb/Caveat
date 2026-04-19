@@ -25,10 +25,14 @@ export function createDetailRoute(ctx: WebContext): Hono {
       .map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(String(v))}</dd>`)
       .join('');
 
+    const visibilityBadge =
+      fm.visibility === 'private'
+        ? `<span class="badge private" title="local-only — never pushed to community DB">🔒 private</span>`
+        : `<span class="badge public">public</span>`;
     const metaRows: string[] = [
       `<dt>id</dt><dd><code>${escapeHtml(fm.id)}</code></dd>`,
       `<dt>source</dt><dd>${escapeHtml(entry.source)}</dd>`,
-      `<dt>visibility</dt><dd>${escapeHtml(fm.visibility)}</dd>`,
+      `<dt>visibility</dt><dd>${visibilityBadge}</dd>`,
       `<dt>confidence</dt><dd><span class="badge ${escapeHtml(fm.confidence)}">${escapeHtml(fm.confidence)}</span></dd>`,
     ];
     if (fm.outcome) {

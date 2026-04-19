@@ -1,20 +1,8 @@
 # Contributing to Caveat
 
-Thanks for considering a contribution. This repo is **both** the tool (`packages/`, `apps/`) **and** the shared knowledge DB (`entries/`) — two distinct contribution tracks. See the "Track" sections below for which applies.
+Thanks for considering a contribution. This document covers contributions **to the tool itself** (`packages/`, `apps/`).
 
-## Track A — contributing a caveat to the shared knowledge DB (the common case)
-
-Use the tool itself. After `npm i -g caveat-cli && caveat init`, write your caveat in `~/.caveat/own/entries/<category>/<slug>.md` (or via `mcp__caveat__caveat_record` in Claude Code), then:
-
-```sh
-caveat push <entry-id>
-```
-
-This forks this repo under your GitHub account (once), commits the entry on a branch, pushes, and opens a PR. Requires `gh` CLI authenticated (`gh auth login`). Maintainer merges PRs that pass the visibility gate and aren't duplicates.
-
-You can also open a PR manually if you prefer — drop your md file in the correct `entries/<category>/` directory on a branch of your fork. The format is documented in the root README.
-
-## Track B — contributing to the tool itself
+> **v0.7 note**: Caveat used to ship a central shared community DB with a `caveat push` (fork + PR) flow. That was retired in v0.7. Knowledge sharing is now per-group: you and your teammates push to your own git repo, others subscribe via `caveat community add`. The tool stays out of the publish path. See [README.md](README.md#sharing-with-a-group--team--company) for the recommended pattern, and [docs/archive/auto-merge-design.md](docs/archive/auto-merge-design.md) for why the auto-merge approach was abandoned.
 
 This doc is short on purpose — Caveat is a small, opinionated tool, so the bar for changes is "does it match the design in `docs/plan.md`, and is it verified by tests?"
 
@@ -52,7 +40,7 @@ corepack pnpm -r typecheck
 
 ## Areas that welcome contribution
 
-- **New MCP tool additions.** The v0.6 7-tool set (`caveat_search`, `_get`, `_record`, `_update`, `_list_recent`, `caveat_pull`, `caveat_push`) is the baseline. Ideas like `caveat_diff` or `caveat_merge` between community sources could be useful — propose via issue with motivation.
+- **New MCP tool additions.** The v0.7 6-tool set (`caveat_search`, `_get`, `_record`, `_update`, `_list_recent`, `caveat_pull`) is the baseline. Ideas like `caveat_diff` or `caveat_merge` between community sources could be useful — propose via issue with motivation.
 - **Community caveat format compatibility.** If you're building a similar tool and want interop, open an issue discussing the shared frontmatter subset.
 - **Obsidian plugin bridges.** A plugin that shells out to `caveat search` or `caveat_record` could smooth vault editing. Separate repo, referenced from README.
 - **Indexing performance.** `scanSource` does a full re-walk per source. If your knowledge repo has >10k entries and indexing is slow, a git-log-based incremental path would be welcome.

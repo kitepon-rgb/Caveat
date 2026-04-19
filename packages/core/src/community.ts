@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { simpleGit } from 'simple-git';
@@ -122,4 +122,60 @@ export function communityList(opts: CommunityListOptions): CommunityListEntry[] 
     out.push({ handle: entry.name, path, entryCount: row?.n ?? 0 });
   }
   return out;
+}
+
+export interface CommunityRemoveOptions {
+  communityDir: string;
+  handle: string;
+  db: DatabaseSync;
+  dryRun?: boolean;
+  logger?: Logger;
+}
+
+export interface CommunityRemoveResult {
+  handle: string;
+  path: string;
+  dirExisted: boolean;
+  rowCount: number;
+  removed: boolean;
+  dryRun: boolean;
+}
+
+export function communityRemove(opts: CommunityRemoveOptions): CommunityRemoveResult {
+  const handle = (opts.handle ?? '').trim();
+  if (!handle) {
+    throw new Error('handle is required');
+  }
+  if (handle === '.' || handle === '..' || /[\\/]/.test(handle)) {
+    throw new Error(`invalid handle (no path separators or relative segments): ${opts.handle}`);
+  }
+
+  const target = join(opts.communityDir, handle);
+  const dirExisted = existsSync(target) && statSync(target).isDirectory();
+
+  const source = `community/${handle}`;
+  const row = opts.db
+    .prepare('SELECT COUNT(*) AS n FROM entries WHERE source = ?')
+    .get(source) as { n: number } | undefined;
+  const rowCount = row?.n ?? 0;
+
+  if (opts.dryRun) {
+    return { handle, path: target, dirExisted, rowCount, removed: false, dryRun: true };
+  }
+
+  if (dirExisted) {
+    rmSync(target, { recursive: true, force: true });
+  }
+  if (rowCount > 0) {
+    opts.db.prepare('DELETE FROM entries WHERE source = ?').run(source);
+  }
+
+  return {
+    handle,
+    path: target,
+    dirExisted,
+    rowCount,
+    removed: dirExisted || rowCount > 0,
+    dryRun: false,
+  };
 }

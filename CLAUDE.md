@@ -4,11 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクトの状態
 
-**v0.6.2**（2026-04-19、137 tests passing）。tool 本体 + 共有ナレッジ DB を本 repo に統合し、[caveat-cli](https://www.npmjs.com/package/caveat-cli) として NPM に publish 済。`npm i -g caveat-cli && caveat init` でユーザは自動で共有 DB を購読、`caveat push <id>` で PR を投げ、`caveat pull` でマージ済の他人の貢献を取り込める。MCP tool は 7 種（search/get/record/update/list_recent/pull/push）— v0.6 で NLM 2 tools（`nlm_brief_for` / `ingest_research`）を `caveat_record` の薄いラッパとして削除。
+**v0.7.0**（2026-04-19、148 tests passing）。**中央 shared community DB を全廃止し、個人 / グループ単位の repo 共有モデルに pivot 済**。各ユーザーは自分の `~/.caveat/own/` に書き、共有は自分・知人・組織の git repo に普通の `git push` で行い、他のグループの知識は `caveat community add <github-url>` で取り込む。tool 側は publish 経路に介在しない。MCP tool は 6 種（search/get/record/update/list_recent/pull）— v0.7 で `caveat_push` を削除。
+
+**v0.7 pivot の根拠**: 自動マージ厳密化を検討した結果、赤の他人からの貢献を auto-validate するモデル自体が原理的に脆弱と判明。LLM oracle (Opus 含) を gate に置いても adversarial gradient 攻撃で破られる、xz-utils 型の long-game は静的検査で検知不能。よって信頼を「自動検査」ではなく「社会的文脈」で引く方針に転換。詳細は [docs/archive/auto-merge-design.md](docs/archive/auto-merge-design.md)（廃止された自動マージ設計）参照。
 
 **GitHub に push 済**:
 - Tool (public): https://github.com/kitepon-rgb/Caveat
-- v0.5 で tool + 共有ナレッジ DB を [kitepon-rgb/Caveat](https://github.com/kitepon-rgb/Caveat) に統合（`entries/` がこの repo 内）。旧 `kitepon-rgb/caveats-quo` は削除済
+- 旧 `kitepon-rgb/caveats-quo` は削除済。kitepon-rgb/Caveat 自体の `entries/` の今後の扱い（残す/削除/Quo dogfood として残す）は未確定
 
 **`docs/plan.md` が設計の真実の源**。アーキテクチャ判断の前に必ず読む。`docs/audit.md` には過去に議論・却下した論点が残っているので蒸し返さない。`docs/archive/` には没案や別セッション由来の設計メモが置いてある（現役資料ではない）。
 
@@ -118,11 +120,11 @@ MCP stdio サーバは stdout に JSON-RPC 以外を書いてはいけない。`
 
 ## MCP の構造（Phase 4）
 
-- 7 tools が [apps/mcp/src/tools/](apps/mcp/src/tools/) に 1 ファイル 1 ツール（`search` / `get` / `record` / `update` / `listRecent` / `nlmBriefFor` / `ingestResearch`）
+- 6 tools が [apps/mcp/src/tools/](apps/mcp/src/tools/) に 1 ファイル 1 ツール（`search` / `get` / `record` / `update` / `listRecent` / `pull`）。v0.7 で `push` を削除、v0.6 で NLM 2 tools (`nlm_brief_for` / `ingest_research`) を `caveat_record` の薄いラッパとして削除済
 - 各 tool ファイルは zod の `inputShape`（`ZodRawShape`）と `handleXxx(ctx, args)` を export
 - [apps/mcp/src/registerTools.ts](apps/mcp/src/registerTools.ts) が `McpServer#registerTool` に全 tool を接続。戻り値は `JSON.stringify(data, null, 2)` を `content[0].text` で返す統一形
 - [apps/mcp/src/server.ts](apps/mcp/src/server.ts) が stdio エントリ。`buildMcpContext()` で `stderrLogger` 注入（stdout は JSON-RPC 専用）。SIGINT/SIGTERM で `db.close()`
-- **MCP の書き込み系ツール（`caveat_record` / `caveat_update` / `ingest_research`）は `@caveat/core` の `recordEntry` / `updateEntry` を呼ぶ**。core が md 書き出し + 同プロセス upsert を一体で行うので、直後の `caveat_search` で新規行が拾える
+- **MCP の書き込み系ツール（`caveat_record` / `caveat_update`）は `@caveat/core` の `recordEntry` / `updateEntry` を呼ぶ**。core が md 書き出し + 同プロセス upsert を一体で行うので、直後の `caveat_search` で新規行が拾える
 
 ## tsup / esbuild の罠
 

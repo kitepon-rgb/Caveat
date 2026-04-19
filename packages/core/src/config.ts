@@ -4,24 +4,12 @@ export interface CaveatConfig {
   knowledgeRepo: string;
   semverKeys: string[];
   communitySources: string[];
-  /**
-   * URL of the shared community knowledge DB. Every `caveat init` subscribes
-   * to this by default (opt out via `caveat init --skip-shared`). Contributions
-   * flow via `caveat push` (fork + PR on GitHub).
-   *
-   * Users can point this at a private/enterprise shared repo by overriding in
-   * `~/.caveatrc.json`.
-   */
-  sharedRepo: string;
 }
-
-export const SHARED_REPO_URL = 'https://github.com/kitepon-rgb/Caveat';
 
 export const DEFAULT_CONFIG: CaveatConfig = {
   knowledgeRepo: 'own',
   semverKeys: ['driver', 'cuda', 'node'],
   communitySources: [],
-  sharedRepo: SHARED_REPO_URL,
 };
 
 export function loadConfig(userConfigPath: string): CaveatConfig {

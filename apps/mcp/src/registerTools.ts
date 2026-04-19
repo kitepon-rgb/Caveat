@@ -6,7 +6,6 @@ import { handleRecord, recordInputShape, type RecordArgs } from './tools/record.
 import { handleUpdate, updateInputShape, type UpdateArgs } from './tools/update.js';
 import { handleListRecent, listRecentInputShape, type ListRecentArgs } from './tools/listRecent.js';
 import { handlePull, pullInputShape, type PullArgs } from './tools/pull.js';
-import { handlePush, pushInputShape, type PushArgs } from './tools/push.js';
 
 function jsonResult(data: unknown) {
   return {
@@ -80,20 +79,9 @@ export function registerAllTools(server: McpServer, ctx: McpContext): void {
     {
       title: 'caveat_pull',
       description:
-        'git-pull the subscribed community caveat repos (the shared knowledge DB + any user-added remotes) and re-index. Call when: (a) the user explicitly asks about others\' knowledge on a topic, or (b) caveat_search returned empty for a query that feels like it should have hits and the DB might be stale. Do NOT call reflexively at session start — it is cheap but not free, and stale-by-minutes is acceptable. Safe and idempotent.',
+        "git-pull every subscribed community caveat repo (added via `caveat community add`) and re-index. Call when: (a) the user explicitly asks about others' knowledge on a topic, or (b) caveat_search returned empty for a query that feels like it should have hits and a subscribed repo might be stale. Do NOT call reflexively at session start — it is cheap but not free, and stale-by-minutes is acceptable. Safe and idempotent.",
       inputSchema: pullInputShape,
     },
     async (args) => jsonResult(await handlePull(ctx, args as PullArgs)),
-  );
-
-  server.registerTool(
-    'caveat_push',
-    {
-      title: 'caveat_push',
-      description:
-        "Contribute a user-owned caveat to the public shared DB via fork + PR on GitHub. This is a PUBLIC, externally-visible action (the PR appears on GitHub and is hard to fully retract). Confirm with the user before calling without dry_run — or call with dry_run=true first to show the plan. Only push entries that document a trap genuinely reusable by others (not project-specific ties, not duplicated by existing community entries). Entries with `visibility: private` are rejected (`status=visibility-private`) — the user has declared them local-only. Requires `gh` CLI authenticated; returns `status=gh-missing` / `gh-unauthed` on failure.",
-      inputSchema: pushInputShape,
-    },
-    async (args) => jsonResult(await handlePush(ctx, args as PushArgs)),
   );
 }

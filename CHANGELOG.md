@@ -2,6 +2,25 @@
 
 All notable changes are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] — 2026-04-19
+
+### Removed (BREAKING)
+- **Central shared community DB model abolished.** The "everyone subscribes to one upstream repo and contributes via fork+PR" architecture is retired. Trust is now defined socially via per-group git repos that subscribers add explicitly. See [README.md](README.md) and [docs/archive/auto-merge-design.md](docs/archive/auto-merge-design.md) for the rationale.
+- **`caveat push` CLI command** — removed. Group/team sharing now uses plain `git push` to a repo the contributor has write access to.
+- **`caveat_push` MCP tool** — removed. Claude no longer has a path to publicly publish caveats. Recording / updating writes to the user's local `~/.caveat/own/` only.
+- **`pushEntry` core function and `pullShared` core function** — both removed. `caveat pull` now uses `communityPull` + per-source re-index inline.
+- **`caveat init --skip-shared` flag** — removed (the bootstrap subscription it opted out of no longer exists).
+- **Auto-subscription to `kitepon-rgb/Caveat`** in `caveat init` — removed. New installs get an empty knowledge base; subscribe explicitly with `caveat community add <github-url>`.
+- **`sharedRepo` config field, `SHARED_REPO_URL` constant** — removed from `~/.caveatrc.json` and core defaults.
+- **`docs/auto-merge-design.md`** — moved to `docs/archive/` (the design was abandoned before implementation; archived for historical context).
+- **`.github/ISSUE_TEMPLATE/caveat_contribution.md`** — removed (manual PR contribution to a central DB is no longer the workflow).
+
+### Changed
+- **MCP tool count is now 6** (was 7): `caveat_search`, `caveat_get`, `caveat_record`, `caveat_update`, `caveat_list_recent`, `caveat_pull`.
+- **`caveat init`** scaffolds local state and registers Claude Code integration; no network operations during init unless `--skip-claude` is also off.
+- **Stop hook reminder** no longer nudges `caveat_push` (the tool no longer exists).
+- **README / CONTRIBUTING / SECURITY / CLAUDE.md / docs/plan.md** rewritten to reflect the new "personal / group" model.
+
 ## [0.6.2] — 2026-04-19
 
 ### Changed

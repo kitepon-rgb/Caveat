@@ -7,14 +7,16 @@
 
 External spec gotcha knowledge base. Accumulate the "traps" of GPU drivers, IDE quirks, Claude Code hook availability, and tool version constraints so you don't rediscover them.
 
-**Status**: v0.6.1. One repo is **both** the tool source (`packages/`, `apps/`) **and** the shared knowledge DB (`entries/`). `npm i -g caveat-cli && caveat init` auto-subscribes you; `caveat pull` receives others' merged contributions, `caveat push <id>` contributes via fork + PR (requires gh CLI). 136 tests passing.
+**Status**: v0.7.0. **Personal / group knowledge tool — no central shared DB.** Each user writes to their own `~/.caveat/own/`. To share with teammates, push to a group git repo (private or public) and have others subscribe with `caveat community add <repo-url>`. 148 tests passing.
+
+> **v0.7 pivot**: previous versions ran a central shared community DB with `caveat push` (fork + PR) and an auto-subscribe on `caveat init`. That model was retired because trust over arbitrary stranger contributions cannot be reliably automated — sophisticated malicious payloads survive static gates and adversarial-gradient attacks against any LLM-based oracle. Trust is now defined socially (you, your team, your org). See [docs/plan.md](docs/plan.md) for the full rationale and [docs/archive/auto-merge-design.md](docs/archive/auto-merge-design.md) for the abandoned auto-merge design.
 
 ## Concept
 
 - **`markdown-in-git` is the source of truth.** SQLite (FTS5 trigram) is a rebuildable derived index, gitignored.
-- **Unified repo.** The tool source and the shared community knowledge DB live together. Users write to their own entries in `~/.caveat/own/`, then `caveat push <id>` opens a PR to this repo. Subscribers receive merged entries via `caveat pull`. Opt into an additional source with `caveat community add <github-url>`.
-- **`visibility: public | private`** frontmatter + `.husky/pre-commit` gate keeps private entries out of public knowledge repos.
-- **Claude Code integration.** An MCP server exposes 7 tools (`caveat_search` / `caveat_get` / `caveat_record` / `caveat_update` / `caveat_list_recent` / `caveat_pull` / `caveat_push`). Two hooks (`UserPromptSubmit` keyword-triggered, `Stop` unconditional) remind Claude to search before work and record after.
+- **Per-group sharing via plain git.** Your `~/.caveat/own/` is yours. Share via any git repo (your own, a team's `acme-corp/caveats`, etc.). Subscribers add it with `caveat community add <github-url>`; updates flow via `caveat community pull`. The tool stays out of the publish path.
+- **`visibility: public | private`** frontmatter + `.husky/pre-commit` gate keeps private entries out of any repo you commit to.
+- **Claude Code integration.** An MCP server exposes 6 tools (`caveat_search` / `caveat_get` / `caveat_record` / `caveat_update` / `caveat_list_recent` / `caveat_pull`). Two hooks (`UserPromptSubmit` keyword-triggered, `Stop` unconditional) remind Claude to search before work and record after.
 - **Obsidian-compatible.** The knowledge repo is a valid Obsidian vault — open it as a folder, edit with Obsidian's graph/backlinks/Dataview, the tool re-indexes on `caveat index`.
 
 ## Layout
@@ -49,35 +51,30 @@ docs/archive/         Superseded drafts (legacy brainstorms, etc.)
 
 ```sh
 npm install -g caveat-cli
-caveat init                   # full setup (see below)
-caveat search "rtx"           # search across your entries + the shared community DB
-caveat pull                   # fetch new community contributions and re-index
-caveat push <id>              # contribute your entry to the shared DB via PR (requires gh)
-caveat serve                  # http://localhost:4242/ read-only share portal
+caveat init                                                # one-time setup (see below)
+caveat search "rtx"                                        # search your local entries
+caveat community add https://github.com/acme-corp/caveats  # subscribe to a group repo
+caveat pull                                                # git-pull subscribed repos and re-index
+caveat serve                                               # http://localhost:4242/ read-only portal
 ```
 
 What `caveat init` does on first run:
 - Writes `~/.caveatrc.json` (empty `{}` — defaults come from a constant in the CLI)
 - Scaffolds `~/.caveat/own/` (your knowledge repo root) + `~/.caveat/index/caveat.db`
-- **Subscribes to the shared community DB** [kitepon-rgb/Caveat](https://github.com/kitepon-rgb/Caveat): shallow-clones into `~/.caveat/community/Caveat/` and indexes so entries are immediately searchable
 - Runs `claude mcp add --scope user caveat -- <node> --disable-warning=ExperimentalWarning <cliPath> mcp-server`
 - Merges `UserPromptSubmit` / `Stop` hook entries into `~/.claude/settings.json` (existing entries preserved; backup written before any change)
 
-Use `--skip-claude` to skip Claude Code wiring, `--skip-shared` to opt out of the community DB, or `--dry-run` to preview. `caveat uninstall` reverses Claude Code changes without touching `~/.caveat/`.
+Use `--skip-claude` to skip Claude Code wiring, or `--dry-run` to preview. `caveat uninstall` reverses Claude Code changes without touching `~/.caveat/`. **No central DB is auto-subscribed** — add knowledge sources explicitly with `caveat community add`.
 
-### Contributing a caveat
+### Sharing with a group / team / company
 
-```sh
-caveat push <entry-id>        # requires `gh` CLI + `gh auth login`
-```
+Caveat does not ship a publish flow. The recommended pattern is plain git:
 
-`caveat push` forks the shared repo under your GitHub account (once), creates a branch, commits the entry md, pushes, and opens a PR. Merged PRs propagate to all subscribers on their next `caveat pull`.
+1. One person creates a GitHub repo (private or public), e.g. `acme-corp/caveats`, with an `entries/` directory.
+2. Each contributor either (a) makes that repo their `~/.caveat/own/` (set `knowledgeRepo` in `~/.caveatrc.json`) and writes directly into it, or (b) keeps a separate `~/.caveat/own/` and copies/cherry-picks shareable entries into the team repo by hand.
+3. Anyone who wants to read those caveats: `caveat community add https://github.com/acme-corp/caveats` then `caveat pull`.
 
-To point at a different shared DB (e.g. internal enterprise repo), set `sharedRepo` in `~/.caveatrc.json`:
-
-```json
-{ "sharedRepo": "https://github.com/your-org/your-caveats" }
-```
+Because contributors have write access to their own group repo, this is just `git push`; the tool stays out of the path.
 
 ### Using an existing knowledge repo instead of `~/.caveat/own/`
 
@@ -131,13 +128,14 @@ Your knowledge repo (default `~/.caveat/own/`) is a valid Obsidian vault. `File 
 
 Caveats authored in Obsidian are picked up by `caveat index` on next run (FTS is eventually consistent; MCP `caveat_record` syncs immediately).
 
-## Import other people's caveats
+## Subscribing to other people's / team caveat repos
 
 ```sh
 caveat community add https://github.com/alice/caveats-alice
-caveat community pull       # refresh all imported repos
+caveat community pull         # refresh all subscribed repos
 caveat community list
-caveat index                # re-index to pick up new entries
+caveat community remove <handle>   # unsubscribe + purge db rows
+caveat index                  # re-index to pick up new entries (or use `caveat pull` for the combined flow)
 
 # Then search only their contributions:
 caveat search "foo" --source community
@@ -178,7 +176,7 @@ See [docs/plan.md](docs/plan.md) for the full schema, semver matching rules, and
 ## Development
 
 ```sh
-corepack pnpm -r test            # 136 tests across 5 packages
+corepack pnpm -r test            # 148 tests across 5 packages
 corepack pnpm -r typecheck
 corepack pnpm -r build
 ```

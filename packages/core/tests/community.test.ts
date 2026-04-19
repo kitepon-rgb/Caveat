@@ -10,6 +10,7 @@ import {
   communityAdd,
   communityPull,
   communityList,
+  communityRemove,
 } from '../src/community.js';
 
 describe('validateCommunityUrl', () => {
@@ -188,6 +189,142 @@ describe('communityAdd / communityPull / communityList (integration)', () => {
         db,
       });
       expect(result).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('communityRemove', () => {
+  let playground: string;
+  beforeEach(() => {
+    playground = mkdtempSync(join(tmpdir(), 'caveat-remove-'));
+    mkdirSync(join(playground, 'community'), { recursive: true });
+  });
+  afterEach(() => {
+    rmSync(playground, { recursive: true, force: true });
+  });
+
+  function seedRow(db: ReturnType<typeof openDb>, source: string, id: string): void {
+    db.prepare(
+      `INSERT INTO entries (id, source, path, title, body, frontmatter_json, tags, confidence, visibility, file_mtime, indexed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      source,
+      `entries/${id}.md`,
+      id,
+      '',
+      '{}',
+      '[]',
+      'tentative',
+      'public',
+      '2026-04-19',
+      '2026-04-19',
+    );
+  }
+
+  it('removes the directory and deletes db rows for the source', () => {
+    const communityDir = join(playground, 'community');
+    mkdirSync(join(communityDir, 'alice', 'entries'), { recursive: true });
+    writeFileSync(join(communityDir, 'alice', 'entries', 'a.md'), 'x', 'utf-8');
+
+    const db = openDb({ path: ':memory:' });
+    try {
+      seedRow(db, 'community/alice', 'a1');
+      seedRow(db, 'community/alice', 'a2');
+      seedRow(db, 'community/bob', 'b1');
+
+      const result = communityRemove({ communityDir, handle: 'alice', db });
+      expect(result.dirExisted).toBe(true);
+      expect(result.rowCount).toBe(2);
+      expect(result.removed).toBe(true);
+      expect(result.dryRun).toBe(false);
+      expect(existsSync(join(communityDir, 'alice'))).toBe(false);
+
+      const remaining = db
+        .prepare('SELECT COUNT(*) AS n FROM entries WHERE source LIKE ?')
+        .get('community/%') as { n: number };
+      expect(remaining.n).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('dry-run reports counts without mutating disk or db', () => {
+    const communityDir = join(playground, 'community');
+    mkdirSync(join(communityDir, 'alice'));
+    const db = openDb({ path: ':memory:' });
+    try {
+      seedRow(db, 'community/alice', 'a1');
+
+      const result = communityRemove({ communityDir, handle: 'alice', db, dryRun: true });
+      expect(result.dryRun).toBe(true);
+      expect(result.removed).toBe(false);
+      expect(result.dirExisted).toBe(true);
+      expect(result.rowCount).toBe(1);
+      expect(existsSync(join(communityDir, 'alice'))).toBe(true);
+
+      const remaining = db
+        .prepare('SELECT COUNT(*) AS n FROM entries WHERE source = ?')
+        .get('community/alice') as { n: number };
+      expect(remaining.n).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('returns dirExisted=false rowCount=0 for an unknown handle (idempotent)', () => {
+    const communityDir = join(playground, 'community');
+    const db = openDb({ path: ':memory:' });
+    try {
+      const result = communityRemove({ communityDir, handle: 'ghost', db });
+      expect(result.dirExisted).toBe(false);
+      expect(result.rowCount).toBe(0);
+      expect(result.removed).toBe(false);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('rejects path traversal handles', () => {
+    const communityDir = join(playground, 'community');
+    const db = openDb({ path: ':memory:' });
+    try {
+      expect(() => communityRemove({ communityDir, handle: '../escape', db })).toThrow(
+        /invalid handle/,
+      );
+      expect(() => communityRemove({ communityDir, handle: '..', db })).toThrow(/invalid handle/);
+      expect(() => communityRemove({ communityDir, handle: '.', db })).toThrow(/invalid handle/);
+      expect(() => communityRemove({ communityDir, handle: 'a/b', db })).toThrow(/invalid handle/);
+      expect(() => communityRemove({ communityDir, handle: '', db })).toThrow(/required/);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('purges only the targeted source (own and other community handles untouched)', () => {
+    const communityDir = join(playground, 'community');
+    mkdirSync(join(communityDir, 'alice'));
+    mkdirSync(join(communityDir, 'bob'));
+
+    const db = openDb({ path: ':memory:' });
+    try {
+      seedRow(db, 'own', 'o1');
+      seedRow(db, 'community/alice', 'a1');
+      seedRow(db, 'community/bob', 'b1');
+
+      communityRemove({ communityDir, handle: 'alice', db });
+
+      const own = db
+        .prepare('SELECT COUNT(*) AS n FROM entries WHERE source = ?')
+        .get('own') as { n: number };
+      const bob = db
+        .prepare('SELECT COUNT(*) AS n FROM entries WHERE source = ?')
+        .get('community/bob') as { n: number };
+      expect(own.n).toBe(1);
+      expect(bob.n).toBe(1);
+      expect(existsSync(join(communityDir, 'bob'))).toBe(true);
     } finally {
       db.close();
     }

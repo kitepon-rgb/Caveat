@@ -1,5 +1,12 @@
 import type { DatabaseSync } from 'node:sqlite';
-import type { SearchFilters, SearchResult, GetResult, Source, Confidence } from './types.js';
+import type {
+  SearchFilters,
+  SearchResult,
+  GetResult,
+  Source,
+  Confidence,
+  Visibility,
+} from './types.js';
 import { extractSections } from './frontmatter.js';
 
 const SYMPTOM_EXCERPT_LENGTH = 200;
@@ -66,7 +73,15 @@ export function search(db: DatabaseSync, opts: SearchOptions = {}): SearchResult
     params.push(...filters.confidence);
   }
 
+  if (filters.visibility === 'public' || filters.visibility === 'private') {
+    conditions.push(`e.visibility = ?`);
+    params.push(filters.visibility);
+  }
+
   if (conditions.length) sql += ' AND ' + conditions.join(' AND ');
+  if (!ftsQuery) {
+    sql += ` ORDER BY json_extract(e.frontmatter_json, '$.updated_at') DESC`;
+  }
   sql += ' LIMIT ?';
   params.push(limit);
 
@@ -118,6 +133,7 @@ function toSearchResult(row: EntryRow): SearchResult {
     title: row.title,
     symptomExcerpt: symptom.slice(0, SYMPTOM_EXCERPT_LENGTH),
     confidence: row.confidence as Confidence,
+    visibility: (row.visibility as Visibility) ?? 'public',
     environment: fm.environment ?? {},
   };
 }

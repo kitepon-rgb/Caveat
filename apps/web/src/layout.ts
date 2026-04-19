@@ -41,7 +41,7 @@ ul.entries li { padding: 0.5rem 0; border-bottom: 1px solid #eee; }
 ul.entries a.title { font-weight: 600; color: #0a5fff; text-decoration: none; }
 ul.entries a.title:hover { text-decoration: underline; }
 ul.entries .meta { font-size: 0.85rem; color: #666; margin-top: 0.2rem; }
-ul.entries .meta .badge {
+.badge {
   display: inline-block;
   padding: 0 0.4rem;
   margin-right: 0.3rem;
@@ -49,10 +49,12 @@ ul.entries .meta .badge {
   background: #f0f0f0;
   font-size: 0.8rem;
 }
-ul.entries .meta .badge.confirmed { background: #d7f4dc; color: #16703a; }
-ul.entries .meta .badge.reproduced { background: #e6eeff; color: #234ea3; }
-ul.entries .meta .badge.tentative { background: #fff4d1; color: #8a5a00; }
-ul.entries .meta .badge.impossible { background: #ffd9d9; color: #8a1a1a; }
+.badge.confirmed { background: #d7f4dc; color: #16703a; }
+.badge.reproduced { background: #e6eeff; color: #234ea3; }
+.badge.tentative { background: #fff4d1; color: #8a5a00; }
+.badge.impossible { background: #ffd9d9; color: #8a1a1a; }
+.badge.public { background: #eef2f5; color: #5a6470; }
+.badge.private { background: #fde7e7; color: #a02525; font-weight: 600; }
 ul.entries .excerpt { margin-top: 0.3rem; color: #444; font-size: 0.92rem; }
 article h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2rem; margin-top: 1.6rem; }
 article pre {

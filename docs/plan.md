@@ -1,4 +1,6 @@
-# Caveat — 外部仕様 gotcha ナレッジベース（OSS + GitHub 流通）
+# Caveat — 外部仕様 gotcha ナレッジベース（個人 / グループ単位の git 共有）
+
+> **v0.7 pivot (2026-04-19)**: 中央 shared community DB を全廃止。`caveat push` の fork+PR 経路、`caveat init` の bootstrap subscription、Phase 14 / Phase 15 の中央 hub 関連実装をすべて撤去。理由: 自動マージ厳密化を検討した結果、赤の他人からの貢献を auto-validate するモデル自体が原理的に脆弱と判明（LLM oracle を gate に置いても adversarial gradient 攻撃で破られる、xz-utils 型 long-game は静的検査で検知不能）。信頼を「自動検査」ではなく「社会的文脈」で引く方針に転換。共有は各ユーザ・知人・組織の git repo で行い、`caveat community add <github-url>` で取り込む既存機能のみで完結する。詳細は [docs/archive/auto-merge-design.md](archive/auto-merge-design.md)（廃止された設計）参照。以下の Phase 14 / Phase 15 関連記述は履歴として残す。
 
 ## Context
 
