@@ -19,7 +19,7 @@ Requires Node 22.5+ and pnpm 10 (via corepack). Windows, macOS, and Linux are al
 ```sh
 corepack pnpm install
 corepack pnpm -r build
-corepack pnpm -r test        # expect 136 tests green
+corepack pnpm -r test        # expect 148 tests green
 corepack pnpm -r typecheck
 ```
 

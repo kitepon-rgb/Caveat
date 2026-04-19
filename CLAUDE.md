@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **GitHub に push 済**:
 - Tool (public): https://github.com/kitepon-rgb/Caveat
-- 旧 `kitepon-rgb/caveats-quo` は削除済。kitepon-rgb/Caveat 自体の `entries/` の今後の扱い（残す/削除/Quo dogfood として残す）は未確定
+- 旧 `kitepon-rgb/caveats-quo` は削除済。kitepon-rgb/Caveat 自体の `entries/` は公開 dogfood reference として残す（tool は自動 subscribe しない、他人が手動 `community add` 可）
 
 **`docs/plan.md` が設計の真実の源**。アーキテクチャ判断の前に必ず読む。`docs/audit.md` には過去に議論・却下した論点が残っているので蒸し返さない。`docs/archive/` には没案や別セッション由来の設計メモが置いてある（現役資料ではない）。
 
@@ -22,12 +22,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```sh
 corepack pnpm install                              # workspace 依存をインストール
-corepack pnpm --filter @caveat/core test           # core tests（84 tests）
+corepack pnpm --filter @caveat/core test           # core tests（89 tests）
 corepack pnpm --filter @caveat/core build          # tsup + schema.sql / migrations を dist へコピー
 corepack pnpm --filter caveat-cli test             # CLI smoke + installer tests（10 tests）
 corepack pnpm --filter caveat-cli build            # CLI ビルド（bundle + workspace deps noExternal + dist/caveat.js 生成）
-corepack pnpm --filter @caveat/mcp test            # MCP tool-handler tests（10 tests）
-corepack pnpm --filter @caveat/web test            # Web tests（13 tests）
+corepack pnpm --filter @caveat/mcp test            # MCP tool-handler tests（8 tests）
+corepack pnpm --filter @caveat/web test            # Web tests（17 tests）
 corepack pnpm -r build                             # 全 workspace パッケージをビルド
 
 # ローカルで配布形態をテスト:

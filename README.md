@@ -28,7 +28,7 @@ packages/core/        @caveat/core — DB (node:sqlite + FTS5 trigram), indexer,
 apps/cli/             caveat-cli (published to npm) — bundled CLI with subcommands:
                         init / uninstall / index [--full] / search / list / show / stats /
                         serve / mcp-server / hook <name> / community add|pull|list
-apps/mcp/             @caveat/mcp — stdio MCP server exposing 7 tools via
+apps/mcp/             @caveat/mcp — stdio MCP server exposing 6 tools via
                       @modelcontextprotocol/sdk. Imported by caveat-cli as `mcp-server`
 apps/web/             @caveat/web — Hono SSR read-only share portal (/, /g/:id, /community) +
                       custom markdown-it wikilinks plugin for [[slug]] → /g/slug rendering
