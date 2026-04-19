@@ -61,30 +61,24 @@ caveat/
         └── src/index.ts
 ```
 
-### Repo B: `caveats-quo`（individual knowledge、public）
-別 repo として別途作成。tool 側の `config/default.json` が参照先として指す。複数形（caveat**s**）で「自分の警句集」を表す。
+### 共有ナレッジ DB: tool repo に統合（v0.5 以降）
+初期設計では `caveats-quo` という別 repo を knowledge 保管庫として運用していたが、v0.5 で tool repo に統合済（詳細は Phase 14 節）。`entries/` は本 repo の root 直下にあり、`caveat-cli` がデフォルトでこの repo を共有 DB として購読する。ユーザは自分の個人 entries は `~/.caveat/own/entries/` に書き、`caveat push` で本 repo に PR を出す。
 
 ```
-caveats-quo/
-├── README.md                     (Obsidian vault として開ける旨 + 推奨プラグイン)
-├── .gitignore                    (*.private.md, .obsidian/)
+Caveat/                            (この repo = tool + 共有ナレッジ DB)
+├── packages/, apps/               (tool source)
 ├── .templates/
 │   └── caveat.md                 (Obsidian Templates コアプラグインが読むテンプレ)
-├── entries/
+├── entries/                       (共有ナレッジ本体。v0.5 で caveats-quo から移管)
 │   ├── gpu/
-│   │   └── rtx-5090-cuda-compat.md
 │   ├── claude-code/
-│   │   └── hook-availability-matrix.md
-│   ├── vscode/
-│   │   └── terminal-width-detection.md
+│   ├── nodejs/
 │   └── ...
-└── community/                    (他人の repo を import した clone、shallow clone)
-    ├── <handle>/
-    └── ...
+└── ...
 ```
 
-**Obsidian vault としての扱い**:
-- `caveats-quo/` をそのまま Obsidian で "Open folder as vault" できる
+**Obsidian vault としても開ける**:
+- 本 repo をそのまま Obsidian で "Open folder as vault" できる
 - `.obsidian/`（個人レイアウト、テーマ、プラグイン設定）は gitignore。各ユーザーが自分の設定を持つ
 - `.templates/caveat.md` は commit する。Obsidian の Settings > Core plugins > Templates でテンプレートフォルダを `.templates/` に指定すると、`Insert template` コマンドから frontmatter スケルトンを呼び出せる（自動挿入ではなく明示実行）
 - Obsidian で **ファイル名をリネームしたら frontmatter の `id` も合わせる**こと（Caveat は `id` で行追跡するので indexer 上は壊れないが、人間可読性が崩れる）
@@ -386,6 +380,20 @@ caveat nlm-brief <topic>              # ターミナルから brief 生成
     - **spawn 仕様**: `claude` CLI 呼び出しは `spawnSync(line, { shell: true })` で単一文字列。Node 24 の "shell + args array" DeprecationWarning を回避、Windows の `claude.cmd` も解決可能
     - **installer テスト**: `apps/cli/tests/claudeInstall.test.ts` 6 tests（初回生成、既存 hook 保持、冪等、dry-run、uninstall、無関係 hook 保護）。`skipMcpRegistration: true` オプションで実 `~/.claude.json` を汚染しない
     - **実機 e2e 検証（2026-04-19）**: `cd apps/cli && pnpm pack` → `npm i -g ./caveat-cli-0.1.0.tgz` → 独立 `HOME` + `CAVEAT_HOME` で `caveat init` → `~/.caveat/own/`, `index/caveat.db`, `~/.caveatrc.json`, `~/.claude/settings.json`, `~/.claude.json` が期待通り生成されること、`caveat uninstall` で settings.json/`.claude.json` から逆操作されること、`caveat search` / `caveat list` が SQLite ExperimentalWarning 無しで動くことを確認済
+13. **共有ナレッジ DB と caveat pull/push** ✅ 完了（2026-04-19、caveat-cli 0.3.0 → 0.4.0）。`npm install` ユーザ全員で「自分が書いた罠が自然に他人に届き、他人が書いた罠も自然に自分に届く」サイクルを提供:
+    - `packages/core/src/config.ts` に `SHARED_REPO_URL` 定数と `CaveatConfig.sharedRepo` フィールド
+    - `caveat init` が `sharedRepo` を自動 `communityAdd`（`--skip-shared` でオプトアウト、`--dry-run` で予告）
+    - `caveat pull`（CLI コマンド）と `caveat_pull`（MCP tool）: 全 subscribe 済 community repo を `git pull` → 全 source を re-index
+    - `caveat push <id>`（CLI コマンド）と `caveat_push`（MCP tool）: `gh` CLI 経由で `sharedRepo` を fork（初回）、ブランチ切って commit、PR を作成。core 側の `pushEntry` / `pullShared` 関数として実装し、CLI と MCP 両方から呼ばれる
+    - Stop hook のリマインダに「再利用性高い罠は `caveat_push` で共有 DB に投げる」旨を追加
+    - MCP tool は 7 → 9 に拡張、Claude が自律的に pull/push を判断可能（公開動作は Claude Code tool permission prompt 経由でユーザ承認）
+14. **tool repo と共有ナレッジ DB の統合（caveats-quo 廃止）** ✅ 完了（2026-04-19、caveat-cli 0.5.0）。「tool も public なのに知識 DB が別 repo にある意義は？」という指摘を受けて、`caveats-quo` から本 repo に knowledge を吸収、単一 public repo に統合:
+    - 35 エントリ + `.templates/` を `caveats-quo` から本 repo root にコピー
+    - `SHARED_REPO_URL` を `https://github.com/kitepon-rgb/Caveat` に変更
+    - root `.gitignore` に `.obsidian/` と `community/` を追加（本 repo が Obsidian vault として使われるため）
+    - `caveats-quo` 側は retire notice の README コミット → `gh repo archive` → 削除（user 判断）
+    - 既存 v0.3–0.4 ユーザは `npm update -g caveat-cli` + `caveat init` 再実行で新しい共有 DB に自動 subscribe。古い `~/.caveat/community/caveats-quo/` は手動削除（`caveat community remove` 未実装）
+    - 設計判断: 2 repo 分離のメリット（関心の分離、clone サイズ、PR ノイズ）は規模的にどれも決定打にならないと再評価。命名も `caveats-quo`（作者個人のハンドル）は共有 DB として不適切。unify + rename（Caveat に寄せる）が正解
 
 ## 検証
 
