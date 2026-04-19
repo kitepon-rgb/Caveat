@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -25,6 +25,8 @@ export interface OpenDbOptions {
 }
 
 export function openDb(opts: OpenDbOptions): DatabaseSync {
+  const parent = dirname(opts.path);
+  if (!existsSync(parent)) mkdirSync(parent, { recursive: true });
   const db = new DatabaseSync(opts.path);
   db.exec('PRAGMA journal_mode = WAL');
   db.exec('PRAGMA foreign_keys = ON');

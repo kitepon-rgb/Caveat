@@ -17,16 +17,19 @@ importers:
 
   apps/cli:
     dependencies:
-      '@caveat/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@caveat/web':
-        specifier: workspace:*
-        version: link:../web
       commander:
         specifier: ^13.0.0
         version: 13.1.0
     devDependencies:
+      '@caveat/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@caveat/mcp':
+        specifier: workspace:*
+        version: link:../mcp
+      '@caveat/web':
+        specifier: workspace:*
+        version: link:../web
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.17

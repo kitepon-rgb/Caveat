@@ -1,4 +1,33 @@
 import { defineConfig } from 'tsup';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+
+const repoRoot = resolve(__dirname, '..', '..');
+const coreSchema = join(repoRoot, 'packages', 'core', 'src', 'schema.sql');
+const coreMigrations = join(repoRoot, 'packages', 'core', 'src', 'migrations');
+
+/**
+ * List of Node.js builtin module names. esbuild strips the `node:` prefix
+ * from external builtin imports when bundling. `node:sqlite` in particular
+ * is only resolvable via the prefixed form, so we restore the prefix on
+ * every builtin specifier in a post-build pass.
+ */
+const NODE_BUILTINS = [
+  'assert', 'async_hooks', 'buffer', 'child_process', 'cluster', 'console',
+  'constants', 'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http',
+  'http2', 'https', 'inspector', 'module', 'net', 'os', 'path', 'perf_hooks',
+  'process', 'punycode', 'querystring', 'readline', 'repl', 'sqlite', 'stream',
+  'string_decoder', 'sys', 'timers', 'tls', 'trace_events', 'tty', 'url',
+  'util', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib',
+];
+
+function restoreNodePrefix(content: string): string {
+  for (const name of NODE_BUILTINS) {
+    const re = new RegExp(`from\\s+(["'])(${name}(?:/[^"']+)?)\\1`, 'g');
+    content = content.replace(re, (_m, q: string, spec: string) => `from ${q}node:${spec}${q}`);
+  }
+  return content;
+}
 
 export default defineConfig({
   entry: ['src/index.ts'],
@@ -7,7 +36,48 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   target: 'node22',
+  platform: 'node',
+  bundle: true,
+  noExternal: ['@caveat/core', '@caveat/mcp', '@caveat/web'],
   banner: {
-    js: '#!/usr/bin/env node',
+    js: [
+      '#!/usr/bin/env node',
+      "import { createRequire as __caveat_createRequire } from 'node:module';",
+      'const require = __caveat_createRequire(import.meta.url);',
+    ].join('\n'),
+  },
+  onSuccess: async () => {
+    const distDir = join(__dirname, 'dist');
+    if (!existsSync(distDir)) mkdirSync(distDir, { recursive: true });
+
+    const outFile = join(distDir, 'index.js');
+    const patched = restoreNodePrefix(readFileSync(outFile, 'utf-8'));
+    writeFileSync(outFile, patched, 'utf-8');
+
+    // Write a thin bootstrap wrapper (no static imports) that installs a
+    // warning handler BEFORE the ESM bundle's imports hoist. This swallows the
+    // node:sqlite ExperimentalWarning without hiding other warnings.
+    writeFileSync(
+      join(distDir, 'caveat.js'),
+      [
+        '#!/usr/bin/env node',
+        "process.removeAllListeners('warning');",
+        "process.on('warning', (w) => {",
+        "  if (w && w.name === 'ExperimentalWarning' && typeof w.message === 'string' && w.message.includes('SQLite')) return;",
+        "  process.stderr.write('(' + (w && w.name) + ') ' + (w && w.message) + '\\n');",
+        '});',
+        "import('./index.js').catch((err) => {",
+        "  process.stderr.write('[caveat:fatal] ' + (err && err.stack || err) + '\\n');",
+        '  process.exit(1);',
+        '});',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    copyFileSync(coreSchema, join(distDir, 'schema.sql'));
+    const destMigrations = join(distDir, 'migrations');
+    if (!existsSync(destMigrations)) mkdirSync(destMigrations, { recursive: true });
+    cpSync(coreMigrations, destMigrations, { recursive: true });
   },
 });

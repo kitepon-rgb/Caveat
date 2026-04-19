@@ -1,10 +1,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { buildMcpContext } from './context.js';
+import { buildMcpContext, type McpContextOverrides } from './context.js';
 import { registerAllTools } from './registerTools.js';
 
-async function main(): Promise<void> {
-  const ctx = buildMcpContext();
+export async function startMcpStdioServer(
+  overrides: McpContextOverrides = {},
+): Promise<void> {
+  const ctx = buildMcpContext(overrides);
   const server = new McpServer(
     { name: 'caveat', version: '0.0.0' },
     { capabilities: { tools: {} } },
@@ -14,7 +16,6 @@ async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  // On SIGINT/SIGTERM: close db before exiting
   const shutdown = (): void => {
     try {
       ctx.db.close();
@@ -27,8 +28,14 @@ async function main(): Promise<void> {
   process.once('SIGTERM', shutdown);
 }
 
-main().catch((err: unknown) => {
-  const msg = err instanceof Error ? err.message : String(err);
-  process.stderr.write(`[caveat:error] ${msg}\n`);
-  process.exit(1);
-});
+const invokedPath = process.argv[1]?.replace(/\\/g, '/') ?? '';
+const thisPath = import.meta.url.startsWith('file://')
+  ? import.meta.url.slice(7).replace(/^\/+([a-zA-Z]:)/, '$1')
+  : '';
+if (invokedPath && thisPath && invokedPath.toLowerCase() === thisPath.toLowerCase()) {
+  startMcpStdioServer().catch((err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`[caveat:error] ${msg}\n`);
+    process.exit(1);
+  });
+}

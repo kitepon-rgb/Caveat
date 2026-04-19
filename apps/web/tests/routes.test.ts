@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import {
   openDb,
   recordEntry,
-  loadConfigFromPaths,
+  loadConfig,
   resolvePaths,
   type Logger,
 } from '@caveat/core';
@@ -15,7 +15,7 @@ import { createApp } from '../src/app.js';
 
 interface Fx {
   root: string;
-  toolRoot: string;
+  caveatHome: string;
   userHome: string;
   ctx: WebContext;
   db: DatabaseSync;
@@ -26,34 +26,20 @@ const silentLogger: Logger = { info: () => {}, warn: () => {}, error: () => {} }
 
 function makeFx(): Fx {
   const root = mkdtempSync(join(tmpdir(), 'caveat-web-'));
-  const toolRoot = join(root, 'tool');
+  const caveatHome = join(root, 'caveat-home');
   const userHome = join(root, 'home');
-  const knowledgeRepo = join(root, 'caveats-quo');
+  const knowledgeRepo = join(caveatHome, 'own');
 
-  mkdirSync(toolRoot, { recursive: true });
+  mkdirSync(caveatHome, { recursive: true });
   mkdirSync(userHome, { recursive: true });
   mkdirSync(join(knowledgeRepo, 'entries'), { recursive: true });
-  mkdirSync(join(toolRoot, '.index'), { recursive: true });
-  mkdirSync(join(toolRoot, 'config'), { recursive: true });
 
-  writeFileSync(join(toolRoot, 'pnpm-workspace.yaml'), 'packages:\n', 'utf-8');
-  writeFileSync(
-    join(toolRoot, 'config', 'default.json'),
-    JSON.stringify({
-      knowledgeRepo: '../caveats-quo',
-      semverKeys: ['driver', 'cuda', 'node'],
-      projectRoots: [],
-      communitySources: [],
-    }),
-    'utf-8',
-  );
-
-  const config = loadConfigFromPaths(toolRoot, join(userHome, '.caveatrc.json'));
-  const paths = resolvePaths(toolRoot, config.knowledgeRepo, userHome);
+  const config = loadConfig(join(userHome, '.caveatrc.json'));
+  const paths = resolvePaths(caveatHome, config.knowledgeRepo, userHome);
   const db = openDb({ path: paths.dbPath, logger: silentLogger });
 
   const ctx: WebContext = {
-    toolRoot,
+    caveatHome,
     userHome,
     userConfigPath: join(userHome, '.caveatrc.json'),
     config,
@@ -62,7 +48,7 @@ function makeFx(): Fx {
     db,
   };
   const app = createApp(ctx);
-  return { root, toolRoot, userHome, ctx, db, app };
+  return { root, caveatHome, userHome, ctx, db, app };
 }
 
 function cleanup(f: Fx): void {

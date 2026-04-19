@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-// @ts-expect-error importing .mjs for pure function
 import { findBlockedFiles } from '../pre-commit-visibility-gate.mjs';
 
 const GATE = join(

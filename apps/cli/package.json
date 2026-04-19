@@ -1,10 +1,39 @@
 {
-  "name": "@caveat/cli",
-  "version": "0.0.0",
-  "private": true,
+  "name": "caveat-cli",
+  "version": "0.1.0",
+  "description": "External spec gotcha knowledge base CLI (markdown + SQLite FTS5 + MCP + Claude Code hooks)",
+  "keywords": [
+    "caveat",
+    "knowledge-base",
+    "gotcha",
+    "claude-code",
+    "mcp",
+    "cli"
+  ],
+  "license": "MIT",
+  "author": "kitepon-rgb",
+  "homepage": "https://github.com/kitepon-rgb/Caveat",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kitepon-rgb/Caveat.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kitepon-rgb/Caveat/issues"
+  },
   "type": "module",
+  "engines": {
+    "node": ">=22.5"
+  },
   "bin": {
-    "caveat": "./dist/index.js"
+    "caveat": "./dist/caveat.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsup",
@@ -13,11 +42,12 @@
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
-    "@caveat/core": "workspace:*",
-    "@caveat/web": "workspace:*",
     "commander": "^13.0.0"
   },
   "devDependencies": {
+    "@caveat/core": "workspace:*",
+    "@caveat/mcp": "workspace:*",
+    "@caveat/web": "workspace:*",
     "@types/node": "^22.0.0",
     "tsup": "^8.3.0",
     "tsx": "^4.19.0",

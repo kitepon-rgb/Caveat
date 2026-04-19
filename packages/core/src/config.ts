@@ -1,5 +1,4 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 export interface CaveatConfig {
   knowledgeRepo: string;
@@ -8,15 +7,18 @@ export interface CaveatConfig {
   communitySources: string[];
 }
 
-export function loadConfigFromPaths(toolRoot: string, userConfigPath: string): CaveatConfig {
-  const defaultPath = join(toolRoot, 'config', 'default.json');
-  const defaultCfg = JSON.parse(readFileSync(defaultPath, 'utf-8')) as CaveatConfig;
+export const DEFAULT_CONFIG: CaveatConfig = {
+  knowledgeRepo: 'own',
+  semverKeys: ['driver', 'cuda', 'node'],
+  projectRoots: [],
+  communitySources: [],
+};
 
+export function loadConfig(userConfigPath: string): CaveatConfig {
   const userCfg = existsSync(userConfigPath)
     ? (JSON.parse(readFileSync(userConfigPath, 'utf-8')) as Partial<CaveatConfig>)
     : {};
-
-  return deepMerge(defaultCfg, userCfg) as CaveatConfig;
+  return deepMerge(DEFAULT_CONFIG, userCfg) as CaveatConfig;
 }
 
 export function ensureUserConfig(userConfigPath: string): void {

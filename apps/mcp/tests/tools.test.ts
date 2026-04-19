@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, readFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { openDb, loadConfigFromPaths, resolvePaths, type Logger } from '@caveat/core';
+import { openDb, loadConfig, resolvePaths, type Logger } from '@caveat/core';
 import type { McpContext } from '../src/context.js';
 import { handleSearch } from '../src/tools/search.js';
 import { handleGet } from '../src/tools/get.js';
@@ -15,7 +15,7 @@ import { handleIngestResearch } from '../src/tools/ingestResearch.js';
 
 interface Fx {
   root: string;
-  toolRoot: string;
+  caveatHome: string;
   userHome: string;
   knowledgeRepo: string;
   ctx: McpContext;
@@ -30,35 +30,21 @@ const silentLogger: Logger = {
 
 function makeFx(): Fx {
   const root = mkdtempSync(join(tmpdir(), 'caveat-mcp-'));
-  const toolRoot = join(root, 'tool');
+  const caveatHome = join(root, 'caveat-home');
   const userHome = join(root, 'home');
-  const knowledgeRepo = join(root, 'caveats-quo');
+  const knowledgeRepo = join(caveatHome, 'own');
 
-  mkdirSync(toolRoot, { recursive: true });
+  mkdirSync(caveatHome, { recursive: true });
   mkdirSync(userHome, { recursive: true });
   mkdirSync(join(knowledgeRepo, 'entries'), { recursive: true });
-  mkdirSync(join(toolRoot, '.index'), { recursive: true });
-  mkdirSync(join(toolRoot, 'config'), { recursive: true });
-
-  writeFileSync(join(toolRoot, 'pnpm-workspace.yaml'), 'packages:\n  - apps/*\n', 'utf-8');
-  writeFileSync(
-    join(toolRoot, 'config', 'default.json'),
-    JSON.stringify({
-      knowledgeRepo: '../caveats-quo',
-      semverKeys: ['driver', 'cuda', 'node'],
-      projectRoots: [],
-      communitySources: [],
-    }),
-    'utf-8',
-  );
 
   const userConfigPath = join(userHome, '.caveatrc.json');
-  const config = loadConfigFromPaths(toolRoot, userConfigPath);
-  const paths = resolvePaths(toolRoot, config.knowledgeRepo, userHome);
+  const config = loadConfig(userConfigPath);
+  const paths = resolvePaths(caveatHome, config.knowledgeRepo, userHome);
   const db = openDb({ path: paths.dbPath, logger: silentLogger });
 
   const ctx: McpContext = {
-    toolRoot,
+    caveatHome,
     userHome,
     userConfigPath,
     config,
@@ -67,7 +53,7 @@ function makeFx(): Fx {
     db,
     cwd: root,
   };
-  return { root, toolRoot, userHome, knowledgeRepo, ctx, db };
+  return { root, caveatHome, userHome, knowledgeRepo, ctx, db };
 }
 
 function cleanup(f: Fx): void {

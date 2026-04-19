@@ -1,8 +1,8 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
-  loadConfigFromPaths,
-  findToolRoot,
+  loadConfig,
+  findCaveatHome,
   resolvePaths,
   type Logger,
   type CaveatConfig,
@@ -10,7 +10,7 @@ import {
 } from '@caveat/core';
 
 export interface CliContext {
-  toolRoot: string;
+  caveatHome: string;
   userHome: string;
   userConfigPath: string;
   config: CaveatConfig;
@@ -19,15 +19,15 @@ export interface CliContext {
 }
 
 export interface ContextOverrides {
-  toolRoot?: string;
+  caveatHome?: string;
   userHome?: string;
 }
 
 export function buildContext(logger: Logger, overrides: ContextOverrides = {}): CliContext {
-  const toolRoot = overrides.toolRoot ?? findToolRoot();
   const userHome = overrides.userHome ?? homedir();
+  const caveatHome = overrides.caveatHome ?? findCaveatHome(userHome);
   const userConfigPath = join(userHome, '.caveatrc.json');
-  const config = loadConfigFromPaths(toolRoot, userConfigPath);
-  const paths = resolvePaths(toolRoot, config.knowledgeRepo, userHome);
-  return { toolRoot, userHome, userConfigPath, config, paths, logger };
+  const config = loadConfig(userConfigPath);
+  const paths = resolvePaths(caveatHome, config.knowledgeRepo, userHome);
+  return { caveatHome, userHome, userConfigPath, config, paths, logger };
 }

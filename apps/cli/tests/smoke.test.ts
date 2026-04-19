@@ -9,7 +9,7 @@ import { runIndex } from '../src/commands/indexCmd.js';
 
 interface Fixture {
   root: string;
-  toolRoot: string;
+  caveatHome: string;
   userHome: string;
   knowledgeRepo: string;
 }
@@ -22,30 +22,17 @@ const silentLogger: Logger = {
 
 function makeFixture(): Fixture {
   const root = mkdtempSync(join(tmpdir(), 'caveat-cli-'));
-  const toolRoot = join(root, 'tool');
+  const caveatHome = join(root, 'caveat-home');
   const userHome = join(root, 'home');
-  const knowledgeRepo = join(root, 'caveats-quo');
+  // Place knowledge repo at the default relative path so no user config is required
+  const knowledgeRepo = join(caveatHome, 'own');
 
-  mkdirSync(toolRoot, { recursive: true });
+  mkdirSync(caveatHome, { recursive: true });
   mkdirSync(userHome, { recursive: true });
   mkdirSync(knowledgeRepo, { recursive: true });
   mkdirSync(join(knowledgeRepo, 'entries', 'gpu'), { recursive: true });
 
-  // Minimum file to mark toolRoot as a workspace root (even though we pass it via override)
-  writeFileSync(join(toolRoot, 'pnpm-workspace.yaml'), 'packages:\n  - apps/*\n', 'utf-8');
-  mkdirSync(join(toolRoot, 'config'), { recursive: true });
-  writeFileSync(
-    join(toolRoot, 'config', 'default.json'),
-    JSON.stringify({
-      knowledgeRepo: '../caveats-quo',
-      semverKeys: ['driver', 'cuda', 'node'],
-      projectRoots: [],
-      communitySources: [],
-    }),
-    'utf-8',
-  );
-
-  return { root, toolRoot, userHome, knowledgeRepo };
+  return { root, caveatHome, userHome, knowledgeRepo };
 }
 
 function cleanup(fx: Fixture): void {
@@ -94,12 +81,12 @@ describe('init', () => {
   });
 
   it('creates ~/.caveatrc.json if missing and initializes .index/caveat.db', () => {
-    const ctx = buildContext(silentLogger, { toolRoot: fx.toolRoot, userHome: fx.userHome });
-    runInit(ctx);
+    const ctx = buildContext(silentLogger, { caveatHome: fx.caveatHome, userHome: fx.userHome });
+    runInit(ctx, { skipClaude: true, dryRun: false });
 
     expect(existsSync(join(fx.userHome, '.caveatrc.json'))).toBe(true);
     expect(readFileSync(join(fx.userHome, '.caveatrc.json'), 'utf-8').trim()).toBe('{}');
-    expect(existsSync(join(fx.toolRoot, '.index', 'caveat.db'))).toBe(true);
+    expect(existsSync(join(fx.caveatHome, 'index', 'caveat.db'))).toBe(true);
   });
 
   it('preserves existing user config content', () => {
@@ -108,8 +95,8 @@ describe('init', () => {
       JSON.stringify({ knowledgeRepo: '/custom/path' }),
       'utf-8',
     );
-    const ctx = buildContext(silentLogger, { toolRoot: fx.toolRoot, userHome: fx.userHome });
-    runInit(ctx);
+    const ctx = buildContext(silentLogger, { caveatHome: fx.caveatHome, userHome: fx.userHome });
+    runInit(ctx, { skipClaude: true, dryRun: false });
 
     const after = JSON.parse(readFileSync(join(fx.userHome, '.caveatrc.json'), 'utf-8')) as {
       knowledgeRepo: string;
@@ -134,8 +121,8 @@ describe('index', () => {
       'utf-8',
     );
 
-    const ctx = buildContext(silentLogger, { toolRoot: fx.toolRoot, userHome: fx.userHome });
-    runInit(ctx);
+    const ctx = buildContext(silentLogger, { caveatHome: fx.caveatHome, userHome: fx.userHome });
+    runInit(ctx, { skipClaude: true, dryRun: false });
     runIndex(ctx, { full: false });
 
     // Read back via opened db
@@ -159,8 +146,8 @@ describe('index', () => {
       'utf-8',
     );
 
-    const ctx = buildContext(silentLogger, { toolRoot: fx.toolRoot, userHome: fx.userHome });
-    runInit(ctx);
+    const ctx = buildContext(silentLogger, { caveatHome: fx.caveatHome, userHome: fx.userHome });
+    runInit(ctx, { skipClaude: true, dryRun: false });
     runIndex(ctx, { full: false });
 
     // Verify 'a' was inserted

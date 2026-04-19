@@ -2,13 +2,15 @@ import { Command } from 'commander';
 import type { Confidence, Source } from '@caveat/core';
 import { buildContext } from './context.js';
 import { stdoutLogger } from './logger.js';
-import { runInit } from './commands/init.js';
+import { runInit, runUninstall } from './commands/init.js';
 import { runIndex } from './commands/indexCmd.js';
 import { runSearch } from './commands/search.js';
 import { runList } from './commands/list.js';
 import { runShow } from './commands/show.js';
 import { runStats } from './commands/stats.js';
 import { runServe } from './commands/serve.js';
+import { runMcpServer } from './commands/mcpServer.js';
+import { runHook, type HookName } from './commands/hookCmd.js';
 import {
   runCommunityAdd,
   runCommunityList,
@@ -23,10 +25,23 @@ program
 
 program
   .command('init')
-  .description('Initialize ~/.caveatrc.json and .index/caveat.db')
-  .action(() => {
+  .description(
+    'Initialize ~/.caveatrc.json, ~/.caveat/, and register Claude Code integration',
+  )
+  .option('--skip-claude', 'skip Claude Code MCP + hook registration', false)
+  .option('--dry-run', 'show planned changes without writing', false)
+  .action((opts: { skipClaude: boolean; dryRun: boolean }) => {
     const ctx = buildContext(stdoutLogger);
-    runInit(ctx);
+    runInit(ctx, { skipClaude: opts.skipClaude, dryRun: opts.dryRun });
+  });
+
+program
+  .command('uninstall')
+  .description('Remove Claude Code MCP server and hooks registered by `caveat init`')
+  .option('--dry-run', 'show planned changes without writing', false)
+  .action((opts: { dryRun: boolean }) => {
+    const ctx = buildContext(stdoutLogger);
+    runUninstall(ctx, { dryRun: opts.dryRun });
   });
 
 program
@@ -97,6 +112,20 @@ program
   .option('--port <n>', 'port number', (v) => Number(v), 4242)
   .action((opts: { port: number }) => {
     runServe({ port: opts.port });
+  });
+
+program
+  .command('mcp-server')
+  .description('Run the MCP stdio server (registered by `caveat init`)')
+  .action(async () => {
+    await runMcpServer();
+  });
+
+program
+  .command('hook <name>')
+  .description('Run a Claude Code hook. name: user-prompt-submit | stop')
+  .action(async (name: string) => {
+    await runHook(name as HookName);
   });
 
 const community = program

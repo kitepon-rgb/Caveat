@@ -1,8 +1,8 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
-  findToolRoot,
-  loadConfigFromPaths,
+  findCaveatHome,
+  loadConfig,
   openDb,
   resolvePaths,
   stderrLogger,
@@ -13,7 +13,7 @@ import {
 import type { DatabaseSync } from 'node:sqlite';
 
 export interface WebContext {
-  toolRoot: string;
+  caveatHome: string;
   userHome: string;
   userConfigPath: string;
   config: CaveatConfig;
@@ -23,19 +23,19 @@ export interface WebContext {
 }
 
 export interface WebContextOverrides {
-  toolRoot?: string;
+  caveatHome?: string;
   userHome?: string;
   logger?: Logger;
   db?: DatabaseSync;
 }
 
 export function buildWebContext(overrides: WebContextOverrides = {}): WebContext {
-  const toolRoot = overrides.toolRoot ?? findToolRoot();
   const userHome = overrides.userHome ?? homedir();
+  const caveatHome = overrides.caveatHome ?? findCaveatHome(userHome);
   const userConfigPath = join(userHome, '.caveatrc.json');
   const logger = overrides.logger ?? stderrLogger;
-  const config = loadConfigFromPaths(toolRoot, userConfigPath);
-  const paths = resolvePaths(toolRoot, config.knowledgeRepo, userHome);
+  const config = loadConfig(userConfigPath);
+  const paths = resolvePaths(caveatHome, config.knowledgeRepo, userHome);
   const db = overrides.db ?? openDb({ path: paths.dbPath, logger });
-  return { toolRoot, userHome, userConfigPath, config, paths, logger, db };
+  return { caveatHome, userHome, userConfigPath, config, paths, logger, db };
 }

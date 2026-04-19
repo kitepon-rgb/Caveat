@@ -2,7 +2,7 @@
 
 External spec gotcha knowledge base. Accumulate the "traps" of GPU drivers, IDE quirks, Claude Code hook availability, and tool version constraints so you don't rediscover them.
 
-**Status**: v0 feature-complete. All 11 phases done. 135 tests passing across 5 packages (core 84, hooks 24, mcp 10, web 13, cli 4). See [docs/plan.md](docs/plan.md) for the full design.
+**Status**: v0.1 NPM-distributable. 141 tests passing across 5 packages (core 84, hooks 24, mcp 10, web 13, cli 10). The CLI is a single `caveat-cli` package on npm with no private workspace deps at install time — `npm i -g caveat-cli` and `caveat init` is all a user needs. See [docs/plan.md](docs/plan.md) for the full design.
 
 ## Concept
 
@@ -16,22 +16,21 @@ External spec gotcha knowledge base. Accumulate the "traps" of GPU drivers, IDE 
 
 ```
 packages/core/        @caveat/core — DB (node:sqlite + FTS5 trigram), indexer, frontmatter,
-                      env fingerprint, repository, record/update, brief, community, paths
-apps/cli/             commander-based CLI:
-                        init / index [--full] / search / list / show / stats / serve /
-                        community add|pull|list
-apps/mcp/             stdio MCP server exposing 7 tools via @modelcontextprotocol/sdk
-apps/web/             Hono SSR read-only share portal (/, /g/:id, /community) + custom
-                      markdown-it wikilinks plugin for [[slug]] → /g/slug rendering
-hooks/                Claude Code hooks (user-prompt-submit.mjs, stop.mjs) + pre-commit
-                      visibility gate (pre-commit-visibility-gate.mjs)
+                      env fingerprint, repository, record/update, brief, community, paths,
+                      Claude Code hook logic (claudeHooks.ts)
+apps/cli/             caveat-cli (published to npm) — bundled CLI with subcommands:
+                        init / uninstall / index [--full] / search / list / show / stats /
+                        serve / mcp-server / hook <name> / community add|pull|list
+apps/mcp/             @caveat/mcp — stdio MCP server exposing 7 tools via
+                      @modelcontextprotocol/sdk. Imported by caveat-cli as `mcp-server`
+apps/web/             @caveat/web — Hono SSR read-only share portal (/, /g/:id, /community) +
+                      custom markdown-it wikilinks plugin for [[slug]] → /g/slug rendering
+hooks/                legacy standalone .mjs hooks (dev-mode fallback + spawn tests). NPM
+                      users hit `caveat hook <name>` via the CLI instead
 .husky/               git pre-commit wiring (husky 9)
-config/default.json   knowledgeRepo path, semverKeys, projectRoots (all overridable via
-                      ~/.caveatrc.json)
 docs/plan.md          Design source of truth (audited through Round 5, then extended
-                      Phase 2 → 10 with implementation findings)
-docs/audit.md         Audit history (rejected proposals preserved so they don't
-                      reappear)
+                      Phase 2 → 12 with implementation findings)
+docs/audit.md         Audit history (rejected proposals preserved so they don't reappear)
 docs/archive/         Superseded drafts (legacy brainstorms, etc.)
 ```
 
@@ -41,120 +40,56 @@ docs/archive/         Superseded drafts (legacy brainstorms, etc.)
 - **pnpm 10** via corepack (pinned in root `package.json`'s `packageManager`).
 - **git** for community import (`simple-git` shells out to the system git).
 
-## Quick start
+## Quick start (NPM user)
+
+```sh
+# Once caveat-cli is on npm:
+npm install -g caveat-cli
+caveat init                   # scaffolds ~/.caveat/ + registers MCP + merges hooks into
+                              # ~/.claude/settings.json (with backup). Idempotent.
+caveat search "rtx"           # empty at first — record some entries via MCP or edit md
+                              # files directly under ~/.caveat/own/entries/
+caveat serve                  # http://localhost:4242/ read-only share portal
+```
+
+What `caveat init` does on first run:
+- Writes `~/.caveatrc.json` (empty `{}` — defaults come from a constant in the CLI)
+- Scaffolds `~/.caveat/own/` (your knowledge repo root) + `~/.caveat/index/caveat.db`
+- Runs `claude mcp add --scope user caveat -- <node> --disable-warning=ExperimentalWarning <cliPath> mcp-server`
+- Merges `UserPromptSubmit` / `Stop` hook entries into `~/.claude/settings.json` (existing entries preserved; a backup is written before any change)
+
+Use `caveat init --skip-claude` to skip Claude Code wiring, or `--dry-run` to preview without writing. `caveat uninstall` reverses all Claude Code changes without touching `~/.caveat/`.
+
+### Using an existing knowledge repo instead of `~/.caveat/own/`
+
+Write `~/.caveatrc.json`:
+
+```json
+{
+  "knowledgeRepo": "/absolute/path/to/your/caveats-repo",
+  "projectRoots": ["/abs/path/to/program/"]
+}
+```
+
+`projectRoots` tells `caveat_record` how to infer `source_project` from your cwd. Empty array disables auto-detection.
+
+## Quick start (dev — contributing to Caveat itself)
 
 ```sh
 corepack pnpm install
 corepack pnpm -r build
-
-node apps/cli/dist/index.js init                # creates ~/.caveatrc.json + .index/caveat.db
-node apps/cli/dist/index.js index               # scan knowledge repo into SQLite
-node apps/cli/dist/index.js search "rtx"        # FTS search
-node apps/cli/dist/index.js serve               # http://localhost:4242/ read-only portal
+cd apps/cli && corepack pnpm pack        # caveat-cli-<ver>.tgz
+npm install -g ./caveat-cli-<ver>.tgz    # now `caveat` is on PATH
 ```
 
-## Full setup
+For iterative dev, `npm link` inside `apps/cli/` keeps the global shim tracking your local build.
 
-### 1. Create your knowledge repo
-
-The tool is useless without a knowledge repo to point at. Create one as a sibling directory:
-
-```sh
-mkdir ../caveats-<you>
-cd ../caveats-<you>
-mkdir entries .templates
-
-# Optional but recommended: copy the template + gitignore from caveats-quo (see
-# a working example at https://github.com/kitepon-rgb/caveats-quo — private but
-# the layout is documented). Minimum:
-
-cat > .gitignore <<'EOF'
-*.private.md
-.obsidian/
-EOF
-
-cat > .templates/caveat.md <<'EOF'
----
-id: <slug>
-title: <one-line title>
-visibility: public
-confidence: tentative
-outcome: resolved
-tags: []
-environment: {}
-source_project: null
-source_session: "manual/{{date:YYYY-MM-DD}}"
-created_at: {{date:YYYY-MM-DD}}
-updated_at: {{date:YYYY-MM-DD}}
-last_verified: {{date:YYYY-MM-DD}}
----
-
-## Context
-## Symptom
-## Cause
-## Resolution
-## Evidence
-EOF
-
-git init -b main
-git add .
-git commit -m "init: scaffold"
-# Create a matching GitHub repo (private initially recommended):
-# gh repo create caveats-<you> --private --source=. --push
-```
-
-### 2. Point the tool at your knowledge repo
-
-Edit `~/.caveatrc.json` in the tool-repo's parent (auto-created by `caveat init`):
-
-```json
-{
-  "knowledgeRepo": "/absolute/path/to/caveats-<you>",
-  "projectRoots": ["c:/users/<you>/documents/program/"]
-}
-```
-
-`projectRoots` tells `caveat_record` how to infer `source_project` from your cwd. Put your workspace root(s). Empty array disables auto-detection.
-
-### 3. Wire into Claude Code
-
-**MCP server registration** (writes to `~/.claude.json`):
-
-```sh
-claude mcp add --scope user caveat node \
-  -- --disable-warning=ExperimentalWarning \
-     "/absolute/path/to/Caveat/apps/mcp/dist/server.js"
-
-claude mcp list   # expect: caveat: ... ✓ Connected
-```
-
-`--disable-warning=ExperimentalWarning` is required: MCP uses stdout for JSON-RPC, so the one-time `node:sqlite` `ExperimentalWarning` must be suppressed. Without this flag the server still works, but emits one extra stderr line per session.
-
-**Hooks** (append to `~/.claude/settings.json`; these run alongside any existing hooks):
-
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      { "hooks": [ { "type": "command",
-          "command": "node /absolute/path/to/Caveat/hooks/user-prompt-submit.mjs" } ] }
-    ],
-    "Stop": [
-      { "hooks": [ { "type": "command",
-          "command": "node /absolute/path/to/Caveat/hooks/stop.mjs" } ] }
-    ]
-  }
-}
-```
-
-The `UserPromptSubmit` hook fires a reminder to call `caveat_search` only when the prompt mentions GPU/driver/CUDA/IDE/version/flakiness keywords — silent otherwise. The `Stop` hook unconditionally reminds Claude to consider `caveat_record` (including `outcome: impossible` conclusions).
-
-### 4. (Optional) Pre-commit gate on your knowledge repo
+### (Optional) Pre-commit gate on your knowledge repo
 
 The tool repo already has `.husky/pre-commit` wired. To enable the same gate on your knowledge repo so private entries can't leak:
 
 ```sh
-cd /path/to/caveats-<you>
+cd /path/to/your/caveats-repo
 npm init -y   # or pnpm init
 npm install --save-dev husky
 npx husky init
@@ -166,9 +101,9 @@ cp /path/to/Caveat/hooks/pre-commit-visibility-gate.mjs hooks/
 
 The gate rejects any commit that stages an `entries/**/*.md` with `visibility: private`. Bypass only with `git commit --no-verify` (git standard), not a custom flag.
 
-### 5. (Optional) Open knowledge repo in Obsidian
+### (Optional) Open knowledge repo in Obsidian
 
-`caveats-<you>/` is a valid Obsidian vault. `File → Open folder as vault`. Recommended plugins:
+Your knowledge repo (default `~/.caveat/own/`) is a valid Obsidian vault. `File → Open folder as vault`. Recommended plugins:
 
 | Plugin | Purpose |
 |---|---|
@@ -181,13 +116,13 @@ Caveats authored in Obsidian are picked up by `caveat index` on next run (FTS is
 ## Import other people's caveats
 
 ```sh
-node apps/cli/dist/index.js community add https://github.com/alice/caveats-alice
-node apps/cli/dist/index.js community pull       # refresh all imported repos
-node apps/cli/dist/index.js community list
-node apps/cli/dist/index.js index                # re-index to pick up new entries
+caveat community add https://github.com/alice/caveats-alice
+caveat community pull       # refresh all imported repos
+caveat community list
+caveat index                # re-index to pick up new entries
 
 # Then search only their contributions:
-node apps/cli/dist/index.js search "foo" --source community
+caveat search "foo" --source community
 ```
 
 URL validation is strict — only `^https://github.com/<org>/<repo>(\.git)?/?$` is accepted. GitLab / SSH / HTTP are rejected in v1.
@@ -225,7 +160,7 @@ See [docs/plan.md](docs/plan.md) for the full schema, semver matching rules, and
 ## Development
 
 ```sh
-corepack pnpm -r test            # 135 tests across 5 packages
+corepack pnpm -r test            # 141 tests across 5 packages
 corepack pnpm -r typecheck
 corepack pnpm -r build
 ```
@@ -233,7 +168,7 @@ corepack pnpm -r build
 Per-package:
 ```sh
 corepack pnpm --filter @caveat/core test
-corepack pnpm --filter @caveat/cli test
+corepack pnpm --filter caveat-cli test
 corepack pnpm --filter @caveat/mcp test
 corepack pnpm --filter @caveat/web test
 corepack pnpm --filter @caveat/hooks test
