@@ -42,7 +42,7 @@
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
-    "commander": "^13.0.0"
+    "commander": "^14.0.3"
   },
   "devDependencies": {
     "@caveat/core": "workspace:*",
