@@ -7,7 +7,7 @@
 
 External spec gotcha knowledge base. Accumulate the "traps" of GPU drivers, IDE quirks, Claude Code hook availability, and tool version constraints so you don't rediscover them.
 
-**Status**: v0.7.0. **Personal / group knowledge tool — no central shared DB.** Each user writes to their own `~/.caveat/own/`. To share with teammates, push to a group git repo (private or public) and have others subscribe with `caveat community add <repo-url>`. 148 tests passing.
+**Status**: v0.10.0. **Personal / group knowledge tool — no central shared DB.** Each user writes to their own `~/.caveat/own/`. To share with teammates, push to a group git repo (private or public) and have others subscribe with `caveat community add <repo-url>`. 192 tests passing.
 
 > **v0.7 pivot**: previous versions ran a central shared community DB with `caveat push` (fork + PR) and an auto-subscribe on `caveat init`. That model was retired because trust over arbitrary stranger contributions cannot be reliably automated — sophisticated malicious payloads survive static gates and adversarial-gradient attacks against any LLM-based oracle. Trust is now defined socially (you, your team, your org). See [docs/plan.md](docs/plan.md) for the full rationale and [docs/archive/auto-merge-design.md](docs/archive/auto-merge-design.md) for the abandoned auto-merge design.
 
@@ -16,7 +16,10 @@ External spec gotcha knowledge base. Accumulate the "traps" of GPU drivers, IDE 
 - **`markdown-in-git` is the source of truth.** SQLite (FTS5 trigram) is a rebuildable derived index, gitignored.
 - **Per-group sharing via plain git.** Your `~/.caveat/own/` is yours. Share via any git repo (your own, a team's `acme-corp/caveats`, etc.). Subscribers add it with `caveat community add <github-url>`; updates flow via `caveat community pull`. The tool stays out of the publish path.
 - **`visibility: public | private`** frontmatter + `.husky/pre-commit` gate keeps private entries out of any repo you commit to.
-- **Claude Code integration.** An MCP server exposes 6 tools (`caveat_search` / `caveat_get` / `caveat_record` / `caveat_update` / `caveat_list_recent` / `caveat_pull`). Two hooks (`UserPromptSubmit` keyword-triggered, `Stop` unconditional) remind Claude to search before work and record after.
+- **Claude Code integration.** An MCP server exposes 6 tools (`caveat_search` / `caveat_get` / `caveat_record` / `caveat_update` / `caveat_list_recent` / `caveat_pull`). Three hooks fire at complementary points and surface matching caveats automatically — no hardcoded keyword lists:
+  - **UserPromptSubmit** (事前発火): when you submit a prompt, tokenize it, FTS the DB, and surface any entry that shares ≥ 2 distinct tokens (structural co-occurrence rule).
+  - **PostToolUse** (実行中発火): when a tool returns `is_error: true`, spawn a detached worker that does the FTS asynchronously so the foreground hook returns in ~20ms; the reminder lands on the next hook tick. Zero added latency in the happy path.
+  - **Stop** (事後発火): parse the session transcript for objective struggle signals (tool failures, repeated file edits, web searches, bash retries). If any are present, surface matching entries and nudge `caveat_update` or `caveat_record`.
 - **Obsidian-compatible.** The knowledge repo is a valid Obsidian vault — open it as a folder, edit with Obsidian's graph/backlinks/Dataview, the tool re-indexes on `caveat index`.
 
 ## Layout
@@ -62,7 +65,7 @@ What `caveat init` does on first run:
 - Writes `~/.caveatrc.json` (empty `{}` — defaults come from a constant in the CLI)
 - Scaffolds `~/.caveat/own/` (your knowledge repo root) + `~/.caveat/index/caveat.db`
 - Runs `claude mcp add --scope user caveat -- <node> --disable-warning=ExperimentalWarning <cliPath> mcp-server`
-- Merges `UserPromptSubmit` / `Stop` hook entries into `~/.claude/settings.json` (existing entries preserved; backup written before any change)
+- Merges `UserPromptSubmit` / `PostToolUse` / `Stop` hook entries into `~/.claude/settings.json` (existing entries preserved; backup written before any change)
 
 Use `--skip-claude` to skip Claude Code wiring, or `--dry-run` to preview. `caveat uninstall` reverses Claude Code changes without touching `~/.caveat/`. **No central DB is auto-subscribed** — add knowledge sources explicitly with `caveat community add`.
 
@@ -176,7 +179,7 @@ See [docs/plan.md](docs/plan.md) for the full schema, semver matching rules, and
 ## Development
 
 ```sh
-corepack pnpm -r test            # 148 tests across 5 packages
+corepack pnpm -r test            # 192 tests across 5 packages
 corepack pnpm -r typecheck
 corepack pnpm -r build
 ```

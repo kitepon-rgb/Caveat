@@ -36,3 +36,6 @@ Thumbs.db
 
 # Claude Code per-project settings (personal permission allowlist) — any depth
 **/.claude/
+
+# Spotter (external per-user tool state)
+.spotter/

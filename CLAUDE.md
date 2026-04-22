@@ -4,7 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクトの状態
 
-**v0.7.0**（2026-04-19、148 tests passing）。**中央 shared community DB を全廃止し、個人 / グループ単位の repo 共有モデルに pivot 済**。各ユーザーは自分の `~/.caveat/own/` に書き、共有は自分・知人・組織の git repo に普通の `git push` で行い、他のグループの知識は `caveat community add <github-url>` で取り込む。tool 側は publish 経路に介在しない。MCP tool は 6 種（search/get/record/update/list_recent/pull）— v0.7 で `caveat_push` を削除。
+**v0.10.0**（2026-04-22、192 tests passing）。**実行中発火（PostToolUse hook）を追加、3 発火点の非同期アーキテクチャに**。tool_response が `is_error: true` のとき前景 hook は「pending queue の drain + 検索タスクの detached worker spawn」を ~20ms で返し、worker が非同期に FTS を走らせて pending ファイルに reminder を書き込む → 次の hook 呼び出しで drain されて Claude のコンテキストに載る。ユーザー応答はブロックしない。詳細は下記「Claude Code Hook の実装」節。
+
+**v0.9.0**（2026-04-22）。**事後発火（Stop hook）を signal-based gate + co-occurrence FTS に刷新**。transcript JSONL を解析して tool failure / 同一ファイル複数編集 / WebSearch / WebFetch / Bash 再実行 の客観シグナルを抽出 → いずれか 1 つでも観測されたら発火（閾値チューニング不要）。発火時はリマインダに具体的シグナル数値 + error message / 検索クエリを元に co-occurrence FTS した既存罠を埋め込み、`caveat_update` or `caveat_record` の判断材料を渡す。無自覚に乗り越えたケースも transcript の fingerprint で拾える。
+
+**v0.8.0**（2026-04-22）。**事前発火（UserPromptSubmit hook）を keyword allowlist から co-occurrence ベースに置換**。プロンプトを tokenize → 各 token を個別に FTS5 検索 → **≥ 2 個の distinct token が共起する entry のみ** を hit とみなし、リマインダ本文に id/title/症状抜粋を直接埋め込む。hardcoded list（keyword allowlist / stopword list）を一切使わない構造的ルール。新しい罠カテゴリを `entries/` に書くだけで trigger が自己拡張する。
+
+**v0.7.0**（2026-04-19）。**中央 shared community DB を全廃止し、個人 / グループ単位の repo 共有モデルに pivot 済**。各ユーザーは自分の `~/.caveat/own/` に書き、共有は自分・知人・組織の git repo に普通の `git push` で行い、他のグループの知識は `caveat community add <github-url>` で取り込む。tool 側は publish 経路に介在しない。MCP tool は 6 種（search/get/record/update/list_recent/pull）— v0.7 で `caveat_push` を削除。
 
 **v0.7 pivot の根拠**: 自動マージ厳密化を検討した結果、赤の他人からの貢献を auto-validate するモデル自体が原理的に脆弱と判明。LLM oracle (Opus 含) を gate に置いても adversarial gradient 攻撃で破られる、xz-utils 型の long-game は静的検査で検知不能。よって信頼を「自動検査」ではなく「社会的文脈」で引く方針に転換。詳細は [docs/archive/auto-merge-design.md](docs/archive/auto-merge-design.md)（廃止された自動マージ設計）参照。
 
@@ -151,12 +157,36 @@ MCP stdio サーバは stdout に JSON-RPC 以外を書いてはいけない。`
 - **stderr**: 診断情報のみ。
 - 既存の `throughline` hook（UserPromptSubmit / Stop）と並走する前提。
 
-### Claude Code Hook の実装（Phase 6 / Phase 12）
+### Claude Code Hook の実装（Phase 6 / Phase 12 / v0.8）
 
-- **Phase 12 現行ロジック**: [packages/core/src/claudeHooks.ts](packages/core/src/claudeHooks.ts) に `detectCaveatTrigger` / `userPromptSubmitReminderText` / `stopReminderText` を集約。CLI サブコマンド `caveat hook <name>` ([apps/cli/src/commands/hookCmd.ts](apps/cli/src/commands/hookCmd.ts)) が stdin を読んで呼ぶ
-- **トリガ**: プロンプトに GPU/driver/CUDA/nvidia/AMD/RTX/VSCode/Claude Code/flaky/再現しない/バージョン依存/native module 等のキーワードが含まれたら発火。`CAVEAT_TRIGGERS` 配列で管理
-- **stop hook**: 無条件で発火、ただし `payload.stop_hook_active === true` の場合は stdout 空（再帰防止）。メッセージは「解決した罠だけでなく `outcome: impossible` の結論も記録対象」を含む
-- **Phase 6 の legacy `.mjs` ファイル** ([hooks/user-prompt-submit.mjs](hooks/user-prompt-submit.mjs) / [hooks/stop.mjs](hooks/stop.mjs)) は dev-mode での動作確認と spawn テスト用に残している。NPM 配布した `caveat` コマンド経由では使われない
+- **v0.8 現行ロジック**: [packages/core/src/claudeHooks.ts](packages/core/src/claudeHooks.ts) に `extractPromptCandidates` / `findCaveatsForPrompt` / `userPromptSubmitReminderText(hits)` / `stopReminderText` を集約。CLI サブコマンド `caveat hook <name>` ([apps/cli/src/commands/hookCmd.ts](apps/cli/src/commands/hookCmd.ts)) が stdin + caveatHome を組み合わせて DB を開き、結果を埋め込んだリマインダを stdout に出す
+- **事前発火（UserPromptSubmit）の判定**: プロンプトを token 列に分解 → 各 token を個別に FTS5 phrase 検索 → **1 entry あたり ≥ 2 個の distinct token が共起** したものだけを hit とみなし、distinct-match 数 DESC で top-N を返す。1-token prompt は 1-of-1 にフォールバック。hit ≥ 1 のときのみ発火、DB ヒットをそのままリマインダ本文に埋めるので、Claude が改めて `caveat_search` を呼ばずともコンテキストに関連罠が入る
+- **Tokenize 規則** (`extractPromptCandidates`):
+  - 非英数・非 CJK 文字を空白に置換 → 空白 split
+  - ASCII 単語は ≥ 3 文字のみ（`the` / `on` 等は自動脱落するが `make` / `new` / `what` は残す — 共起ルールで無害化）
+  - CJK run は 3-char sliding window に展開（`初期化失敗` → `初期化`, `期化失`, `化失敗`）
+  - Case-insensitive dedup → 先頭 50 token 上限
+- **共起ルールが `allowlist` / `stopword list` を代替する理由**: 旧設計は (a) keyword allowlist（Phase 6、罠ドメインを regex で列挙）→ recall 低い／メンテ永遠、(b) v0.8 初案の stopword list（`make` / `new` を hand-curate） → リスト化自体が構造欠陥、と辿った。2-of-N co-occurrence は list 不要、閾値チューニング不要、prompt に `make a new button` が来ても「make と new と button のうち 2+ が同一 entry に共起」が成立しない限り silent になり、技術語が 2+ 共起すれば必然的に関連罠にヒットする。**「list で除外する」のではなく「構造で要求する」** が設計の肝
+- **hookCmd の DB 接続**: `buildContext(silentLogger)` で caveatHome 解決 → `existsSync(ctx.paths.dbPath)` で DB 未作成時は即 silent（false-block 回避）→ `openDb` → `findCaveatsForPrompt` → 必ず `db.close()`
+- **事後発火（Stop hook）の判定** (v0.9): `payload.transcript_path` の JSONL を `readSessionSignals` ([packages/core/src/transcriptSignals.ts](packages/core/src/transcriptSignals.ts)) で解析し、以下のシグナルを抽出:
+  - `toolFailureCount`: `is_error: true` を返した tool_result の件数
+  - `fileEditCounts`: Edit/Write/NotebookEdit の file_path 集計（count > 1 のみ）
+  - `webSearchCount` / `webFetchCount`: 外部仕様調査の跡
+  - `bashRetryCount`: 同一 Bash コマンドを複数回実行した種類数（失敗 → 修正 → 再実行 パターン）
+  - `durationMinutes`: first / last timestamp から算出（発火ゲートには使わない、表示のみ）
+  - `errorSnippets` / `searchQueries`: リマインダ本文 & FTS 用の raw text
+- **発火ゲート**: `hasAnyStruggleSignal(s)` = 上記 count のいずれか > 0 or fileEditCounts.length > 0。**閾値チューニング無し**の構造的 or 判定（「0 か 1 以上か」のみ）。tool failure 無・編集 1 回だけ・web 検索無しなら完全無音 → 単純編集セッションでリマインダ洪水を起こさない
+- **stop リマインダ本文**: シグナル具体数値を列挙（Y）+ `errorSnippets` と `searchQueries` を結合した text を `findCaveatsForPrompt` に食わせて共起 FTS し、既存罠に類似があれば `caveat_update` を、なければ `caveat_record` を促す（Z）。事前発火と同じ `findCaveatsForPrompt` を text 入力として再利用（hookCmd.ts の `searchCaveatsFromTextSafely`）
+- **再帰防止**: `payload.stop_hook_active === true` の場合は stdout 空で即 exit（不変）
+- **実行中発火（PostToolUse hook、v0.10）— 非同期パイプライン**:
+  - Claude Code は毎 tool 呼び出し後に PostToolUse hook を同期的に呼び出し、その stdout を次ターンのコンテキストに挿入する。同期的に FTS を走らせると tool ごとに 150-300ms のレイテンシが乗るので、**前景 hook は drain + worker spawn で ~20ms 返す**。
+  - 前景フロー: (1) `drainPendingReminders(caveatHome, sessionId)` で過去 worker が書いた reminder ファイルを読み → stdout に emit → unlink / (2) `tool_response.is_error === true` のときのみ tool_response のテキストを work file に書き出し、`spawn(node, [cli, 'hook', 'worker', workFile], {detached:true,stdio:'ignore'}).unref()` で detached worker を起動し即 exit
+  - 非同期 worker (`caveat hook worker <workFile>`): work file を読んで unlink → `findCaveatsForPrompt(db, errorText)` を走らせ → hit > 0 なら `toolErrorReminderText(hits)` を `<caveatHome>/pending/<sessionId>/<ts>-<uuid>.txt` に appendPendingReminder
+  - drain は **全 hook(UserPromptSubmit / PostToolUse / Stop)の最初で実行**。どの hook が次に発火しても pending が回収される
+  - pending ファイルはセッション id でディレクトリ分離 ([packages/core/src/pendingReminders.ts](packages/core/src/pendingReminders.ts))。`session_id` は `[^A-Za-z0-9_-]` を strip してサニタイズ、traversal 攻撃を防ぐ
+  - 結果として reminder は **エラー発生の次の hook tick で Claude のコンテキストに載る**（最短で次の tool 呼び出し、最悪でも user prompt 直前）。Claude は新しいエラーを見る前後のタイミングで「このエラーは既知罠 XYZ」を認識できる
+  - セッション跨ぎの pending 蓄積: `caveat init` で pending dir を cleanup する処理は未実装（TODO）。現状は session 別ディレクトリが貯まるだけで実害なし
+- **Phase 6 の legacy `.mjs` ファイル** ([hooks/user-prompt-submit.mjs](hooks/user-prompt-submit.mjs) / [hooks/stop.mjs](hooks/stop.mjs)) は旧キーワード allowlist 実装のまま dev-mode 参照として残している。NPM 配布した `caveat` コマンド経由では使われない（`caveat init` が登録するのは `caveat hook <name>` の新経路）
 
 ### Git pre-commit visibility gate（Phase 7）
 

@@ -396,6 +396,40 @@ caveat nlm-brief <topic>              # ターミナルから brief 生成
     - `caveats-quo` 側は retire notice の README コミット → `gh repo archive` → 削除（user 判断）
     - 既存 v0.3–0.4 ユーザは `npm update -g caveat-cli` + `caveat init` 再実行で新しい共有 DB に自動 subscribe。古い `~/.caveat/community/caveats-quo/` は手動削除（`caveat community remove` 未実装）
     - 設計判断: 2 repo 分離のメリット（関心の分離、clone サイズ、PR ノイズ）は規模的にどれも決定打にならないと再評価。命名も `caveats-quo`（作者個人のハンドル）は共有 DB として不適切。unify + rename（Caveat に寄せる）が正解
+15. **事前発火を keyword allowlist から 2-of-N co-occurrence ベースに置換** ✅ 完了（2026-04-22、v0.8、169 tests passing）。問題: Phase 6 の `detectCaveatTrigger` は GPU/driver/CUDA 等の正規表現 allowlist で発火判定していたが、罠ドメインを手で列挙する方式は (a) 未知カテゴリ（Docker/pnpm/Playwright/webhook/timezone/locale 等）を取り落とす (b) 辞書メンテが永遠に必要、という構造欠陥があった。解決:
+    - 設計反復の経緯:
+      - v0.8 初案: プロンプトを FTS5 OR 検索 + hardcoded ENGLISH_STOPWORDS + 純ひらがな trigram フィルタ → ユーザー指摘「stopword list も結局 keyword allowlist と同じ構造欠陥」で却下
+      - v0.8 中間案: DF（document frequency）閾値で corpus 内の広すぎる token を動的フィルタ → 50% 閾値では `make`/`new` が 12.5% で通り抜ける実測、閾値チューニング依存が残る
+      - v0.8 最終案: **2-of-N co-occurrence** に転換。各 token を個別 FTS 検索 → 1 entry あたり ≥ 2 個の distinct token が共起するものだけ hit とみなす。list 不要・閾値不要の構造的ルール
+    - 旧 `detectCaveatTrigger` + keyword regex 配列を廃止、`extractPromptCandidates(prompt)` + `findCaveatsForPrompt(db, prompt)` を導入
+    - Token 抽出: 非英数・非 CJK を空白置換 → ≥ 3 文字 ASCII / CJK 3-char sliding window → case-insensitive dedup / 50 token 上限
+    - 共起判定: 各 token 個別 FTS 検索 → per-entry 距離カウント → `min(2, totalTokens)` 以上の entry を distinct-match 数 DESC 順に top-N 返す
+    - 効果の実測（48-entry 実機 DB で検証）:
+      - `make a new button`: 6 false positive → 1 near-miss
+      - `rename this variable`: 6 false positive → 完全 silent
+      - `RTX 5090 の CUDA が初期化失敗`: 5 hit すべて関連（不変）
+      - `node:sqlite の ExperimentalWarning`: 5 hit すべて関連（不変）
+    - **辞書メンテ不要化**: 新しい罠カテゴリを `entries/` に書くだけで trigger が自己拡張する
+    - 事後発火（stop hook）は現設計維持。類似検索では「このセッションで苦戦したか」は測れないので別設計が必要。次フェーズで「tool failure 回数 / same-file 編集頻度 / Web 検索回数」等の客観シグナルを hook に渡す方向を検討予定
+16. **事後発火を signal-gated + co-occurrence FTS に刷新** ✅ 完了（2026-04-22、v0.9、185 tests passing）。Phase 15 で事前発火だけ刷新し、事後発火は「無条件発火 + generic reminder → Claude の自己判定頼み」のままだった。これを transcript-based 客観シグナル駆動に変更:
+    - `packages/core/src/transcriptSignals.ts` 新規。`readSessionSignals(transcript_path)` が Claude Code JSONL を 1 pass で解析し、以下を抽出:
+      - `toolFailureCount`: tool_result の `is_error: true`
+      - `fileEditCounts`: Edit/Write/NotebookEdit の file_path 集計（count > 1 のみ）
+      - `webSearchCount` / `webFetchCount` / `bashRetryCount`（同一コマンド ≥ 2 回）
+      - `durationMinutes`: first / last timestamp（表示のみ、発火ゲートには使わない）
+      - `errorSnippets` / `searchQueries`: 共起 FTS 用の原文
+    - `hasAnyStruggleSignal(s)` で発火ゲート。全カウントが 0 なら silent。閾値チューニングなしのブール判定（構造的 or）
+    - 発火時は `stopReminderText(signals, related)` で: (Y) シグナル具体数値を列挙、(Z) `errorSnippets + searchQueries` を `findCaveatsForPrompt` に食わせて共起 FTS → 既存罠があれば `caveat_update`、無ければ `caveat_record` を促す
+    - 事前発火と同じ co-occurrence FTS を text 入力で再利用（対称な構造）
+    - 実機検証: 今セッション自身の transcript を読ませて、tool failure 4 / claudeHooks.test.ts × 11 edits / bashRetry 4 種 / 既存罠 `claude-code-stop-hook-input-has-no-final-response-field-must-read-transcript-path-jsonl` に的中することを確認
+17. **実行中発火（PostToolUse hook）を非同期パイプラインで追加** ✅ 完了（2026-04-22、v0.10、192 tests passing）。事前発火（prompt 時）と事後発火（session 終了時）の間にある「AI が実際に苦戦している最中」の発火点が抜けていた。従来のナレッジベースの弱点(使う前 / 終わった後しか参照しない)と同じ穴。解決:
+    - PostToolUse hook を追加し、tool_response が is_error=true のとき error メッセージで共起 FTS → 既存罠があれば reminder を Claude のコンテキストに注入
+    - **非同期アーキテクチャ**: 前景 hook は ~20ms で返す(drain + detached worker spawn のみ)。FTS の実仕事は detached worker が 100-300ms かけて pending dir に書き込み、次の hook 呼び出しで drain される
+    - pending queue 管理: `packages/core/src/pendingReminders.ts` に `appendPendingReminder` / `drainPendingReminders` / `pendingDirFor`。per-session directory、timestamp-ordered ファイル、traversal サニタイズ付き
+    - worker サブコマンド: `caveat hook worker <workFile>` が work JSON を読み → FTS → pending 書き込み → exit。stdio: ignore で detached 起動
+    - 3 発火点の対称構造: 事前発火(prompt FTS) / 実行中発火(error FTS async) / 事後発火(transcript signals + FTS) すべて `findCaveatsForPrompt` の共起ロジックを text 入力で再利用
+    - claudeInstall.ts を拡張し PostToolUse も `caveat init` で自動登録。既存インストールは `caveat init` 再実行で picks up
+    - 実機検証: non-error 系 tool で 170-200ms typical / error 系で同等(worker は detached、前景は enqueue のみ) / worker が pending file 書き込み → 次 hook で drain → Claude が reminder を受け取る全経路を確認済
 
 ## 検証
 

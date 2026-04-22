@@ -138,10 +138,12 @@ program
   });
 
 program
-  .command('hook <name>')
-  .description('Run a Claude Code hook. name: user-prompt-submit | stop')
-  .action(async (name: string) => {
-    await runHook(name as HookName);
+  .command('hook <name> [arg]')
+  .description(
+    'Run a Claude Code hook. name: user-prompt-submit | post-tool-use | stop | worker',
+  )
+  .action(async (name: string, arg?: string) => {
+    await runHook(name as HookName, arg);
   });
 
 const community = program

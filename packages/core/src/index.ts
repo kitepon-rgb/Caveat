@@ -12,3 +12,5 @@ export * from './paths.js';
 export * from './config.js';
 export * from './community.js';
 export * from './claudeHooks.js';
+export * from './transcriptSignals.js';
+export * from './pendingReminders.js';
