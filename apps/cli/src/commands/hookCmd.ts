@@ -9,6 +9,7 @@ import {
   drainPendingReminders,
   findCaveatsForPrompt,
   hasAnyStruggleSignal,
+  markHit,
   openDb,
   readSessionSignals,
   stopReminderText,
@@ -70,7 +71,16 @@ function searchCaveatsFromTextSafely(text: string): SearchResult[] {
     const ctx = buildContextSafely();
     if (!ctx || !existsSync(ctx.paths.dbPath)) return [];
     db = openDb({ path: ctx.paths.dbPath });
-    return findCaveatsForPrompt(db, text);
+    const hits = findCaveatsForPrompt(db, text);
+    if (hits.length > 0) {
+      try {
+        markHit(db, hits);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`[caveat:hook] markHit error: ${msg}\n`);
+      }
+    }
+    return hits;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[caveat:hook] search error: ${msg}\n`);

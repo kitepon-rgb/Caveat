@@ -7,6 +7,7 @@ import { runInit, runUninstall } from './commands/init.js';
 import { runIndex } from './commands/indexCmd.js';
 import { runSearch } from './commands/search.js';
 import { runList } from './commands/list.js';
+import { runStale } from './commands/stale.js';
 import { runShow } from './commands/show.js';
 import { runStats } from './commands/stats.js';
 import { runServe } from './commands/serve.js';
@@ -92,6 +93,21 @@ program
   .action((opts: { recent: number }) => {
     const ctx = buildContext(stdoutLogger);
     runList(ctx, { limit: opts.recent });
+  });
+
+program
+  .command('stale')
+  .description(
+    'List entries not surfaced by retrieval for N days (default 90). Use this to find private caveats that may be buried — if a 3-month-old private entry never surfaces, rewrite its body to include repo-specific identifiers, or delete it.',
+  )
+  .option('--days <n>', 'age threshold in days', (v) => Number(v), 90)
+  .option('--visibility <v>', 'public | private')
+  .option('--limit <n>', 'max rows', (v) => Number(v), 50)
+  .action((opts: { days: number; visibility?: string; limit: number }) => {
+    const ctx = buildContext(stdoutLogger);
+    const vis =
+      opts.visibility === 'public' || opts.visibility === 'private' ? opts.visibility : undefined;
+    runStale(ctx, { days: opts.days, visibility: vis, limit: opts.limit });
   });
 
 program

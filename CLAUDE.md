@@ -4,6 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクトの状態
 
+**v0.11.0**（2026-04-23、203 tests passing）。**Private tier 拡張 — Caveat の対象を「第三者の外部仕様の罠」だけから「コード読解では復元できない repo 固有文脈」まで広げる**。
+- v0.6.2 の「visibility は必ずユーザに聞け、自動分類禁止」は廃案。`caveat_record` / `caveat_update` は二項基準で自動判定する: 第三者が再現できる罠なら `public`、repo 固有 / 独自設計 / このプロジェクトでしか起きない文脈なら `private`、迷ったら `private`。ただしユーザ明示依頼（「これは private で記録して」等）は自動判定に優先
+- **検索層の切替はしない**。2 語共起ルールを両層で統一。本文語彙が自然に仕分ける（public は外部ツール名、private は repo 固有識別子）
+- **`caveat_search` に visibility 3 択**（`'public' | 'private' | 'all'`、default: 全部）を追加。Claude が自発的に絞りたい時のみ使う
+- **schema v2**: `entries.last_hit_at` カラム追加。検索ヒット後に `markHit(db, hits)` で時刻更新。既存 v1 DB は `migrations/002_last_hit_at.sql` で自動 migration
+- **`caveat stale` CLI 新規**: 最後浮上から N 日（default 90）経ったエントリ一覧、`--visibility private` で絞れる。月次点検で埋もれ検出 → 本文書き直し or 削除の判断材料
+- **Stop hook リマインダ拡張**: 分類ヒント（WebSearch/WebFetch あり→ public 寄り / なし→ private 寄り）と二項基準の一言を追加
+- 詳細: [docs/private-tier-design.md](docs/private-tier-design.md)（設計思想）、[docs/private-tier-implementation.md](docs/private-tier-implementation.md)（実装計画）
+
 **v0.10.0**（2026-04-22、192 tests passing）。**実行中発火（PostToolUse hook）を追加、3 発火点の非同期アーキテクチャに**。tool_response が `is_error: true` のとき前景 hook は「pending queue の drain + 検索タスクの detached worker spawn」を ~20ms で返し、worker が非同期に FTS を走らせて pending ファイルに reminder を書き込む → 次の hook 呼び出しで drain されて Claude のコンテキストに載る。ユーザー応答はブロックしない。詳細は下記「Claude Code Hook の実装」節。
 
 **v0.9.0**（2026-04-22）。**事後発火（Stop hook）を signal-based gate + co-occurrence FTS に刷新**。transcript JSONL を解析して tool failure / 同一ファイル複数編集 / WebSearch / WebFetch / Bash 再実行 の客観シグナルを抽出 → いずれか 1 つでも観測されたら発火（閾値チューニング不要）。発火時はリマインダに具体的シグナル数値 + error message / 検索クエリを元に co-occurrence FTS した既存罠を埋め込み、`caveat_update` or `caveat_record` の判断材料を渡す。無自覚に乗り越えたケースも transcript の fingerprint で拾える。
@@ -28,7 +37,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```sh
 corepack pnpm install                              # workspace 依存をインストール
-corepack pnpm --filter @caveat/core test           # core tests（89 tests）
+corepack pnpm --filter @caveat/core test           # core tests（144 tests）
 corepack pnpm --filter @caveat/core build          # tsup + schema.sql / migrations を dist へコピー
 corepack pnpm --filter caveat-cli test             # CLI smoke + installer tests（10 tests）
 corepack pnpm --filter caveat-cli build            # CLI ビルド（bundle + workspace deps noExternal + dist/caveat.js 生成）
@@ -102,6 +111,8 @@ MCP stdio サーバは stdout に JSON-RPC 以外を書いてはいけない。`
   - `caveat hook <user-prompt-submit|stop>` — `@caveat/core` の `claudeHooks.ts` を使って stdin JSON を読み、該当時のみ `<system-reminder>` を stdout に出す
   - `caveat init [--skip-claude] [--dry-run]` — Claude Code に MCP + hooks を登録（詳細下）
   - `caveat uninstall [--dry-run]` — 登録を解除
+- v0.11 で追加されたサブコマンド:
+  - `caveat stale [--days N] [--visibility public|private] [--limit N]` — 最後に検索で拾われてから N 日（default 90）経ったエントリを一覧。埋もれた private の月次点検用途
 - **`paths.ts` / `config.ts` は `packages/core`**。`import { findCaveatHome, loadConfig, resolvePaths, ... } from '@caveat/core'`（旧 `findToolRoot` / `loadConfigFromPaths` は削除済）
 - **default 設定は `packages/core/src/config.ts` 内の `DEFAULT_CONFIG` 定数**。`config/default.json` は Phase 12 で削除。`knowledgeRepo` default は `'own'`（caveatHome 相対）
 
@@ -131,6 +142,16 @@ MCP stdio サーバは stdout に JSON-RPC 以外を書いてはいけない。`
 - [apps/mcp/src/registerTools.ts](apps/mcp/src/registerTools.ts) が `McpServer#registerTool` に全 tool を接続。戻り値は `JSON.stringify(data, null, 2)` を `content[0].text` で返す統一形
 - [apps/mcp/src/server.ts](apps/mcp/src/server.ts) が stdio エントリ。`buildMcpContext()` で `stderrLogger` 注入（stdout は JSON-RPC 専用）。SIGINT/SIGTERM で `db.close()`
 - **MCP の書き込み系ツール（`caveat_record` / `caveat_update`）は `@caveat/core` の `recordEntry` / `updateEntry` を呼ぶ**。core が md 書き出し + 同プロセス upsert を一体で行うので、直後の `caveat_search` で新規行が拾える
+- **visibility の自動分類（v0.11）**: `caveat_record` / `caveat_update` の `visibility` は zod description の二項基準（第三者再現性）で Claude が自動判定する。v0.6.2 の「必ずユーザに聞け」は廃案。ユーザ明示依頼（「これは private で記録して」等）は自動判定に優先
+- **visibility 3 択絞り込み（v0.11）**: `caveat_search` の `filters.visibility` に `'public' | 'private' | 'all'` を expose。省略時は全部。Hook 発の自動 surface はフラットのまま（絞らない）で、Claude が自発的に狙い撃ちしたい時のみ narrow する用途
+
+## last_hit_at と caveat stale（v0.11、schema v2）
+
+- `entries.last_hit_at TEXT`（nullable）を v2 で追加。検索で拾われるたびに ISO timestamp で UPDATE される
+- **検索は pure、markHit で副作用分離**: [packages/core/src/markHit.ts](packages/core/src/markHit.ts) の `markHit(db, keys: Array<{id, source}>)` が時刻更新のみ担当。`search()` / `findCaveatsForPrompt()` 本体は副作用なし
+- 呼び出し元: [apps/cli/src/commands/hookCmd.ts](apps/cli/src/commands/hookCmd.ts) の `searchCaveatsFromTextSafely` と [apps/mcp/src/tools/search.ts](apps/mcp/src/tools/search.ts) の `handleSearch` が検索結果が 0 件超の時のみ markHit を呼ぶ
+- **migration 002**: 既存 v1 DB は `packages/core/src/migrations/002_last_hit_at.sql` の `ALTER TABLE entries ADD COLUMN last_hit_at TEXT` で自動 v2 化
+- **`caveat stale` CLI**: [apps/cli/src/commands/stale.ts](apps/cli/src/commands/stale.ts) が `listStale(db, { days, visibility, limit })` を呼び出す。デフォルト 90 日、`--visibility private` で private だけに絞れる。月次点検で埋もれた private を発見する用途
 
 ## tsup / esbuild の罠
 

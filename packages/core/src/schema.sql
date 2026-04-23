@@ -1,4 +1,4 @@
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;
 
 CREATE TABLE entries (
   rowid INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -13,6 +13,7 @@ CREATE TABLE entries (
   visibility TEXT,
   file_mtime TEXT NOT NULL,
   indexed_at TEXT NOT NULL,
+  last_hit_at TEXT,
   UNIQUE (source, id)
 );
 

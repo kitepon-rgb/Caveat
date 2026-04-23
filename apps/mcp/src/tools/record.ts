@@ -16,7 +16,14 @@ export const recordInputShape = {
   confidence: confidenceSchema.optional(),
   outcome: outcomeSchema.optional(),
   visibility: visibilitySchema.describe(
-    'REQUIRED. Ask the user "public (share to community) or private (keep local only)?" before calling — never auto-classify. The user owns the knowledge; they decide its reach.',
+    [
+      'REQUIRED. Classify using this binary criterion:',
+      "- 'public' if a third party running the same external tool/spec could reproduce this gotcha (external-spec trap, e.g. PyInstaller/Stripe/Podman/Claude Code hook behavior).",
+      "- 'private' if it is specific to your repo, your workflow, an intentional non-standard design, or context that only exists in this project.",
+      "- When unclear, prefer 'private' (leak-safety).",
+      'Exception: if the user explicitly asks to record it as private/public (e.g. "save this as private", "これは自分用にメモして"), follow the user\'s instruction regardless of the criterion — explicit user intent overrides auto-classification.',
+      "When recording with visibility: 'private', always include repo-specific identifiers (function names, file paths, class names, custom terminology) in the body so the entry can be retrieved later by co-occurrence FTS when you touch that area again.",
+    ].join(' '),
   ),
   tags: z.array(z.string()).optional(),
   environment: z.record(z.string(), z.string()).optional(),

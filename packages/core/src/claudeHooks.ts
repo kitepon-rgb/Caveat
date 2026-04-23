@@ -220,6 +220,15 @@ export function stopReminderText(
     lines.push(`- 経過時間: ${signals.durationMinutes} 分`);
   }
 
+  const externalLookup = signals.webSearchCount + signals.webFetchCount > 0;
+  lines.push(
+    `- 分類ヒント: ${
+      externalLookup
+        ? '外部仕様調査あり → public 寄り'
+        : '外部調査なし → private 寄り'
+    }`,
+  );
+
   lines.push('');
 
   if (related.length > 0) {
@@ -238,6 +247,9 @@ export function stopReminderText(
       '既存罠に該当なし。外部仕様の罠に苦戦していたなら mcp__caveat__caveat_record で登録してください。outcome: impossible も記録対象。',
     );
   }
+  lines.push(
+    '記録時は tool 説明の二項基準で visibility を選ぶ（public = 第三者再現可能 / private = repo 固有）。迷ったら private。',
+  );
 
   return lines.join('\n');
 }

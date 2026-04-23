@@ -2,6 +2,42 @@
 
 All notable changes are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] — 2026-04-23
+
+### Changed (BREAKING)
+- **`caveat_record` visibility is now auto-classified by Claude, not asked every time.** The v0.6.2 rule "AI must ASK the user public/private before every call — never auto-classify" is retired. The tool description in `caveat_record` / `caveat_update` now carries a binary criterion: `public` if a third party running the same external tool/spec could reproduce the gotcha, `private` if the trap is specific to your repo / workflow / intentional non-standard design / cross-project personal context. When unclear, prefer `private` (leak-safety). Explicit user instruction ("record this as private", "これは自分用にメモして") always overrides the automatic classification. Rationale: quo's 50 recorded entries at v0.10 classified cleanly under this criterion without human-in-the-loop overhead, and the mandatory-asking pattern was blocking the `private` tier from ever accumulating (cold-start problem). See [docs/private-tier-design.md](docs/private-tier-design.md) for the full argument.
+
+### Added
+- **Private tier as a first-class target.** Caveat's scope widens from "external spec gotchas only" to "also repo-specific non-obvious context that code reading cannot reconstruct" (behavior that looks wrong but is intentional, workarounds that survive until upstream is fixed, cross-project conventions). Private entries live alongside public ones in `~/.caveat/own/` but the pre-commit visibility gate keeps them out of any shared git repo. Retrieval is deliberately flat — no source-tier filter switch at search time — because body vocabulary naturally segregates the two (public entries contain external tool names; private entries contain repo-specific identifiers). The 2-token co-occurrence FTS rule stays uniform across tiers.
+- **`caveat_search` filter: `visibility: 'public' | 'private' | 'all'`.** Optional, defaults to both. Hook-triggered retrieval (`UserPromptSubmit` / `PostToolUse` / `Stop`) stays flat; this filter is for cases where Claude explicitly narrows, e.g. when drafting externally-visible output and wants to exclude private notes from the signal pool.
+- **`entries.last_hit_at` column (schema v2).** Every time an entry surfaces via retrieval (hook reminder or `caveat_search`), its `last_hit_at` is written with the current timestamp. Exposed via `markHit(db, keys)` in `@caveat/core` so the search path stays pure. Existing v1 databases auto-migrate on next `openDb` via `migrations/002_last_hit_at.sql`.
+- **`caveat stale` CLI subcommand.** `caveat stale [--days N] [--visibility public|private] [--limit N]` lists entries that haven't been surfaced by retrieval for N days (default 90). Primary use: monthly review of private entries — if a 3-month-old private entry never surfaces, its body likely lacks the repo-specific identifiers it needs to co-occur with relevant prompts, so rewrite or delete.
+- **Stop-hook reminder: classification hint.** When the Stop hook fires, the reminder now includes a one-line hint based on objective signals: "外部仕様調査あり → public 寄り" when the session used `WebSearch` or `WebFetch`, otherwise "外部調査なし → private 寄り". Plus a reminder to pick visibility per the `caveat_record` binary criterion. The machine never decides — the hint is input for Claude's judgment.
+- **`caveat_record` description: write-style guidance for private entries.** The tool description now instructs: when recording with `visibility: private`, always include repo-specific identifiers (function names, file paths, class names, custom terminology) in the body so the entry can be retrieved by co-occurrence FTS when you touch that area again. Without this, private entries get buried under the 2-token co-occurrence rule.
+
+### Changed
+- **Total test count: 192 → 203** (+5 `markHit`, +2 schema v2 / migration, +5 `stale`, +1 integration). All tests green across 5 workspace packages.
+
+### Deferred
+- **Cross-machine private sync.** The pre-commit visibility gate still blocks `visibility: private` from being committed to `~/.caveat/own/`'s git remote, which means private entries currently live only on one machine. A separate private repo (with its own remote) is the expected path for multi-machine use but is not implemented in v0.11 — this is fine for single-machine operation, revisit when a concrete multi-machine need arises.
+
+## [0.10.0] — 2026-04-22
+
+### Added
+- **PostToolUse hook (実行中発火) with async detached-worker pipeline.** Fires after every `tool_response: { is_error: true }`. The foreground hook does only two things — drain any pending reminders from prior workers and spawn a detached worker — and returns in ~20ms so Claude Code's turn latency is unaffected. The worker runs the co-occurrence FTS asynchronously and writes a reminder to a per-session pending file; the next hook invocation (which could be another PostToolUse or the next UserPromptSubmit) drains and emits it. Reference: `packages/core/src/pendingReminders.ts`, `apps/cli/src/commands/hookCmd.ts::runWorker`.
+- **Symmetric 3-firing-point architecture.** Pre-fire (UserPromptSubmit) / mid-fire (PostToolUse async) / post-fire (Stop transcript-signal + FTS) all reuse `findCaveatsForPrompt`'s co-occurrence logic with different text inputs (prompt / tool error / aggregated session signals).
+- `claudeInstall.ts` auto-registers `PostToolUse` alongside existing `UserPromptSubmit` and `Stop` entries on `caveat init`.
+
+## [0.9.0] — 2026-04-22
+
+### Changed
+- **Stop hook (事後発火) rewritten from "always fire + generic reminder" to signal-gated + co-occurrence FTS.** The hook now parses the session transcript JSONL (`readSessionSignals`) and fires only when at least one objective struggle signal is present: `toolFailureCount > 0`, repeated same-file edits, `webSearchCount > 0`, `webFetchCount > 0`, or `bashRetryCount > 0`. No threshold tuning (0-or-1 gate). When firing, the reminder embeds the concrete signal numbers plus any existing caveats whose content co-occurs with the session's error snippets / search queries, nudging either `caveat_update` (if a match) or `caveat_record` (if new). Catches struggle the AI didn't self-report.
+
+## [0.8.0] — 2026-04-22
+
+### Changed
+- **UserPromptSubmit hook (事前発火) rewritten from keyword-allowlist to co-occurrence FTS.** Tokenizes the prompt, runs a per-token FTS5 query, and counts how many distinct tokens co-occur in each entry. Only entries matching ≥ 2 distinct tokens are surfaced. No hardcoded keyword/stopword lists — a new gotcha category just needs a new `entries/*.md` file and the trigger self-extends. Rule design: a single common word like `make` / `new` can't fire a match on its own, but two+ technical tokens co-occurring in the same entry will. See [docs/plan.md#phase-15](docs/plan.md) and `feedback_no_hardcoded_lists` memory.
+
 ## [0.7.0] — 2026-04-19
 
 ### Removed (BREAKING)

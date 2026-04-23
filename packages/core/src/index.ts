@@ -14,3 +14,5 @@ export * from './community.js';
 export * from './claudeHooks.js';
 export * from './transcriptSignals.js';
 export * from './pendingReminders.js';
+export * from './markHit.js';
+export * from './stale.js';

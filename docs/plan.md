@@ -431,6 +431,17 @@ caveat nlm-brief <topic>              # ターミナルから brief 生成
     - claudeInstall.ts を拡張し PostToolUse も `caveat init` で自動登録。既存インストールは `caveat init` 再実行で picks up
     - 実機検証: non-error 系 tool で 170-200ms typical / error 系で同等(worker は detached、前景は enqueue のみ) / worker が pending file 書き込み → 次 hook で drain → Claude が reminder を受け取る全経路を確認済
 
+18. **Private tier 拡張 — Caveat の対象を「外部仕様の罠」から「コード読解では復元できない文脈」まで広げる** ✅ 完了（2026-04-23、v0.11）。背景・論拠・設計の全容は [private-tier-design.md](private-tier-design.md) と [private-tier-implementation.md](private-tier-implementation.md) に集約、以下は要約:
+    - **v0.6.2 の「visibility は必ずユーザに聞け、自動分類禁止」を廃案**。`caveat_record` / `caveat_update` は以下の二項基準で自動判定する: 同じ外部ツール / 仕様に触れた第三者が再現できる罠なら `public`、repo 固有 / 独自設計 / このプロジェクトでしか起きない文脈なら `private`、迷ったら `private`（漏洩防止）。ただしユーザ明示依頼（「これは private で記録して」等）が自動判定に優先
+    - **検索側にはフィルタ切替を入れない**: public / private で検索層を切り分けない。2 語共起ルールは両層で統一。本文の語彙が自然に仕分ける（public は外部ツール名 / API を含み、private は repo 固有識別子を含むため、プロンプトとの共起が自動で層を選ぶ）
+    - **書き方の誘導**: private 記録時は本文に repo 固有識別子（関数名・ファイルパス・クラス名）を必ず含める、を `caveat_record` のツール説明に明記。これが埋もれ回避の唯一の手段
+    - **Stop hook のリマインダ拡張**: 分類ヒント（WebSearch / WebFetch あり → public 寄り、なし → private 寄り）と二項基準の一言を追加。判定は最終的に Claude が行う、機械は決めつけない
+    - **`caveat_search` ツールに visibility 3 択を追加**: `'public' | 'private' | 'all'`（default: 省略で全部）。hook 発の自動 surface は従来通りフラット、Claude が自発的に狙い撃ちしたい時のみ絞る
+    - **`entries.last_hit_at` 追加（schema v2）**: 各エントリに「最後に検索で拾われた時刻」を記録。検索は pure のまま、時刻更新は `markHit(db, keys)` に分離。Hook 側（`searchCaveatsFromTextSafely`）と MCP `handleSearch` の両方で retrieval 後に markHit を呼ぶ
+    - **`caveat stale` CLI サブコマンド新規**: 最後浮上から N 日（default 90）経ったエントリを一覧。`--visibility private` で絞れる。月次点検で埋もれた private を発見し、本文を書き直す or 削除する判断材料
+    - **migration**: 既存 v1 DB には `002_last_hit_at.sql` で `ALTER TABLE entries ADD COLUMN last_hit_at TEXT` を自動適用
+    - **未実装**: private のマシン跨ぎ sync。現状の pre-commit visibility gate が private commit を弾く。1 台運用の間は保留、複数マシン運用が要る時点で private 専用 repo 分離 or gate 調整を検討
+
 ## 検証
 
 - `pnpm install && pnpm -r build`

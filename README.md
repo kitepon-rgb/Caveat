@@ -5,9 +5,11 @@
 [![license](https://img.shields.io/npm/l/caveat-cli?color=blue)](LICENSE)
 [![node](https://img.shields.io/node/v/caveat-cli?color=339933&logo=node.js&logoColor=white)](https://nodejs.org/)
 
-External spec gotcha knowledge base. Accumulate the "traps" of GPU drivers, IDE quirks, Claude Code hook availability, and tool version constraints so you don't rediscover them.
+External spec gotcha knowledge base. Accumulate the "traps" of GPU drivers, IDE quirks, Claude Code hook availability, tool version constraints, AND your own repo-specific non-obvious context (v0.11) so you don't rediscover them.
 
-**Status**: v0.10.0. **Personal / group knowledge tool — no central shared DB.** Each user writes to their own `~/.caveat/own/`. To share with teammates, push to a group git repo (private or public) and have others subscribe with `caveat community add <repo-url>`. 192 tests passing.
+**Status**: v0.11.0. **Personal / group knowledge tool — no central shared DB.** Each user writes to their own `~/.caveat/own/`. To share with teammates, push to a group git repo (private or public) and have others subscribe with `caveat community add <repo-url>`. 203 tests passing.
+
+> **v0.11 scope expansion**: Caveat now stores two tiers. **Public** entries are external-spec gotchas that any third party can reproduce. **Private** entries are your own cross-project notes (repo-specific behavior, intentional non-standard design, context that only exists in your workflow). Classification is automatic via a binary criterion on `caveat_record` — explicit user instruction ("record this as private") always wins. Hook-triggered retrieval searches both tiers uniformly; body vocabulary naturally separates them. `caveat stale` surfaces entries not hit by retrieval for 90+ days so you can rewrite or delete buried private notes. See [docs/private-tier-design.md](docs/private-tier-design.md) for the full rationale.
 
 > **v0.7 pivot**: previous versions ran a central shared community DB with `caveat push` (fork + PR) and an auto-subscribe on `caveat init`. That model was retired because trust over arbitrary stranger contributions cannot be reliably automated — sophisticated malicious payloads survive static gates and adversarial-gradient attacks against any LLM-based oracle. Trust is now defined socially (you, your team, your org). See [docs/plan.md](docs/plan.md) for the full rationale and [docs/archive/auto-merge-design.md](docs/archive/auto-merge-design.md) for the abandoned auto-merge design.
 
@@ -29,8 +31,8 @@ packages/core/        @caveat/core — DB (node:sqlite + FTS5 trigram), indexer,
                       env fingerprint, repository, record/update, community, paths,
                       Claude Code hook logic (claudeHooks.ts)
 apps/cli/             caveat-cli (published to npm) — bundled CLI with subcommands:
-                        init / uninstall / index [--full] / search / list / show / stats /
-                        serve / mcp-server / hook <name> / community add|pull|list
+                        init / uninstall / index [--full] / search / list / stale / show /
+                        stats / serve / mcp-server / hook <name> / community add|pull|list
 apps/mcp/             @caveat/mcp — stdio MCP server exposing 6 tools via
                       @modelcontextprotocol/sdk. Imported by caveat-cli as `mcp-server`
 apps/web/             @caveat/web — Hono SSR read-only share portal (/, /g/:id, /community) +
@@ -179,7 +181,7 @@ See [docs/plan.md](docs/plan.md) for the full schema, semver matching rules, and
 ## Development
 
 ```sh
-corepack pnpm -r test            # 192 tests across 5 packages
+corepack pnpm -r test            # 203 tests across 5 packages
 corepack pnpm -r typecheck
 corepack pnpm -r build
 ```

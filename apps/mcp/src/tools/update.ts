@@ -10,7 +10,15 @@ const patchFrontmatterSchema = z.object({
   title: z.string().optional(),
   confidence: confidenceSchema.optional(),
   outcome: outcomeSchema.optional(),
-  visibility: visibilitySchema.optional(),
+  visibility: visibilitySchema
+    .optional()
+    .describe(
+      [
+        "Change the publish tier. Use the same binary criterion as caveat_record:",
+        "'public' if third-party reproducible, 'private' if repo-specific/your-workflow-specific.",
+        "When unclear, prefer 'private'. Explicit user instruction overrides auto-classification.",
+      ].join(' '),
+    ),
   tags: z.array(z.string()).optional(),
   environment: z.record(z.string(), z.string()).optional(),
   last_verified: z.string().optional(),
