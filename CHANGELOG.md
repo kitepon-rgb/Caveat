@@ -2,6 +2,11 @@
 
 All notable changes are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] — 2026-04-23
+
+### Fixed
+- **`package.json` `bin.caveat` path.** Removed the leading `./` from `"./dist/caveat.js"` so `npm publish` no longer emits `bin[caveat] script name ... was invalid and removed`. No behavioral change — npm was already normalizing the path at publish time, so installed 0.11.0 works correctly. This is a source-cleanup patch.
+
 ## [0.11.0] — 2026-04-23
 
 ### Changed (BREAKING)

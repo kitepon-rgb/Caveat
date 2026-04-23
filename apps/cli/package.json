@@ -1,6 +1,6 @@
 {
   "name": "caveat-cli",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "External spec gotcha knowledge base CLI (markdown + SQLite FTS5 + MCP + Claude Code hooks)",
   "keywords": [
     "caveat",
@@ -25,7 +25,7 @@
     "node": ">=22.5"
   },
   "bin": {
-    "caveat": "./dist/caveat.js"
+    "caveat": "dist/caveat.js"
   },
   "files": [
     "dist",
