@@ -207,12 +207,12 @@ MCP stdio サーバは stdout に JSON-RPC 以外を書いてはいけない。`
   - pending ファイルはセッション id でディレクトリ分離 ([packages/core/src/pendingReminders.ts](packages/core/src/pendingReminders.ts))。`session_id` は `[^A-Za-z0-9_-]` を strip してサニタイズ、traversal 攻撃を防ぐ
   - 結果として reminder は **エラー発生の次の hook tick で Claude のコンテキストに載る**（最短で次の tool 呼び出し、最悪でも user prompt 直前）。Claude は新しいエラーを見る前後のタイミングで「このエラーは既知罠 XYZ」を認識できる
   - セッション跨ぎの pending 蓄積: `caveat init` で pending dir を cleanup する処理は未実装（TODO）。現状は session 別ディレクトリが貯まるだけで実害なし
-- **Phase 6 の legacy `.mjs` ファイル** ([hooks/user-prompt-submit.mjs](hooks/user-prompt-submit.mjs) / [hooks/stop.mjs](hooks/stop.mjs)) は旧キーワード allowlist 実装のまま dev-mode 参照として残している。NPM 配布した `caveat` コマンド経由では使われない（`caveat init` が登録するのは `caveat hook <name>` の新経路）
+- **Phase 6 の legacy `.mjs` ファイル**（`hooks/user-prompt-submit.mjs` と `hooks/stop.mjs`）は v0.11.2 で削除済。NPM 配布した `caveat` コマンド経由では `caveat hook <name>` の新経路だけが使われるため、旧キーワード allowlist 実装の dev-mode 参照は不要になった。`hooks/pre-commit-visibility-gate.mjs` は `.husky/pre-commit` から exec される現役のため残置
 
 ### Git pre-commit visibility gate（Phase 7）
 
 - [.husky/pre-commit](.husky/pre-commit) — Husky 9 が `core.hooksPath=.husky` を設定すれば git commit 時に自動発火。内容は `hooks/pre-commit-visibility-gate.mjs` を exec するだけの 1 行
-- [hooks/pre-commit-visibility-gate.mjs](hooks/pre-commit-visibility-gate.mjs) — staged `entries/**/*.md` を `git diff --cached --diff-filter=ACMR` で列挙、`git show :<path>` で index 版（working tree でなく）を取得、`@caveat/core` の `parseMarkdown` で frontmatter 解析、`visibility: private` があれば blocked 一覧 + 修正案を stderr に出して exit 1
+- [hooks/pre-commit-visibility-gate.mjs](hooks/pre-commit-visibility-gate.mjs) — staged `entries/**/*.md` を `git diff --cached --diff-filter=ACMR` で列挙、`git show :<path>` で index 版（working tree でなく）を取得、`@caveat/core` の `findBlockedFiles`（内部で `parseMarkdown`）で frontmatter を解析、`visibility: private` があれば blocked 一覧 + 修正案を stderr に出して exit 1
 - **非 git ディレクトリや staged 対象なしは exit 0**。false-block を回避（`feedback_no_unnecessary_fallbacks` の範囲内、必要最小のガード）
 - 緊急バイパスは `git commit --no-verify`（git 標準）。カスタム escape hatch は作らない
-- `findBlockedFiles(stagedContents)` を export して unit テスト可能にしてある
+- `findBlockedFiles(stagedContents)` は v0.11.2 で `@caveat/core/visibilityGate` に移動済。`hooks/pre-commit-visibility-gate.mjs` は core から import して re-export する薄いラッパ。test (`hooks/tests/pre-commit-gate.test.ts`) も `@caveat/core` から import するので、`.mjs` を vitest が直接 transform する経路を取らない（Windows + vitest で日本語含む `.mjs` の transform が `SyntaxError: Invalid or unexpected token` で落ちる CI 問題の構造的回避）

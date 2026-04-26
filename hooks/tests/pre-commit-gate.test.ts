@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { findBlockedFiles } from '../pre-commit-visibility-gate.mjs';
+import { findBlockedFiles } from '@caveat/core';
 
 const GATE = join(
   dirname(fileURLToPath(import.meta.url)),

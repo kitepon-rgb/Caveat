@@ -5,25 +5,9 @@
 // Output contract: exit 0 on pass, exit 1 on block with stderr explanation.
 
 import { execFileSync } from 'node:child_process';
-import { parseMarkdown } from '@caveat/core';
+import { findBlockedFiles } from '@caveat/core';
 
-export function findBlockedFiles(stagedContents) {
-  const blocked = [];
-  for (const { path, content } of stagedContents) {
-    let fm;
-    try {
-      fm = parseMarkdown(content).frontmatter;
-    } catch {
-      // Unparseable frontmatter: do not block here (let the md itself flag
-      // the issue on caveat index). Gate only catches explicit private markers.
-      continue;
-    }
-    if (fm && fm.visibility === 'private') {
-      blocked.push(path);
-    }
-  }
-  return blocked;
-}
+export { findBlockedFiles };
 
 function listStagedMarkdown() {
   const raw = execFileSync(

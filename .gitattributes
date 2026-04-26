@@ -1,0 +1,18 @@
+# Force LF line endings for all text files in repo and on checkout.
+# Without this, Windows clients with core.autocrlf=true convert LF to CRLF
+# and CI runners may see unexpected encoding issues on .mjs / .ts files.
+* text=auto eol=lf
+
+# Binary types should not be normalized.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tgz binary
+*.db binary
+*.sqlite binary
+*.sqlite3 binary

@@ -83,8 +83,8 @@ apps/mcp/             @caveat/mcp — stdio MCP server exposing 6 tools via
                       @modelcontextprotocol/sdk. Imported by caveat-cli as `mcp-server`
 apps/web/             @caveat/web — Hono SSR read-only share portal (/, /g/:id, /community) +
                       custom markdown-it wikilinks plugin for [[slug]] → /g/slug rendering
-hooks/                legacy standalone .mjs hooks (dev-mode fallback + spawn tests). NPM
-                      users hit `caveat hook <name>` via the CLI instead
+hooks/                pre-commit-visibility-gate.mjs (run by .husky/pre-commit) — thin
+                      re-export wrapper around @caveat/core's findBlockedFiles
 .husky/               git pre-commit wiring (husky 9)
 docs/plan.md          Design source of truth (audited through Round 5, then extended
                       Phase 2 → 12 with implementation findings)
