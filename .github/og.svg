@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#f78166"/>
+      <stop offset="100%" stop-color="#ea4aaa"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#21262d" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect width="1280" height="640" fill="url(#grid)" opacity="0.5"/>
+
+  <!-- left accent bar -->
+  <rect x="0" y="0" width="8" height="640" fill="url(#accent)"/>
+
+  <!-- main heading -->
+  <text x="80" y="180" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="96" font-weight="700" fill="#f0f6fc">Caveat</text>
+
+  <!-- subtitle -->
+  <text x="82" y="240" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="32" font-weight="500" fill="#8b949e">Stop rediscovering the same trap.</text>
+
+  <!-- divider -->
+  <rect x="80" y="280" width="80" height="3" fill="url(#accent)"/>
+
+  <!-- description -->
+  <text x="80" y="335" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="28" fill="#c9d1d9">Long-term memory layer for Claude Code.</text>
+  <text x="80" y="375" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="28" fill="#c9d1d9">Markdown-in-git source of truth, FTS5 retrieval,</text>
+  <text x="80" y="415" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="28" fill="#c9d1d9">3 hook firing points — auto-surfaces relevant gotchas.</text>
+
+  <!-- features row -->
+  <g font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="20" font-weight="500">
+    <rect x="80" y="480" width="220" height="48" rx="24" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+    <text x="190" y="510" text-anchor="middle" fill="#7ee787">MCP server</text>
+
+    <rect x="316" y="480" width="220" height="48" rx="24" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+    <text x="426" y="510" text-anchor="middle" fill="#79c0ff">3 Claude hooks</text>
+
+    <rect x="552" y="480" width="220" height="48" rx="24" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+    <text x="662" y="510" text-anchor="middle" fill="#d2a8ff">Obsidian-compatible</text>
+
+    <rect x="788" y="480" width="220" height="48" rx="24" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+    <text x="898" y="510" text-anchor="middle" fill="#ffa657">No central DB</text>
+  </g>
+
+  <!-- npm tag bottom right -->
+  <g font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace">
+    <text x="1200" y="600" text-anchor="end" font-size="22" fill="#6e7681">npm i -g caveat-cli</text>
+    <text x="1200" y="565" text-anchor="end" font-size="18" fill="#484f58">v0.11.1 · 203 tests passing</text>
+  </g>
+</svg>

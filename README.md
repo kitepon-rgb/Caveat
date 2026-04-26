@@ -1,17 +1,63 @@
+<p align="center">
+  <img src=".github/og.svg" alt="Caveat — long-term memory layer for Claude Code" width="100%">
+</p>
+
 # Caveat
 
 [![npm](https://img.shields.io/npm/v/caveat-cli?color=cb3837&label=caveat-cli)](https://www.npmjs.com/package/caveat-cli)
 [![CI](https://github.com/kitepon-rgb/Caveat/actions/workflows/ci.yml/badge.svg)](https://github.com/kitepon-rgb/Caveat/actions/workflows/ci.yml)
 [![license](https://img.shields.io/npm/l/caveat-cli?color=blue)](LICENSE)
 [![node](https://img.shields.io/node/v/caveat-cli?color=339933&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![GitHub release](https://img.shields.io/github/v/release/kitepon-rgb/Caveat?color=24292e&logo=github)](https://github.com/kitepon-rgb/Caveat/releases)
 
-External spec gotcha knowledge base. Accumulate the "traps" of GPU drivers, IDE quirks, Claude Code hook availability, tool version constraints, AND your own repo-specific non-obvious context (v0.11) so you don't rediscover them.
+> **Stop rediscovering the same trap.** Caveat is a long-term memory layer for Claude Code: every time you bleed for an external-spec quirk or a repo-specific oddity, write it down once — and the next time anyone (you or your AI) is about to step on the same rake, the relevant note surfaces automatically.
 
-**Status**: v0.11.0. **Personal / group knowledge tool — no central shared DB.** Each user writes to their own `~/.caveat/own/`. To share with teammates, push to a group git repo (private or public) and have others subscribe with `caveat community add <repo-url>`. 203 tests passing.
+🇯🇵 **日本語版**: [README.ja.md](README.ja.md)
 
-> **v0.11 scope expansion**: Caveat now stores two tiers. **Public** entries are external-spec gotchas that any third party can reproduce. **Private** entries are your own cross-project notes (repo-specific behavior, intentional non-standard design, context that only exists in your workflow). Classification is automatic via a binary criterion on `caveat_record` — explicit user instruction ("record this as private") always wins. Hook-triggered retrieval searches both tiers uniformly; body vocabulary naturally separates them. `caveat stale` surfaces entries not hit by retrieval for 90+ days so you can rewrite or delete buried private notes. See [docs/private-tier-design.md](docs/private-tier-design.md) for the full rationale.
+## What it does in 30 seconds
 
-> **v0.7 pivot**: previous versions ran a central shared community DB with `caveat push` (fork + PR) and an auto-subscribe on `caveat init`. That model was retired because trust over arbitrary stranger contributions cannot be reliably automated — sophisticated malicious payloads survive static gates and adversarial-gradient attacks against any LLM-based oracle. Trust is now defined socially (you, your team, your org). See [docs/plan.md](docs/plan.md) for the full rationale and [docs/archive/auto-merge-design.md](docs/archive/auto-merge-design.md) for the abandoned auto-merge design.
+```sh
+npm install -g caveat-cli
+caveat init                          # registers MCP server + 3 hooks with Claude Code
+```
+
+Then in any Claude Code session:
+
+1. **You type a prompt** → `UserPromptSubmit` hook tokenizes it, runs FTS5 against your knowledge repo, and surfaces every entry that shares **≥ 2 distinct tokens** with the prompt. No keyword allowlist; relevance comes from co-occurrence.
+2. **A tool returns an error** → `PostToolUse` hook spawns a detached worker that searches in the background; the matching caveat lands on the next tick (~20ms foreground latency).
+3. **The session ends** → `Stop` hook parses the transcript for objective struggle signals (tool failures, repeated edits, web searches, bash retries). If any are present, it nudges Claude to either `caveat_update` an existing entry or `caveat_record` a new one.
+
+The knowledge repo is plain markdown-in-git. Open it as an Obsidian vault. Share it as a team repo with `git push`. There is no central server — trust is defined **socially**, by who you choose to subscribe to via `caveat community add <github-url>`.
+
+## How it compares
+
+| | **Caveat** | `.cursorrules` / `CLAUDE.md` | RAG over docs | Notion / Obsidian (manual) |
+|---|---|---|---|---|
+| Surfaces context **automatically** | ✅ 3 hook firing points | ❌ always-on, fills context | ⚠️ on explicit query | ❌ manual recall |
+| Granular per-trap retrieval | ✅ FTS5 co-occurrence | ❌ monolithic file | ✅ embeddings | ❌ |
+| Source of truth | markdown-in-git | a single rules file | vector DB | proprietary |
+| Records new traps from session | ✅ via `caveat_record` MCP tool | ❌ | ❌ | manual |
+| Catches struggle the AI didn't self-report | ✅ transcript signal mining | ❌ | ❌ | ❌ |
+| Mixes external-spec gotchas with repo-specific context | ✅ public / private tiers | ⚠️ no separation | ⚠️ | ⚠️ |
+
+**Status**: v0.11.1, 203 tests passing. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install.
+
+<details>
+<summary><strong>Why no central shared DB?</strong> (v0.7 pivot)</summary>
+
+Earlier versions ran a central shared community DB with `caveat push` (fork + PR) and auto-subscribe on `caveat init`. That model was retired because trust over arbitrary stranger contributions cannot be reliably automated — sophisticated malicious payloads survive static gates and adversarial-gradient attacks against any LLM-based oracle. xz-utils-style long games are undetectable by static review. Trust is now defined socially (you, your team, your org). See [docs/plan.md](docs/plan.md) and the [abandoned auto-merge design](docs/archive/auto-merge-design.md).
+</details>
+
+<details>
+<summary><strong>What's a "private" entry?</strong> (v0.11 tier expansion)</summary>
+
+Two tiers, distinguished by **third-party reproducibility**:
+
+- **Public** — external-spec gotchas any third party running the same tool/spec can hit (GPU drivers, native-module builds, IDE quirks, version constraints).
+- **Private** — repo-specific non-obvious context that code reading alone cannot reconstruct (intentional non-standard behavior, workarounds awaiting upstream fixes, cross-project personal conventions).
+
+Classification is automatic via a binary criterion in the `caveat_record` tool description; explicit user instruction always overrides. The pre-commit visibility gate keeps `private` entries out of any shared git repo. Retrieval is deliberately flat — body vocabulary naturally segregates the tiers (public bodies contain external tool names; private bodies contain repo-specific identifiers). See [docs/private-tier-design.md](docs/private-tier-design.md).
+</details>
 
 ## Concept
 
