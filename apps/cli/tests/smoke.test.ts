@@ -90,9 +90,10 @@ describe('init', () => {
   });
 
   it('preserves existing user config content', async () => {
+    const customKnowledgeRepo = join(fx.root, 'custom-knowledge-repo');
     writeFileSync(
       join(fx.userHome, '.caveatrc.json'),
-      JSON.stringify({ knowledgeRepo: '/custom/path' }),
+      JSON.stringify({ knowledgeRepo: customKnowledgeRepo }),
       'utf-8',
     );
     const ctx = buildContext(silentLogger, { caveatHome: fx.caveatHome, userHome: fx.userHome });
@@ -101,7 +102,7 @@ describe('init', () => {
     const after = JSON.parse(readFileSync(join(fx.userHome, '.caveatrc.json'), 'utf-8')) as {
       knowledgeRepo: string;
     };
-    expect(after.knowledgeRepo).toBe('/custom/path');
+    expect(after.knowledgeRepo).toBe(customKnowledgeRepo);
   });
 });
 
