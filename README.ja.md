@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/og.svg" alt="Caveat — Claude Code のための長期記憶レイヤ" width="100%">
+  <img src=".github/og.png" alt="Caveat — Claude Code のための長期記憶レイヤ" width="100%">
 </p>
 
 # Caveat
@@ -58,6 +58,38 @@ caveat init                          # MCP サーバと 3 種の hook を Claude
 
 判定は `caveat_record` のツール記述に書かれた二項基準で Claude が自動分類します（ユーザの明示指示が最優先）。`.husky/pre-commit` のゲートが `visibility: private` のエントリを共有 repo にコミットさせない仕組み。検索は意図的にフラット — 本文の語彙が自然に仕分けます（public は外部ツール名、private は repo 固有識別子）。詳細は [docs/private-tier-design.md](docs/private-tier-design.md)。
 </details>
+
+## アーキテクチャ
+
+```mermaid
+flowchart LR
+    subgraph KB["ナレッジ repo (markdown-in-git)"]
+        MD["entries/*.md<br/>(public + private)"]
+    end
+
+    MD -->|caveat index| FTS[("SQLite + FTS5<br/>trigram")]
+
+    subgraph CC["Claude Code セッション"]
+        P["プロンプト送信"]
+        T["ツールエラー<br/>(is_error: true)"]
+        S["セッション終了<br/>(transcript signals)"]
+    end
+
+    P -.->|"UserPromptSubmit<br/>事前発火"| H1{"共起検索<br/>≥ 2 distinct tokens"}
+    T -.->|"PostToolUse<br/>実行中発火 ~20ms"| H2{"detached<br/>worker"}
+    S -.->|"Stop<br/>事後発火"| H3{"シグナル gate<br/>+ FTS"}
+
+    H1 --> FTS
+    H2 --> FTS
+    H3 --> FTS
+
+    FTS ==>|該当エントリ| R["&lt;system-reminder&gt;<br/>コンテキストに注入"]
+    R ==> CC
+```
+
+- **`markdown-in-git`** が真実の源。SQLite (FTS5 trigram) は再構築可能な派生 index で gitignore 済
+- 3 つの発火点 (UserPromptSubmit / PostToolUse / Stop) は **同じ共起 FTS ロジック** を異なる入力（プロンプト / ツールエラー / セッションシグナル）で再利用
+- マッチした既存エントリを `<system-reminder>` で Claude のコンテキストに注入 → AI が「このエラーは既知罠 XYZ」を認識できる
 
 ## クイックスタート（NPM ユーザ）
 

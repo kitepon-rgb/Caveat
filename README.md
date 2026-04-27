@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/og.svg" alt="Caveat — long-term memory layer for Claude Code" width="100%">
+  <img src=".github/og.png" alt="Caveat — long-term memory layer for Claude Code" width="100%">
 </p>
 
 # Caveat
@@ -60,6 +60,32 @@ Classification is automatic via a binary criterion in the `caveat_record` tool d
 </details>
 
 ## Concept
+
+```mermaid
+flowchart LR
+    subgraph KB["Knowledge repo (markdown-in-git)"]
+        MD["entries/*.md<br/>(public + private)"]
+    end
+
+    MD -->|caveat index| FTS[("SQLite + FTS5<br/>trigram")]
+
+    subgraph CC["Claude Code session"]
+        P["User prompt"]
+        T["Tool error<br/>(is_error: true)"]
+        S["Session end<br/>(transcript signals)"]
+    end
+
+    P -.->|"UserPromptSubmit<br/>事前発火"| H1{"co-occurrence<br/>≥ 2 distinct tokens"}
+    T -.->|"PostToolUse<br/>実行中発火 ~20ms"| H2{"async detached<br/>worker"}
+    S -.->|"Stop<br/>事後発火"| H3{"signal-gated<br/>+ FTS"}
+
+    H1 --> FTS
+    H2 --> FTS
+    H3 --> FTS
+
+    FTS ==>|matched entries| R["&lt;system-reminder&gt;<br/>injected into context"]
+    R ==> CC
+```
 
 - **`markdown-in-git` is the source of truth.** SQLite (FTS5 trigram) is a rebuildable derived index, gitignored.
 - **Per-group sharing via plain git.** Your `~/.caveat/own/` is yours. Share via any git repo (your own, a team's `acme-corp/caveats`, etc.). Subscribers add it with `caveat community add <github-url>`; updates flow via `caveat community pull`. The tool stays out of the publish path.

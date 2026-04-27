@@ -52,6 +52,6 @@
   <!-- npm tag bottom right -->
   <g font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace">
     <text x="1200" y="600" text-anchor="end" font-size="22" fill="#6e7681">npm i -g caveat-cli</text>
-    <text x="1200" y="565" text-anchor="end" font-size="18" fill="#484f58">v0.11.1 · 203 tests passing</text>
+    <text x="1200" y="565" text-anchor="end" font-size="18" fill="#484f58">markdown · git · MCP</text>
   </g>
 </svg>
