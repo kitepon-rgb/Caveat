@@ -2,6 +2,11 @@
 
 All notable changes are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.2] — 2026-05-02
+
+### Changed
+- **No-op release.** Verifies the publish pipeline (build → commit → push → `npm publish` → `npm i -g`) from the WSL2 host after migrating off Windows. No behavioral, schema, or API changes — installing 0.11.2 is equivalent to 0.11.1.
+
 ## [0.11.1] — 2026-04-23
 
 ### Fixed
