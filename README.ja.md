@@ -23,7 +23,7 @@ caveat init                          # MCP サーバと 3 種の hook を Claude
 
 これで Claude Code セッションの中で:
 
-1. **プロンプト送信時** → `UserPromptSubmit` hook がプロンプトを tokenize し、ナレッジ repo 全体に FTS5 をかけ、**3 段の構造的ゲートを全て通過したエントリ** だけを surface します: (a) **2 個以上の distinct グループが共起**、(b) **マッチしたトークンが entry の `## Symptom` セクションに少なくとも 1 つ出現** (title/tags だけの一致は不可)、(c) **そのトークンが corpus 内 DF が最小タイ** (= 最も具体的)。キーワード allowlist も stopword リストも持ちません — 固有名詞だけの言及は silent、症状語彙が来た時だけ発火する構造ルール。
+1. **プロンプト送信時** → `UserPromptSubmit` hook が **3 段の構造的ゲート**でマッチエントリを surface: 共起 + 症状セクション一致 + corpus-rarest anchor。キーワード allowlist も stopword リストもなし。固有名詞だけの言及 (`RTX 5090 CUDA で何かやってる`) は silent、症状語彙 (`cudaGetDeviceCount が 0 を返す`) で正解エントリだけ発火する。([詳細](CHANGELOG.md#0120--2026-05-04))
 2. **ツールがエラー返却したとき** → `PostToolUse` hook が detached worker を起動して非同期に検索。前景は ~20ms で返るのでターン遅延ゼロ、結果は次の hook tick で Claude のコンテキストに載ります。
 3. **セッション終了時** → `Stop` hook が transcript を解析し、客観的な「もがきシグナル」（ツール失敗、同一ファイル複数編集、Web 検索、Bash 再実行）を抽出。一つでも観測されれば、Claude に対して既存エントリの `caveat_update` か新規 `caveat_record` を促します。
 

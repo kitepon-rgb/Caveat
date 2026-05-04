@@ -23,7 +23,7 @@ caveat init                          # registers MCP server + 3 hooks with Claud
 
 Then in any Claude Code session:
 
-1. **You type a prompt** → `UserPromptSubmit` hook tokenizes it, runs FTS5 against your knowledge repo, and surfaces only entries that pass three structural gates: **(a) ≥ 2 distinct token groups co-occur**, **(b) at least one matched token lands in the entry's `## Symptom` section** (not just title/tags), and **(c) that token is on the corpus-rarest side**. No keyword allowlist, no stopword list — bare proper-noun mentions stay silent; the prompt has to use specific failure-state vocabulary before anything fires.
+1. **You type a prompt** → `UserPromptSubmit` hook surfaces matching entries via three structural gates: **co-occurrence + symptom-section match + corpus-rarest anchor**. No keyword lists. Bare proper-noun mentions (`RTX 5090 CUDA で何かやってる`) stay silent; specific failure vocabulary (`cudaGetDeviceCount が 0 を返す`) fires the right entry. ([details](CHANGELOG.md#0120--2026-05-04))
 2. **A tool returns an error** → `PostToolUse` hook spawns a detached worker that searches in the background; the matching caveat lands on the next tick (~20ms foreground latency).
 3. **The session ends** → `Stop` hook parses the transcript for objective struggle signals (tool failures, repeated edits, web searches, bash retries). If any are present, it nudges Claude to either `caveat_update` an existing entry or `caveat_record` a new one.
 
