@@ -1,4 +1,4 @@
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;
 
 CREATE TABLE entries (
   rowid INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -14,6 +14,14 @@ CREATE TABLE entries (
   file_mtime TEXT NOT NULL,
   indexed_at TEXT NOT NULL,
   last_hit_at TEXT,
+  -- title + tags + environment values, concatenated. Used at search time to
+  -- classify a matched token as "topical" (the prompt named the entry's
+  -- topic without describing the failure state).
+  topical_text TEXT,
+  -- The entry's `## Symptom` section content. A matched token here is
+  -- "situational" — the prompt is using failure-state vocabulary, not
+  -- merely naming the topic. Surface gate requires ≥ 1 situational match.
+  symptom_text TEXT,
   UNIQUE (source, id)
 );
 

@@ -2,6 +2,36 @@
 
 All notable changes are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] — 2026-05-04
+
+### Added (BREAKING for hook surfacing behavior)
+- **Section-aware role classification (schema v3).** Each entry gets two derived columns: `topical_text` (title + tags + environment values, joined) and `symptom_text` (the entry's `## Symptom` section body). Migration `003_section_roles.sql` auto-applies on next `openDb`; existing rows are backfilled in JS by re-deriving from stored body + frontmatter_json (`db.ts::backfillRoleTexts`).
+- **Situational gate.** `findCaveatsForPrompt` now requires that at least one matched prompt token land in the entry's `symptom_text`. Tokens that only land in title / tags / environment ("topical") are insufficient — they mean the prompt named the topic without describing the failure state. Rationale: a prompt like `RTX 5090 CUDA で何かやってる` is just naming the topic, not describing a failure; the user explicitly rejected such proper-noun-only matches.
+- **Rare-anchor (min-DF) gate.** Of the matched-in-symptom tokens, at least one must have the minimum document frequency among prompt tokens that exist in the corpus. Common tool-name tokens like `cuda` (high DF across CUDA-related entries) cannot satisfy on their own — only corpus-rare tokens (`cudaGetDeviceCount`, `SQLITE_READONLY`, ...) discriminate. Threshold-free; "rare" is structurally defined as "DF == min over valid prompt tokens".
+- **Filesystem path stripping.** `stripFsPaths` removes UNC / Windows drive / POSIX-absolute substrings before tokenization so the user's working directory does not bleed into the token stream and co-occur with caveat bodies that mention the same path components in their Evidence sections. URLs are preserved (the `/` after `:` is not whitespace-prefixed so the POSIX regex does not match into them).
+- **Self-identity token filter (env-derived).** `defaultSelfIdentityTokens()` returns the running user's OS username and the path components of `os.homedir()`. The CLI hook caller (`hookCmd.ts::searchCaveatsFromTextSafely`) passes this set to `findCaveatsForPrompt` to drop those tokens before counting. Structural (env-derived, not a hand list). The tool's own brand name (`caveat`) is intentionally NOT special-cased here — the rare-anchor gate handles brand-name noise structurally because brand tokens have high corpus DF.
+- **Pure-hiragana trigram filter.** CJK trigrams that are entirely hiragana (e.g., `してる`, `のまま`, `になっ`) are conjugational/particle glue that co-occurs with any Japanese body regardless of topic. Dropped at tokenization. Unicode-range based, no word list.
+- **CJK group deduplication.** Trigrams from the same whitespace-separated CJK run share a "group" id. The 2-of-N co-occurrence threshold counts distinct groups, not distinct trigrams. Prevents a 4-char Japanese phrase like `発生する` from auto-satisfying 2-of-N just by expanding into `発生す` + `生する`.
+- **Symptom-match word-boundary check.** ASCII / Latin tokens use a Unicode-aware word-boundary regex (`(?:^|[^\p{L}\p{N}])tok(?:[^\p{L}\p{N}]|$)`) when checking the situational gate so a prompt token like `CUDA` does NOT match `cudaGetDeviceCount` as a substring. CJK trigrams continue to use substring (the trigram itself is the lexical unit).
+
+### Changed
+- `findCaveatsForPrompt` signature gains `opts.selfIdentity?: Set<string>`. Library default is no filter; the CLI hook caller passes `defaultSelfIdentityTokens()`. Tests can override with `new Set()` for deterministic behavior across machines.
+- `extractPromptCandidates` now strips filesystem paths and pure-hiragana trigrams before returning. Existing tests updated.
+- `MIN_DISTINCT_TOKEN_MATCHES_CEILING` semantics changed from "distinct token matches" to "distinct group matches" (CJK trigrams from one source phrase = 1 group).
+- Total test count: 192 → 202 (+9 in `claudeHooks.test.ts` for path strip / situational / rare-anchor / CJK group dedup / hiragana filter / self-identity cases, +1 in `db.test.ts` for migration 003 + backfill verification).
+
+### Empirical effect (real corpus, ~250 own entries)
+| Prompt | Before v0.12 | After v0.12 |
+|---|---|---|
+| `\\wsl.localhost\Ubuntu-26.04\home\kite\projects\Chime で開発してるんだが、caveat 5 件無関係…` (meta-conversation) | 5 unrelated hits | **0** |
+| `RTX 5090 CUDA で何かやってる` (bare proper-noun) | 2 unrelated hits | **0** |
+| `RTX 5090 で cudaGetDeviceCount が 0 を返す` (specific symptom) | 1 hit (`rtx-5090-cuda`, correct) | **1** (same, correct) |
+| `docker bind mount で SQLITE_READONLY のクラッシュループ` | 5 hits (1 correct + 4 noise) | **1** (correct only) |
+| `多少単語が一致したからと言って…` (pure abstract conversation) | 5 unrelated hits | **0** |
+
+### Design philosophy
+"List で除外する" のではなく "構造で要求する" — the entire surfacing pipeline relies on Unicode ranges, regex shape, FTS5 spec, runtime env values, entry section structure, and corpus-derived DF. The only numeric constant is `2` (the minimum definition of co-occurrence). No hardcoded word lists, no magic thresholds. New gotcha categories self-extend by simply adding `entries/*.md`.
+
 ## [0.11.2] — 2026-05-02
 
 ### Changed

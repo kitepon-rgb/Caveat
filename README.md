@@ -23,7 +23,7 @@ caveat init                          # registers MCP server + 3 hooks with Claud
 
 Then in any Claude Code session:
 
-1. **You type a prompt** → `UserPromptSubmit` hook tokenizes it, runs FTS5 against your knowledge repo, and surfaces every entry that shares **≥ 2 distinct tokens** with the prompt. No keyword allowlist; relevance comes from co-occurrence.
+1. **You type a prompt** → `UserPromptSubmit` hook tokenizes it, runs FTS5 against your knowledge repo, and surfaces only entries that pass three structural gates: **(a) ≥ 2 distinct token groups co-occur**, **(b) at least one matched token lands in the entry's `## Symptom` section** (not just title/tags), and **(c) that token is on the corpus-rarest side**. No keyword allowlist, no stopword list — bare proper-noun mentions stay silent; the prompt has to use specific failure-state vocabulary before anything fires.
 2. **A tool returns an error** → `PostToolUse` hook spawns a detached worker that searches in the background; the matching caveat lands on the next tick (~20ms foreground latency).
 3. **The session ends** → `Stop` hook parses the transcript for objective struggle signals (tool failures, repeated edits, web searches, bash retries). If any are present, it nudges Claude to either `caveat_update` an existing entry or `caveat_record` a new one.
 
@@ -40,7 +40,7 @@ The knowledge repo is plain markdown-in-git. Open it as an Obsidian vault. Share
 | Catches struggle the AI didn't self-report | ✅ transcript signal mining | ❌ | ❌ | ❌ |
 | Mixes external-spec gotchas with repo-specific context | ✅ public / private tiers | ⚠️ no separation | ⚠️ | ⚠️ |
 
-**Status**: v0.11.1, 203 tests passing. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install.
+**Status**: v0.12.0, 202 tests passing. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install.
 
 <details>
 <summary><strong>Why no central shared DB?</strong> (v0.7 pivot)</summary>
@@ -75,7 +75,7 @@ flowchart LR
         S["Session end<br/>(transcript signals)"]
     end
 
-    P -.->|"UserPromptSubmit<br/>事前発火"| H1{"co-occurrence<br/>≥ 2 distinct tokens"}
+    P -.->|"UserPromptSubmit<br/>事前発火"| H1{"co-occurrence<br/>+ symptom + rare-anchor"}
     T -.->|"PostToolUse<br/>実行中発火 ~20ms"| H2{"async detached<br/>worker"}
     S -.->|"Stop<br/>事後発火"| H3{"signal-gated<br/>+ FTS"}
 
@@ -91,7 +91,7 @@ flowchart LR
 - **Per-group sharing via plain git.** Your `~/.caveat/own/` is yours. Share via any git repo (your own, a team's `acme-corp/caveats`, etc.). Subscribers add it with `caveat community add <github-url>`; updates flow via `caveat community pull`. The tool stays out of the publish path.
 - **`visibility: public | private`** frontmatter + `.husky/pre-commit` gate keeps private entries out of any repo you commit to.
 - **Claude Code integration.** An MCP server exposes 6 tools (`caveat_search` / `caveat_get` / `caveat_record` / `caveat_update` / `caveat_list_recent` / `caveat_pull`). Three hooks fire at complementary points and surface matching caveats automatically — no hardcoded keyword lists:
-  - **UserPromptSubmit** (事前発火): when you submit a prompt, tokenize it, FTS the DB, and surface any entry that shares ≥ 2 distinct tokens (structural co-occurrence rule).
+  - **UserPromptSubmit** (事前発火): when you submit a prompt, tokenize it (path-stripping + self-identity + pure-hiragana glue removal + CJK group dedup), FTS the DB, and surface entries that pass **three structural gates** — (1) ≥ 2 distinct group matches (co-occurrence), (2) ≥ 1 match in the entry's `## Symptom` section (not just topic words), (3) that match is on the corpus-rarest side by document frequency. Bare proper-noun mentions like `RTX 5090 CUDA で何かやってる` stay silent; only specific failure-state vocabulary (`cudaGetDeviceCount`, `SQLITE_READONLY`, …) fires the gate. No hardcoded word lists.
   - **PostToolUse** (実行中発火): when a tool returns `is_error: true`, spawn a detached worker that does the FTS asynchronously so the foreground hook returns in ~20ms; the reminder lands on the next hook tick. Zero added latency in the happy path.
   - **Stop** (事後発火): parse the session transcript for objective struggle signals (tool failures, repeated file edits, web searches, bash retries). If any are present, surface matching entries and nudge `caveat_update` or `caveat_record`.
 - **Obsidian-compatible.** The knowledge repo is a valid Obsidian vault — open it as a folder, edit with Obsidian's graph/backlinks/Dataview, the tool re-indexes on `caveat index`.

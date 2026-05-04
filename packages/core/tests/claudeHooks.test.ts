@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  defaultSelfIdentityTokens,
   extractPromptCandidates,
   findCaveatsForPrompt,
   toolErrorReminderText,
@@ -46,13 +47,28 @@ describe('extractPromptCandidates', () => {
     ]);
   });
 
-  it('produces all 3-char windows for no-space CJK (incl. pure-hira)', () => {
+  it('produces 3-char windows for no-space CJK, dropping pure-hiragana glue', () => {
     const tokens = extractPromptCandidates('なぜか初期化失敗する');
+    // Trigrams containing kanji are kept (semantic content)
     expect(tokens).toContain('初期化');
     expect(tokens).toContain('化失敗');
-    // Pure-hiragana windows like なぜか are kept here; the co-occurrence rule
-    // is what prevents them from triggering unrelated matches on their own.
-    expect(tokens).toContain('なぜか');
+    expect(tokens).toContain('敗する'); // contains kanji 敗 → kept
+    // Pure-hiragana trigrams (e.g. なぜか) are conjugational / particle glue
+    // that co-occurs with any Japanese body; dropped at the tokenizer level
+    // so they cannot contribute to the threshold.
+    expect(tokens).not.toContain('なぜか');
+  });
+
+  it('drops pure-hiragana glue trigrams from longer hiragana runs', () => {
+    // `してるんだが` is all hiragana → all trigrams pure-hiragana → all dropped
+    expect(extractPromptCandidates('してるんだが')).toEqual([]);
+    // Mixed run: kanji-containing trigrams kept, pure-hiragana ones dropped
+    const tokens = extractPromptCandidates('発生するんだが');
+    expect(tokens).toContain('発生す');
+    expect(tokens).toContain('生する');
+    expect(tokens).not.toContain('するん');
+    expect(tokens).not.toContain('るんだ');
+    expect(tokens).not.toContain('んだが');
   });
 
   it('caps at 50 candidate tokens', () => {
@@ -66,6 +82,40 @@ describe('extractPromptCandidates', () => {
     expect(extractPromptCandidates('make a new button')).toEqual(['make', 'new', 'button']);
     expect(extractPromptCandidates('what does the thing do')).toContain('what');
     expect(extractPromptCandidates('what does the thing do')).toContain('the');
+  });
+
+  it('strips POSIX absolute paths with ≥ 2 segments', () => {
+    expect(extractPromptCandidates('/home/kite/projects/foo bar')).toEqual(['bar']);
+    expect(extractPromptCandidates('look at /var/log/foo for me')).toEqual(['look', 'for']);
+  });
+
+  it('strips Windows drive-letter paths', () => {
+    expect(extractPromptCandidates('C:\\Users\\kite\\foo done')).toEqual(['done']);
+    expect(extractPromptCandidates('open D:/temp/x and check')).toEqual([
+      'open',
+      'and',
+      'check',
+    ]);
+  });
+
+  it('strips UNC paths (incl. WSL UNC form)', () => {
+    expect(
+      extractPromptCandidates('\\\\wsl.localhost\\Ubuntu-26.04\\home\\kite\\projects test'),
+    ).toEqual(['test']);
+  });
+
+  it('does not strip URLs', () => {
+    const tokens = extractPromptCandidates('see https://example.com/docs/foo for ref');
+    expect(tokens).toContain('https');
+    expect(tokens).toContain('example');
+    expect(tokens).toContain('docs');
+    expect(tokens).toContain('foo');
+  });
+
+  it('does not strip relative file refs (no leading slash)', () => {
+    const tokens = extractPromptCandidates('check src/foo.ts please');
+    expect(tokens).toContain('src');
+    expect(tokens).toContain('foo');
   });
 });
 
@@ -99,9 +149,12 @@ describe('findCaveatsForPrompt (co-occurrence based)', () => {
     }
   });
 
-  it('single-token prompt falls back to 1-of-1 match', () => {
+  it('single-token prompt falls back to 1-of-1 match (with situational gate)', () => {
+    // The situational gate requires at least one matched token to land in
+    // the entry's Symptom section, so the seeded entry's symptom must
+    // contain the prompt token for it to surface.
     const { db, cleanup } = seededDb([
-      { title: 'RTX 5090 CUDA init', symptom: 'driver crash' },
+      { title: 'RTX 5090 CUDA init', symptom: 'cuda driver crashes on init' },
       { title: 'Unrelated thing', symptom: 'nothing here' },
     ]);
     try {
@@ -114,10 +167,14 @@ describe('findCaveatsForPrompt (co-occurrence based)', () => {
   });
 
   it('multi-token prompt requires ≥ 2 distinct tokens to co-occur', () => {
-    // Only entry #1 has both `cuda` and `5090`; the `common` entry only has
-    // one match token. A 2-of-N rule should return just entry #1.
+    // Only entry #1 has both `cuda` and `5090` AND a symptom that uses them;
+    // the `common` entry only has one match token. A 2-of-N rule should
+    // return just entry #1.
     const { db, cleanup } = seededDb([
-      { title: 'RTX 5090 CUDA init failure', symptom: 'driver crash' },
+      {
+        title: 'RTX 5090 CUDA init failure',
+        symptom: 'CUDA driver fails on RTX 5090 during init',
+      },
       { title: 'common-thing', symptom: 'just mentions cuda once' },
     ]);
     try {
@@ -166,12 +223,20 @@ describe('findCaveatsForPrompt (co-occurrence based)', () => {
   });
 
   it('orders results by distinct-match count DESC', () => {
+    // Filler entries push cuda/driver/nvenc to higher DF so NICHE_A is the
+    // rare anchor (in both target entries). Both targets pass the gate; the
+    // count of distinct group matches determines order.
+    const filler = Array.from({ length: 3 }, (_, i) => ({
+      title: `filler ${i}`,
+      symptom: `cuda driver nvenc ${i}`,
+    }));
     const { db, cleanup } = seededDb([
-      { title: 'triple-hit', symptom: 'cuda driver nvenc running together' },
-      { title: 'double-hit', symptom: 'cuda driver only' },
+      { title: 'triple-hit', symptom: 'NICHE_A cuda driver nvenc together' },
+      { title: 'double-hit', symptom: 'NICHE_A cuda driver only' },
+      ...filler,
     ]);
     try {
-      const hits = findCaveatsForPrompt(db, 'CUDA driver nvenc check');
+      const hits = findCaveatsForPrompt(db, 'CUDA driver nvenc NICHE_A');
       expect(hits[0]!.title).toBe('triple-hit');
       expect(hits[1]!.title).toBe('double-hit');
     } finally {
@@ -179,14 +244,69 @@ describe('findCaveatsForPrompt (co-occurrence based)', () => {
     }
   });
 
-  it('matches CJK substrings via trigram windows', () => {
+  it('matches CJK substrings via trigram windows (situational gate)', () => {
+    // Symptom contains the failure-mode trigrams (初期化, 化失敗) so the
+    // gate is satisfied; without it the test would fail because Title-only
+    // matches do not count.
     const { db, cleanup } = seededDb([
-      { title: 'CUDA 初期化失敗', symptom: 'ドライバ更新後に発生' },
+      {
+        title: 'CUDA 初期化失敗',
+        symptom: '初期化失敗が再現、ドライバ更新後に発生',
+      },
     ]);
     try {
-      // CJK trigram windows: 初期化, 期化失, 化失敗 — all co-occur in the entry
+      // CJK trigram windows: 初期化, 期化失, 化失敗 — all co-occur in the symptom
       const hits = findCaveatsForPrompt(db, 'なぜか初期化失敗する');
       expect(hits.length).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('situational gate: bare proper-noun match in title-only is silent', () => {
+    // Prompt names only the topic. Target entry mentions the same topic in
+    // Title (topical) but the Symptom describes a specific failure
+    // (`SQLITE_READONLY`). Filler entries push docker/bind/mount toward
+    // higher document frequency so they are correctly rejected as common
+    // (non-rare) tokens by the rare-anchor gate.
+    const filler = Array.from({ length: 4 }, (_, i) => ({
+      title: `docker bind mount filler ${i}`,
+      symptom: `something else entirely ${i}`,
+    }));
+    const { db, cleanup } = seededDb([
+      {
+        title: 'Docker bind mount UID issue',
+        symptom: 'SQLITE_READONLY: attempt to write a readonly database',
+      },
+      ...filler,
+    ]);
+    try {
+      // "docker bind mount" overlaps with title only — symptom + rare-anchor gate fails
+      expect(findCaveatsForPrompt(db, 'docker bind mount').length).toBe(0);
+      // Same prompt + symptom-language word → SQLITE_READONLY is rare and lands in symptom
+      expect(
+        findCaveatsForPrompt(db, 'docker bind mount で SQLITE_READONLY').length,
+      ).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('CJK group dedup: a single Japanese phrase counts as one match group', () => {
+    // Without group dedup: a 4-char prompt phrase like `発生する` expands to
+    // `発生す` + `生する` — 2 token matches in any entry containing the phrase
+    // → spuriously satisfies 2-of-N. With group dedup, both trigrams share a
+    // group so a single phrase counts as 1 match unit.
+    const { db, cleanup } = seededDb([
+      // Only shares `発生する` with the prompt — no other technical token.
+      { title: 'noise candidate', symptom: 'これは何か特殊な事象が発生する条件下' },
+      // Shares both `kotlin` (ASCII group) and `発生する` (CJK group).
+      { title: 'real hit', symptom: 'kotlin の coroutine で発生する競合状態' },
+    ]);
+    try {
+      const hits = findCaveatsForPrompt(db, 'kotlin で発生する');
+      expect(hits.length).toBe(1);
+      expect(hits[0]!.title).toBe('real hit');
     } finally {
       cleanup();
     }
@@ -203,17 +323,97 @@ describe('findCaveatsForPrompt (co-occurrence based)', () => {
 
   it('honors limit option', () => {
     const entries = Array.from({ length: 10 }, (_, i) => ({
-      title: `cuda entry ${i}`,
-      symptom: `driver crash ${i}`,
+      title: `topic ${i}`,
+      symptom: `cuda driver crash ${i}`,
     }));
     const { db, cleanup } = seededDb(entries);
     try {
-      // All 10 entries have both "cuda" and "driver" → 10 qualifying hits
+      // All 10 entries have both "cuda" and "driver" in the symptom → all
+      // pass situational + rare-anchor gates, capped by limit.
       expect(findCaveatsForPrompt(db, 'cuda driver', { limit: 3 }).length).toBe(3);
     } finally {
       cleanup();
     }
   });
+});
+
+describe('findCaveatsForPrompt + selfIdentity filter', () => {
+  function seededDb(entries: Array<{ title: string; symptom: string }>) {
+    const root = mkdtempSync(join(tmpdir(), 'caveat-self-'));
+    const db = openDb({ path: ':memory:' });
+    for (const e of entries) {
+      recordEntry(
+        { title: e.title, symptom: e.symptom },
+        { db, entriesRoot: join(root, 'entries') },
+      );
+    }
+    return {
+      db,
+      cleanup: () => {
+        db.close();
+        rmSync(root, { recursive: true, force: true });
+      },
+    };
+  }
+
+  it('drops env-derived identity tokens before counting matches', () => {
+    // Entry mentions kite + home (typical noise pattern from caveat Evidence
+    // sections). Without filter: prompt has 3 groups (kite, home, note);
+    // entry shares 2 (kite, home) → satisfies 2-of-N → hit.
+    // With filter {kite, home}: prompt collapses to 1 group (note); entry
+    // does not contain `note` → 0 groups < 1 → no hit.
+    const { db, cleanup } = seededDb([
+      { title: 'path-shaped noise', symptom: 'mentions kite and home in body' },
+    ]);
+    try {
+      expect(findCaveatsForPrompt(db, 'kite home note').length).toBe(1);
+      const filtered = findCaveatsForPrompt(db, 'kite home note', {
+        selfIdentity: new Set(['kite', 'home']),
+      });
+      expect(filtered.length).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('rare-anchor gate: a corpus-wide common symptom token cannot satisfy on its own', () => {
+    // Five baseline entries all share the word `common` in their symptom.
+    // One target entry has `common` plus a rare identifier (`RARE_ID_42`).
+    // Prompt mentions both. Without the rare-anchor gate, every entry whose
+    // symptom contains `common` would surface (proper-noun coincidence on a
+    // word that simply pervades the corpus). With it, only the target
+    // surfaces — `RARE_ID_42` is the discriminating rare anchor and only
+    // appears in the target's symptom.
+    const baseline = Array.from({ length: 5 }, (_, i) => ({
+      title: `noise ${i}`,
+      symptom: `common situation observed for noise ${i}`,
+    }));
+    const { db, cleanup } = seededDb([
+      { title: 'target', symptom: 'common situation plus RARE_ID_42 specifically' },
+      ...baseline,
+    ]);
+    try {
+      const hits = findCaveatsForPrompt(db, 'common RARE_ID_42 situation observed');
+      expect(hits.length).toBe(1);
+      expect(hits[0]!.title).toBe('target');
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe('defaultSelfIdentityTokens', () => {
+  it('returns a Set without throwing', () => {
+    expect(defaultSelfIdentityTokens()).toBeInstanceOf(Set);
+  });
+
+  it('returned tokens are lowercase and ≥ 3 chars', () => {
+    for (const t of defaultSelfIdentityTokens()) {
+      expect(t).toBe(t.toLowerCase());
+      expect(t.length).toBeGreaterThanOrEqual(3);
+    }
+  });
+
 });
 
 describe('userPromptSubmitReminderText', () => {

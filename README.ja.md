@@ -23,7 +23,7 @@ caveat init                          # MCP サーバと 3 種の hook を Claude
 
 これで Claude Code セッションの中で:
 
-1. **プロンプト送信時** → `UserPromptSubmit` hook がプロンプトを tokenize し、ナレッジ repo 全体に FTS5 をかけ、**2 個以上の distinct token が共起するエントリ** だけを surface します。キーワードの allowlist は持ちません — 関連性は共起構造から決まります。
+1. **プロンプト送信時** → `UserPromptSubmit` hook がプロンプトを tokenize し、ナレッジ repo 全体に FTS5 をかけ、**3 段の構造的ゲートを全て通過したエントリ** だけを surface します: (a) **2 個以上の distinct グループが共起**、(b) **マッチしたトークンが entry の `## Symptom` セクションに少なくとも 1 つ出現** (title/tags だけの一致は不可)、(c) **そのトークンが corpus 内 DF が最小タイ** (= 最も具体的)。キーワード allowlist も stopword リストも持ちません — 固有名詞だけの言及は silent、症状語彙が来た時だけ発火する構造ルール。
 2. **ツールがエラー返却したとき** → `PostToolUse` hook が detached worker を起動して非同期に検索。前景は ~20ms で返るのでターン遅延ゼロ、結果は次の hook tick で Claude のコンテキストに載ります。
 3. **セッション終了時** → `Stop` hook が transcript を解析し、客観的な「もがきシグナル」（ツール失敗、同一ファイル複数編集、Web 検索、Bash 再実行）を抽出。一つでも観測されれば、Claude に対して既存エントリの `caveat_update` か新規 `caveat_record` を促します。
 
@@ -40,7 +40,7 @@ caveat init                          # MCP サーバと 3 種の hook を Claude
 | AI が自覚しないもがきも検出 | ✅ transcript シグナル抽出 | ❌ | ❌ | ❌ |
 | 外部仕様の罠と repo 固有メモを混在管理 | ✅ public / private 2 tier | ⚠️ 分離なし | ⚠️ | ⚠️ |
 
-**ステータス**: v0.11.1、203 tests passing。個人および小規模チームが主な想定ユースケースです。中央 DB なし、インストール時の自動購読なし。
+**ステータス**: v0.12.0、202 tests passing。個人および小規模チームが主な想定ユースケースです。中央 DB なし、インストール時の自動購読なし。
 
 <details>
 <summary><strong>なぜ中央 DB を持たない？</strong>（v0.7 での方針転換）</summary>
@@ -75,7 +75,7 @@ flowchart LR
         S["セッション終了<br/>(transcript signals)"]
     end
 
-    P -.->|"UserPromptSubmit<br/>事前発火"| H1{"共起検索<br/>≥ 2 distinct tokens"}
+    P -.->|"UserPromptSubmit<br/>事前発火"| H1{"共起 + 症状特異<br/>+ rare-anchor"}
     T -.->|"PostToolUse<br/>実行中発火 ~20ms"| H2{"detached<br/>worker"}
     S -.->|"Stop<br/>事後発火"| H3{"シグナル gate<br/>+ FTS"}
 

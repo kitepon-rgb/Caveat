@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { homedir, userInfo } from 'node:os';
 import type { SearchResult, Source, Confidence, Visibility } from './types.js';
 import { extractSections } from './frontmatter.js';
 import type { SessionSignals } from './transcriptSignals.js';
@@ -8,11 +9,14 @@ const PROMPT_MAX_CANDIDATE_TOKENS = 50;
 const DEFAULT_REMINDER_HIT_LIMIT = 5;
 const SYMPTOM_EXCERPT_LENGTH = 200;
 const SYMPTOM_LINE_MAX = 120;
-// Minimum number of distinct prompt tokens that must co-occur in an entry for
-// it to count as a hit. A prompt with only 1 candidate token falls back to 1
-// (plain OR). With ≥ 2 tokens we require co-occurrence, which naturally
-// suppresses matches driven by single common words like `make` / `new` /
-// `script` without needing a hand-curated stopword list.
+// Minimum number of distinct prompt *groups* that must co-occur in an entry
+// for it to count as a hit. A group is one whitespace-separated source token —
+// an ASCII word is 1 group; a contiguous CJK run is 1 group regardless of how
+// many trigrams it produces. A prompt with only 1 group falls back to 1-of-1
+// (plain OR). The co-occurrence rule replaces hand-curated stopword lists; the
+// *group* unit (rather than per-trigram count) prevents a single 4-char
+// Japanese phrase like `発生する` from auto-satisfying 2-of-N just by expanding
+// into `発生す` + `生する`.
 const MIN_DISTINCT_TOKEN_MATCHES_CEILING = 2;
 
 // Hiragana / Katakana / CJK unified ideographs / halfwidth-katakana. Japanese
@@ -20,20 +24,96 @@ const MIN_DISTINCT_TOKEN_MATCHES_CEILING = 2;
 // split into 3-char pieces to align with the trigram tokenizer used on the
 // stored side (see CLAUDE.md "FTS5 trigram は 3 文字以上のクエリが必要").
 const CJK_CHAR = /[぀-ゟ゠-ヿ一-鿿ｦ-ﾟ]/;
+// Pure-hiragana trigrams (`してる`, `のまま`, `になっ`, `るのか`) are
+// conjugational / particle glue — they appear in any Japanese technical body
+// regardless of topic. Counting them toward co-occurrence inflates noise
+// because the same handful of glue trigrams co-occur across most stored
+// entries. Require at least one kanji or katakana character in every
+// retained CJK trigram so that semantic content drives matches.
+const HIRAGANA_ONLY = /^[぀-ゟ]+$/;
 
 function isCjkDominated(token: string): boolean {
   return CJK_CHAR.test(token);
 }
 
-function expandToken(token: string, out: string[]): void {
+function isPureHiragana(token: string): boolean {
+  return HIRAGANA_ONLY.test(token);
+}
+
+function escapeForRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Membership check for the situational gate. CJK trigrams are matched as
+ * substrings (CJK has no word separators, the trigram is itself the unit).
+ * ASCII / Latin tokens are matched on Unicode-aware word boundaries so that
+ * a prompt token like `CUDA` does NOT match `cudaGetDeviceCount` in the
+ * symptom — that is the proper-noun coincidence the user explicitly rejects.
+ * Inputs are expected to already be lowercased.
+ */
+function tokenAppearsIn(tokenLower: string, textLower: string): boolean {
+  if (textLower.length === 0) return false;
+  if (CJK_CHAR.test(tokenLower)) return textLower.includes(tokenLower);
+  const re = new RegExp(
+    `(?:^|[^\\p{L}\\p{N}])${escapeForRegex(tokenLower)}(?:[^\\p{L}\\p{N}]|$)`,
+    'u',
+  );
+  return re.test(textLower);
+}
+
+interface PromptCandidate {
+  token: string;
+  // All trigrams expanded from the same source whitespace-separated token
+  // share a group id. ASCII tokens are their own group. findCaveatsForPrompt
+  // counts distinct groups (not trigrams) toward the co-occurrence threshold.
+  group: number;
+}
+
+function expandToken(token: string, group: number, out: PromptCandidate[]): void {
   if (isCjkDominated(token)) {
     if (token.length < PROMPT_TOKEN_MIN_LENGTH) return;
     for (let i = 0; i <= token.length - PROMPT_TOKEN_MIN_LENGTH; i++) {
-      out.push(token.slice(i, i + PROMPT_TOKEN_MIN_LENGTH));
+      const tri = token.slice(i, i + PROMPT_TOKEN_MIN_LENGTH);
+      if (isPureHiragana(tri)) continue;
+      out.push({ token: tri, group });
     }
   } else if (token.length >= PROMPT_TOKEN_MIN_LENGTH) {
-    out.push(token);
+    out.push({ token, group });
   }
+}
+
+// Strip filesystem path substrings before tokenizing. "Where I'm working"
+// (UNC, Windows drive, POSIX absolute) is meta context, not query content;
+// leaving it in the token stream causes spurious co-occurrence with caveat
+// bodies that mention the same path components in their Evidence sections.
+// URLs are preserved (the `/` after `://` is preceded by `:`, not whitespace
+// or start-of-string, so the POSIX rule does not match into them).
+function stripFsPaths(s: string): string {
+  return s
+    .replace(/\\\\[^\s]+/g, ' ')
+    .replace(/(^|\s)[A-Za-z]:[\\/][^\s]*/g, '$1 ')
+    .replace(/(^|\s)\/(?:[^\s/]+\/)+[^\s/]*/g, '$1 ');
+}
+
+function buildPromptCandidates(prompt: string): PromptCandidate[] {
+  const cleaned = stripFsPaths(prompt).replace(/[^\p{L}\p{N}\s]/gu, ' ');
+  const rawTokens = cleaned.split(/\s+/).filter((t) => t.length > 0);
+
+  const expanded: PromptCandidate[] = [];
+  for (let i = 0; i < rawTokens.length; i++) {
+    expandToken(rawTokens[i]!, i, expanded);
+  }
+
+  const seen = new Set<string>();
+  const unique: PromptCandidate[] = [];
+  for (const c of expanded) {
+    const key = c.token.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(c);
+  }
+  return unique.slice(0, PROMPT_MAX_CANDIDATE_TOKENS);
 }
 
 /**
@@ -41,27 +121,47 @@ function expandToken(token: string, out: string[]): void {
  * case-insensitively deduped list. ASCII words shorter than 3 chars are
  * dropped; CJK runs are expanded into overlapping 3-char windows so that
  * prompts like `なぜか初期化失敗する` can hit stored entries containing
- * `初期化失敗`. No semantic filtering (stopwords, etc.) happens here — the
- * caller reaches signal via co-occurrence (findCaveatsForPrompt).
+ * `初期化失敗`. Filesystem path substrings are stripped first so that the
+ * user's home / workspace location does not bleed into the token stream.
+ * No semantic filtering (stopwords, etc.) happens here — the caller reaches
+ * signal via co-occurrence (findCaveatsForPrompt).
  */
 export function extractPromptCandidates(prompt: unknown): string[] {
   if (typeof prompt !== 'string' || prompt.length === 0) return [];
-  const cleaned = prompt.replace(/[^\p{L}\p{N}\s]/gu, ' ');
-  const rawTokens = cleaned.split(/\s+/).filter((t) => t.length > 0);
+  return buildPromptCandidates(prompt).map((c) => c.token);
+}
 
-  const expanded: string[] = [];
-  for (const t of rawTokens) expandToken(t, expanded);
-
-  const seen = new Set<string>();
-  const unique: string[] = [];
-  for (const t of expanded) {
-    const key = t.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    unique.push(t);
+/**
+ * Tokens derived from the running environment that should not contribute to
+ * co-occurrence matching: the OS username and the path components of the
+ * user's home directory. Structural (env-derived, not a hand list) — the
+ * user mentioning their own username or `home` is meta context, not query
+ * content. The tool's own brand name is intentionally NOT special-cased
+ * here; the rare-anchor gate handles brand-name noise structurally because
+ * `caveat` appears in many entries' bodies and therefore has a high
+ * document frequency (= not a rare anchor → cannot satisfy the situational
+ * gate alone). Callers pass this set into findCaveatsForPrompt; tests
+ * override with a custom set or `new Set()`.
+ */
+export function defaultSelfIdentityTokens(): Set<string> {
+  const out = new Set<string>();
+  try {
+    const u = userInfo().username;
+    if (u && u.length >= PROMPT_TOKEN_MIN_LENGTH) out.add(u.toLowerCase());
+  } catch {
+    // userInfo() can throw on sandboxed environments — fall through.
   }
-
-  return unique.slice(0, PROMPT_MAX_CANDIDATE_TOKENS);
+  try {
+    const h = homedir();
+    if (h) {
+      for (const part of h.split(/[\\/]/)) {
+        if (part.length >= PROMPT_TOKEN_MIN_LENGTH) out.add(part.toLowerCase());
+      }
+    }
+  } catch {
+    // homedir() can throw if HOME / USERPROFILE is unset — fall through.
+  }
+  return out;
 }
 
 interface EntryRow {
@@ -77,6 +177,8 @@ interface EntryRow {
   visibility: string;
   file_mtime: string;
   indexed_at: string;
+  topical_text: string | null;
+  symptom_text: string | null;
 }
 
 function toSearchResult(row: EntryRow): SearchResult {
@@ -95,48 +197,128 @@ function toSearchResult(row: EntryRow): SearchResult {
 }
 
 /**
- * Search the caveat DB for entries that share ≥ N distinct prompt tokens,
- * where N = min(2, total candidate tokens). This co-occurrence requirement
- * is what replaces the keyword-allowlist and stopword-list approaches — a
- * single common word like `make` can't fire a match by itself, but a
- * prompt that shares two or more distinct technical tokens with an entry
- * will. No hand-maintained lists, no magic thresholds.
+ * Search the caveat DB for entries that share ≥ N distinct prompt groups,
+ * where N = min(2, total candidate groups). A group is one whitespace-
+ * separated source token; ASCII words and CJK runs each contribute one group.
+ *
+ * Three structural gates run on top of co-occurrence:
+ *
+ *   1. `selfIdentity` (optional) drops tokens that the running environment
+ *      contributes as meta context (username, home directory parts, the
+ *      tool's own brand name).
+ *
+ *   2. **Situational gate**: at least one matched token must appear in the
+ *      entry's `## Symptom` section. Tokens that only land in title / tags /
+ *      environment ("topical") mean the prompt named the topic but did not
+ *      describe the failure state — that is just a proper-noun coincidence.
+ *
+ *   3. **Rare-anchor gate**: the matched-in-symptom token must be in the
+ *      lower half (by document frequency) of the prompt's tokens. A common
+ *      tool-name like `cuda` matches every CUDA-related symptom because
+ *      every such symptom mentions CUDA — so a `cuda`-only symptom match is
+ *      really just naming the topic again. The discriminating signal is a
+ *      rare prompt token (`cudaGetDeviceCount`, `SQLITE_READONLY`,
+ *      `LoadLibrary 1114`) landing in the symptom — that is the user
+ *      describing the specific failure, not naming the topic.
+ *
+ * Without these gates, mentioning `RTX 5090 CUDA` alone surfaces every
+ * RTX-tagged or CUDA-tagged entry; with them, the prompt has to use
+ * specific failure-state vocabulary before anything fires.
  */
 export function findCaveatsForPrompt(
   db: DatabaseSync,
   prompt: unknown,
-  opts: { limit?: number } = {},
+  opts: { limit?: number; selfIdentity?: Set<string> } = {},
 ): SearchResult[] {
-  const tokens = extractPromptCandidates(prompt);
-  if (tokens.length === 0) return [];
+  if (typeof prompt !== 'string' || prompt.length === 0) return [];
+  const candidates = buildPromptCandidates(prompt);
+  if (candidates.length === 0) return [];
 
-  const minMatches = Math.min(MIN_DISTINCT_TOKEN_MATCHES_CEILING, tokens.length);
-  const perEntry = new Map<number, { count: number; row: EntryRow }>();
+  const selfIds = opts.selfIdentity;
+  const filtered =
+    selfIds && selfIds.size > 0
+      ? candidates.filter((c) => !selfIds.has(c.token.toLowerCase()))
+      : candidates;
+  if (filtered.length === 0) return [];
+
+  const totalGroups = new Set(filtered.map((c) => c.group)).size;
+  const minMatches = Math.min(MIN_DISTINCT_TOKEN_MATCHES_CEILING, totalGroups);
+  interface PerEntry {
+    groups: Set<number>;
+    // Lowercased prompt tokens that landed in the entry's `## Symptom` section
+    // (failure-state vocabulary, not just topical mention).
+    symptomTokens: Set<string>;
+    symptomLower: string | null;
+    row: EntryRow;
+  }
+  const perEntry = new Map<number, PerEntry>();
+  // Per-prompt-token document frequency: how many entries the token's FTS
+  // phrase query returns. Used to identify "rare" anchors below.
+  const tokenDf = new Map<string, number>();
 
   const stmt = db.prepare(
     'SELECT e.* FROM entries_fts f JOIN entries e ON e.rowid = f.rowid WHERE entries_fts MATCH ?',
   );
 
-  for (const tok of tokens) {
+  for (const cand of filtered) {
+    const tokLower = cand.token.toLowerCase();
+    if (tokenDf.has(tokLower)) continue;
     let rows: EntryRow[] = [];
     try {
-      rows = stmt.all(`"${tok}"`) as unknown as EntryRow[];
+      rows = stmt.all(`"${cand.token}"`) as unknown as EntryRow[];
     } catch {
       // Malformed FTS phrase for this token — skip it. Remaining tokens
       // still contribute to co-occurrence counts.
+      tokenDf.set(tokLower, 0);
       continue;
     }
+    tokenDf.set(tokLower, rows.length);
     for (const row of rows) {
-      const existing = perEntry.get(row.rowid);
-      if (existing) existing.count += 1;
-      else perEntry.set(row.rowid, { count: 1, row });
+      let entry = perEntry.get(row.rowid);
+      if (!entry) {
+        entry = {
+          groups: new Set<number>(),
+          symptomTokens: new Set<string>(),
+          symptomLower:
+            typeof row.symptom_text === 'string' && row.symptom_text.length > 0
+              ? row.symptom_text.toLowerCase()
+              : null,
+          row,
+        };
+        perEntry.set(row.rowid, entry);
+      }
+      entry.groups.add(cand.group);
+      if (entry.symptomLower !== null && tokenAppearsIn(tokLower, entry.symptomLower)) {
+        entry.symptomTokens.add(tokLower);
+      }
     }
   }
 
+  // Rare anchors: the prompt tokens with the lowest document frequency in
+  // this corpus. A token like `cuda` that appears in many entries is a
+  // topic mention, not a specific symptom signal — its match in any one
+  // entry's symptom is just because every CUDA-related symptom mentions
+  // CUDA. We require the matched-in-symptom token to be on the rarest tier
+  // so the prompt actually discriminates between entries instead of name-
+  // matching everything. "Rarest" is defined structurally as "tokens whose
+  // DF equals the minimum over all valid prompt tokens" — corpus-derived,
+  // no magic threshold or top-N rank. Tokens with DF=0 (do not appear
+  // anywhere) are excluded; they are vacuously rare but cannot match any
+  // entry's symptom anyway and would distort the min if included.
+  const validDfs = [...tokenDf.entries()].filter(([, df]) => df > 0);
+  if (validDfs.length === 0) return [];
+  let minDf = Infinity;
+  for (const [, df] of validDfs) if (df < minDf) minDf = df;
+  const rareTokens = new Set(validDfs.filter(([, df]) => df === minDf).map(([t]) => t));
+
   const limit = opts.limit ?? DEFAULT_REMINDER_HIT_LIMIT;
   return [...perEntry.values()]
-    .filter(({ count }) => count >= minMatches)
-    .sort((a, b) => b.count - a.count)
+    .filter(({ groups, symptomTokens }) => {
+      if (groups.size < minMatches) return false;
+      for (const t of symptomTokens) if (rareTokens.has(t)) return true;
+      return false;
+    })
+    .sort((a, b) => b.groups.size - a.groups.size)
     .slice(0, limit)
     .map(({ row }) => toSearchResult(row));
 }

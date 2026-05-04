@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, readdirSync, existsSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { deriveRoleTexts } from './frontmatter.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SCHEMA_PATH = join(here, 'schema.sql');
@@ -37,9 +38,54 @@ export function openDb(opts: OpenDbOptions): DatabaseSync {
     db.exec(readFileSync(SCHEMA_PATH, 'utf-8'));
   } else {
     applyMigrations(db, user_version);
+    backfillRoleTexts(db);
   }
 
   return db;
+}
+
+// Recompute topical_text / symptom_text for any pre-v3 rows that were carried
+// across migration 003. New rows (v3 schema or v3 indexer write) populate
+// these columns directly via upsertEntry, so this is a one-shot per-DB
+// backfill that becomes a no-op once everything is filled in.
+function backfillRoleTexts(db: DatabaseSync): void {
+  let rows: Array<{
+    rowid: number;
+    title: string;
+    body: string;
+    tags: string | null;
+    frontmatter_json: string;
+  }>;
+  try {
+    rows = db
+      .prepare(
+        'SELECT rowid, title, body, tags, frontmatter_json FROM entries WHERE topical_text IS NULL',
+      )
+      .all() as Array<{
+      rowid: number;
+      title: string;
+      body: string;
+      tags: string | null;
+      frontmatter_json: string;
+    }>;
+  } catch {
+    // The columns can be absent on an extremely old DB that somehow skipped
+    // migration 003 — defer to schema.sql / next openDb retry.
+    return;
+  }
+  if (rows.length === 0) return;
+  const upd = db.prepare(
+    'UPDATE entries SET topical_text = ?, symptom_text = ? WHERE rowid = ?',
+  );
+  for (const r of rows) {
+    const { topical, symptom } = deriveRoleTexts({
+      title: r.title,
+      body: r.body,
+      tags: r.tags,
+      frontmatter_json: r.frontmatter_json,
+    });
+    upd.run(topical, symptom, r.rowid);
+  }
 }
 
 function applyMigrations(db: DatabaseSync, currentVersion: number): void {

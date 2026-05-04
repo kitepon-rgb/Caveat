@@ -4,6 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクトの状態
 
+**v0.12.0**（2026-05-04、202 tests passing、schema v3）。**事前発火の精度改善 — 「固有名詞だけでHIT してはいけない」を構造的ゲートで実装**。語の偶然一致 (wide-net) では「関連性」が表現できないという根本反省から、**症状特異語ゲート + rare-anchor (min-DF) ゲート**を既存の 2-of-N 共起の上に追加。プロンプトが「話題に触れただけ」(`RTX 5090 CUDA で何かやってる`) の段階では silent、症状語彙が来た瞬間 (`RTX 5090 で cudaGetDeviceCount が 0 を返す`) に該当 entry を 1 件返す。
+
+主な追加ゲート (全て構造由来、リスト一切なし):
+- **schema v3**: `entries.topical_text` (title + tags + environment 値) と `entries.symptom_text` (`## Symptom` 本文) を indexer で派生。`migrations/003_section_roles.sql` で v2 → v3 自動 migration、JS 側 (`db.ts::backfillRoleTexts`) で既存行を backfill
+- **症状特異語ゲート**: マッチしたトークンのうち最低 1 つが entry の `symptom_text` に出現すること。title-only マッチ (例: `RTX 5090` だけ) は silent
+- **rare-anchor ゲート (min-DF)**: 症状一致したトークンが、prompt 内で corpus DF が最小タイのものであること。corpus 全域に蔓延する一般語 (`cuda`, `発生する` 等) は自動的に除外。閾値の magic number なし、corpus 自動算出
+- **パス除去**: `\\wsl...`, `C:\...`, `/home/...` 等の path-shape 部分文字列を tokenize 前に剥がす (URL は preserve)
+- **自己同名除去**: `os.userInfo().username` と `os.homedir()` の path 成分を `defaultSelfIdentityTokens()` として除外。**ハードコードリストは禁止** — `caveat` のツールブランド名も意図的に追加しない (rare-anchor が高 DF として構造的に弾く)
+- **純ひらがなトリグラム除外**: `してる` `のまま` `になっ` 等の純ひらがな 3-gram は conjugational glue として捨てる (Unicode 範囲ベース、リストなし)
+- **CJK 句単位グループ統合**: 1 CJK 連続 run から派生する複数の 3-gram を 1 グループ扱い。「発生する」が `発生す` + `生する` の 2 トークンに展開して 2-of-N を勝手に満たす問題を解決
+- **症状検査の word-boundary 化**: ASCII トークンは Unicode 単語境界 `(?:^|[^\p{L}\p{N}])tok(?:[^\p{L}\p{N}]|$)` で照合。`CUDA` が `cudaGetDeviceCount` の substring で誤マッチする問題を解決。CJK は substring 維持
+
+**設計思想**: 「list で除外する」のではなく「構造で要求する」が一貫した原則。閾値は 2-of-N の `2` のみ (= co-occurrence の最小定義)。これ以外の magic number / ハードコードリストは存在しない。新しい罠カテゴリは `entries/` に書くだけで自動的に取り扱い対象になる、という v0.8 の自己拡張性は維持。
+
 **v0.11.0**（2026-04-23、203 tests passing）。**Private tier 拡張 — Caveat の対象を「第三者の外部仕様の罠」だけから「コード読解では復元できない repo 固有文脈」まで広げる**。
 - v0.6.2 の「visibility は必ずユーザに聞け、自動分類禁止」は廃案。`caveat_record` / `caveat_update` は二項基準で自動判定する: 第三者が再現できる罠なら `public`、repo 固有 / 独自設計 / このプロジェクトでしか起きない文脈なら `private`、迷ったら `private`。ただしユーザ明示依頼（「これは private で記録して」等）は自動判定に優先
 - **検索層の切替はしない**。2 語共起ルールを両層で統一。本文語彙が自然に仕分ける（public は外部ツール名、private は repo 固有識別子）
@@ -178,16 +192,25 @@ MCP stdio サーバは stdout に JSON-RPC 以外を書いてはいけない。`
 - **stderr**: 診断情報のみ。
 - 既存の `throughline` hook（UserPromptSubmit / Stop）と並走する前提。
 
-### Claude Code Hook の実装（Phase 6 / Phase 12 / v0.8）
+### Claude Code Hook の実装（Phase 6 / Phase 12 / v0.8 / v0.12）
 
-- **v0.8 現行ロジック**: [packages/core/src/claudeHooks.ts](packages/core/src/claudeHooks.ts) に `extractPromptCandidates` / `findCaveatsForPrompt` / `userPromptSubmitReminderText(hits)` / `stopReminderText` を集約。CLI サブコマンド `caveat hook <name>` ([apps/cli/src/commands/hookCmd.ts](apps/cli/src/commands/hookCmd.ts)) が stdin + caveatHome を組み合わせて DB を開き、結果を埋め込んだリマインダを stdout に出す
-- **事前発火（UserPromptSubmit）の判定**: プロンプトを token 列に分解 → 各 token を個別に FTS5 phrase 検索 → **1 entry あたり ≥ 2 個の distinct token が共起** したものだけを hit とみなし、distinct-match 数 DESC で top-N を返す。1-token prompt は 1-of-1 にフォールバック。hit ≥ 1 のときのみ発火、DB ヒットをそのままリマインダ本文に埋めるので、Claude が改めて `caveat_search` を呼ばずともコンテキストに関連罠が入る
-- **Tokenize 規則** (`extractPromptCandidates`):
+- **現行ロジック**: [packages/core/src/claudeHooks.ts](packages/core/src/claudeHooks.ts) に `extractPromptCandidates` / `findCaveatsForPrompt` / `defaultSelfIdentityTokens` / `userPromptSubmitReminderText(hits)` / `stopReminderText` を集約。CLI サブコマンド `caveat hook <name>` ([apps/cli/src/commands/hookCmd.ts](apps/cli/src/commands/hookCmd.ts)) が stdin + caveatHome を組み合わせて DB を開き、結果を埋め込んだリマインダを stdout に出す
+- **事前発火（UserPromptSubmit）の判定**: プロンプトを token 列に分解 → 各 token を個別に FTS5 phrase 検索 → **3 段の構造的ゲートを全て通過した entry のみ** を hit とみなす:
+  1. **共起ゲート**: 1 entry あたり ≥ 2 個の distinct prompt **グループ** (= 空白区切り source token、CJK 連続 run も 1 グループ) が一致
+  2. **症状特異語ゲート (v0.12)**: マッチした prompt token のうち最低 1 つが entry の `symptom_text` に出現
+  3. **rare-anchor ゲート (v0.12)**: 上記の症状一致 token のうち最低 1 つが「prompt 内で corpus DF が最小タイ」のもの
+  
+  hit ≥ 1 のときのみ発火、DB ヒットをそのままリマインダ本文に埋めるので、Claude が改めて `caveat_search` を呼ばずともコンテキストに関連罠が入る
+- **Tokenize 規則** (`extractPromptCandidates` / `buildPromptCandidates` 内、v0.12 拡張):
+  - **パス様部分文字列を最初に剥がす**: UNC (`\\\\host\\path`) / Windows drive (`C:\\path`) / POSIX abs (`/x/y/z`) を空白化。URL は preserve (`://` の `/` は whitespace 始まりじゃないので非マッチ)
   - 非英数・非 CJK 文字を空白に置換 → 空白 split
   - ASCII 単語は ≥ 3 文字のみ（`the` / `on` 等は自動脱落するが `make` / `new` / `what` は残す — 共起ルールで無害化）
-  - CJK run は 3-char sliding window に展開（`初期化失敗` → `初期化`, `期化失`, `化失敗`）
+  - CJK run は 3-char sliding window に展開（`初期化失敗` → `初期化`, `期化失`, `化失敗`）+ **純ひらがな trigram は drop** (`してる`, `のまま` 等は conjugational glue)
+  - 同一 source token から派生した複数 trigram は **同じ group id を共有** (CJK 句単位 dedup)
   - Case-insensitive dedup → 先頭 50 token 上限
-- **共起ルールが `allowlist` / `stopword list` を代替する理由**: 旧設計は (a) keyword allowlist（Phase 6、罠ドメインを regex で列挙）→ recall 低い／メンテ永遠、(b) v0.8 初案の stopword list（`make` / `new` を hand-curate） → リスト化自体が構造欠陥、と辿った。2-of-N co-occurrence は list 不要、閾値チューニング不要、prompt に `make a new button` が来ても「make と new と button のうち 2+ が同一 entry に共起」が成立しない限り silent になり、技術語が 2+ 共起すれば必然的に関連罠にヒットする。**「list で除外する」のではなく「構造で要求する」** が設計の肝
+- **症状特異語 / rare-anchor の構造的根拠 (v0.12)**: 共起だけでは「固有名詞の偶然一致」を捕まえる (`RTX 5090` がたまたま 2 entry の title に出る → 2-of-N 成立)。これは「話題に触れただけ」であって「困っているか」「何が起きているか」までは何も言っていない。`## Symptom` セクションは entry 構造で「何がどう壊れるか」と定義されているので、**prompt と Symptom の重なりは「ユーザーがその失敗状態を述べている」ことの構造的根拠**。さらに `cuda` のように corpus 全体に蔓延する語が Symptom にも出るのは「全 entry がそれを言っているから」で discrimination ゼロ → DF 最小タイ (= 最もコーパス特異な語) が Symptom に来た時だけ発火、で wide-net が完全に絞れる
+- **共起ルールが `allowlist` / `stopword list` を代替する理由**: 旧設計は (a) keyword allowlist（Phase 6、罠ドメインを regex で列挙）→ recall 低い／メンテ永遠、(b) v0.8 初案の stopword list（`make` / `new` を hand-curate） → リスト化自体が構造欠陥、と辿った。2-of-N co-occurrence + 症状特異語 + rare-anchor は **全てリスト不要、閾値チューニング不要** (唯一の数値定数は 2-of-N の `2`)、Unicode 範囲・FTS5 仕様・`os.userInfo()`/`homedir()` runtime 値・corpus DF だけで判定。**「list で除外する」のではなく「構造で要求する」** が設計の肝
+- **`defaultSelfIdentityTokens()` (v0.12)**: `os.userInfo().username` と `os.homedir()` の path 成分 (≥ 3 文字) を Set で返す runtime-derived 関数。CLI hook 呼び出し側 (`hookCmd.ts::searchCaveatsFromTextSafely`) が `findCaveatsForPrompt(db, text, { selfIdentity: defaultSelfIdentityTokens() })` で渡す。**ツールブランド `caveat` は意図的に含めない** — ハードコードリスト化を避け、rare-anchor gate が「caveat は corpus 全域で高 DF」として構造的に弾くのに任せる
 - **hookCmd の DB 接続**: `buildContext(silentLogger)` で caveatHome 解決 → `existsSync(ctx.paths.dbPath)` で DB 未作成時は即 silent（false-block 回避）→ `openDb` → `findCaveatsForPrompt` → 必ず `db.close()`
 - **事後発火（Stop hook）の判定** (v0.9): `payload.transcript_path` の JSONL を `readSessionSignals` ([packages/core/src/transcriptSignals.ts](packages/core/src/transcriptSignals.ts)) で解析し、以下のシグナルを抽出:
   - `toolFailureCount`: `is_error: true` を返した tool_result の件数

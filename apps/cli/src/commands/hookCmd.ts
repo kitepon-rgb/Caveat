@@ -6,6 +6,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { randomBytes } from 'node:crypto';
 import {
   appendPendingReminder,
+  defaultSelfIdentityTokens,
   drainPendingReminders,
   findCaveatsForPrompt,
   hasAnyStruggleSignal,
@@ -71,7 +72,9 @@ function searchCaveatsFromTextSafely(text: string): SearchResult[] {
     const ctx = buildContextSafely();
     if (!ctx || !existsSync(ctx.paths.dbPath)) return [];
     db = openDb({ path: ctx.paths.dbPath });
-    const hits = findCaveatsForPrompt(db, text);
+    const hits = findCaveatsForPrompt(db, text, {
+      selfIdentity: defaultSelfIdentityTokens(),
+    });
     if (hits.length > 0) {
       try {
         markHit(db, hits);

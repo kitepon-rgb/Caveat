@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { parseMarkdown } from './frontmatter.js';
+import { deriveRoleTexts, parseMarkdown } from './frontmatter.js';
 import type { Source } from './types.js';
 
 export interface ScanSourceOptions {
@@ -95,26 +95,36 @@ export function upsertEntry(db: DatabaseSync, row: UpsertRow): number {
     .prepare('SELECT rowid FROM entries WHERE source = ? AND id = ?')
     .get(row.source, row.id) as { rowid: number } | undefined;
 
+  const { topical, symptom } = deriveRoleTexts({
+    title: row.title,
+    body: row.body,
+    tags: row.tags,
+    frontmatter_json: row.frontmatter_json,
+  });
+
   if (existing) {
     db.prepare(
       `UPDATE entries
        SET path = ?, title = ?, body = ?, frontmatter_json = ?, tags = ?,
-           confidence = ?, visibility = ?, file_mtime = ?, indexed_at = ?
+           confidence = ?, visibility = ?, file_mtime = ?, indexed_at = ?,
+           topical_text = ?, symptom_text = ?
        WHERE source = ? AND id = ?`,
     ).run(
       row.path, row.title, row.body, row.frontmatter_json, row.tags,
       row.confidence, row.visibility, row.file_mtime, row.indexed_at,
+      topical, symptom,
       row.source, row.id,
     );
     return existing.rowid;
   }
 
   const info = db.prepare(
-    `INSERT INTO entries (id, source, path, title, body, frontmatter_json, tags, confidence, visibility, file_mtime, indexed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO entries (id, source, path, title, body, frontmatter_json, tags, confidence, visibility, file_mtime, indexed_at, topical_text, symptom_text)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     row.id, row.source, row.path, row.title, row.body, row.frontmatter_json,
     row.tags, row.confidence, row.visibility, row.file_mtime, row.indexed_at,
+    topical, symptom,
   );
   return Number(info.lastInsertRowid);
 }
