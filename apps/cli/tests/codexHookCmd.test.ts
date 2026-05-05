@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  buildCodexPostToolUseWorkerJob,
   codexContextOutput,
   codexStopOutput,
   isCodexToolError,
@@ -46,10 +47,33 @@ describe('isCodexToolError', () => {
     expect(isCodexToolError(payload)).toBe(false);
   });
 
+  it('defers captured Codex Bash payloads for transcript-backed classification', () => {
+    const payload = readFixture('post-tool-use-bash-failure');
+    const job = buildCodexPostToolUseWorkerJob(payload);
+    expect(job).toMatchObject({
+      sessionId: '019df891-9566-7223-8e9d-3d093a63b166',
+      knownError: false,
+      allowSymptomOnly: true,
+      transcriptPath: '/tmp/caveat-codex-capture/sessions/rollout.jsonl',
+      toolUseId: 'call_dASy1j0HCKmwNgfdBT7Zkh2K',
+    });
+    expect(job?.searchText).toContain('__caveat_missing_command_12345');
+    expect(job?.searchText).toContain('command not found');
+  });
+
   it('detects explicit exit_code fields', () => {
     expect(isCodexToolError({ exit_code: 1 })).toBe(true);
     expect(isCodexToolError({ exit_code: 0 })).toBe(false);
     expect(isCodexToolError({ tool_response: { exitCode: 2 } })).toBe(true);
+  });
+
+  it('detects process exit markers when Codex includes them in tool_response text', () => {
+    expect(
+      isCodexToolError({
+        tool_response: 'Chunk ID: 7062ff\nProcess exited with code 9\nOutput:\nfailed\n',
+      }),
+    ).toBe(true);
+    expect(isCodexToolError({ tool_response: 'Process exited with code 0\n' })).toBe(false);
   });
 
   it('detects Codex Bash failure from transcript output', () => {

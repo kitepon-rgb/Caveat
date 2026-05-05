@@ -99,8 +99,13 @@ as `{"decision":"block","reason":"..."}`.
 
 `PostToolUse` uses the same Caveat pending-reminder model as Claude, but drains
 through Codex's `UserPromptSubmit` formatter instead of Claude
-`<system-reminder>` text. The foreground hook stays short and spawns
-`caveat codex-hook worker <workFile>` for DB lookup.
+`<system-reminder>` text. In current Codex operational smoke, Bash
+`PostToolUse` stdin did not include `exit_code`, and the transcript
+`function_call_output` was not visible until after the hook returned. Detached
+children launched by the hook also did not reliably leave pending reminders in
+real Codex runs. For that reason, Codex `PostToolUse` performs a bounded
+foreground lookup from `tool_input` + `tool_response` and writes the pending
+file before returning; the next `UserPromptSubmit` drains it.
 
 `codex-sidecar` remains appropriate for Claude-hosted second opinions and for
 Codex-hosted work that has a real boundary, such as an isolated worktree,

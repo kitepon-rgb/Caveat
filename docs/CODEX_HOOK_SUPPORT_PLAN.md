@@ -44,6 +44,11 @@ Caveat が Claude で持っている 3 つの hook 発火点と同等の動作�
   Bash 失敗 payload では exit code field が stdin に含まれない。Codex transcript
   の同じ `tool_use_id` / `call_id` に対応する `function_call_output` から
   `Process exited with code N` を読む必要がある。
+- ただし実運用 smoke では、`PostToolUse` hook が完了するまで transcript の
+  `function_call_output` が確定しない挙動を確認した。Codex hook から detached
+  child を起動して後で transcript を読む方式も実 Codex では pending を残せなかったため、
+  Codex `PostToolUse` 前景 hook は `tool_input` + `tool_response` を既存 Caveat
+  symptom に当て、hit がある場合だけ pending を積む。
 - `Stop` payload は `transcript_path` と `last_assistant_message` を持つ。苦戦
   evidence は Codex transcript JSONL から読む。
 - ただし、OpenAI の公開 Codex docs には、Claude Code の hooks reference
@@ -243,7 +248,9 @@ capture TODO 内で明示的に検証対象として扱います。
 - [x] capture payload から信頼できる error signal を決める。
 - [x] 可能な限り prose scraping ではなく、構造化 field から failed tool output
       を抽出する。
-- [x] detached worker / pending reminder 経路を再利用する。
+- [x] pending reminder 経路を再利用する。実 Codex では detached child が残らない
+      smoke 結果だったため、Codex `PostToolUse` は前景 hook 内で bounded lookup し、
+      pending file を書き切る。
 - [x] `postToolUse` stdout が Codex-visible context にならない場合は、Phase 0 で
       確認した context-capable hook event へ pending reminder を渡す設計にする。
       context-capable event が見つからない場合は実装を止め、設計判断を求める。
@@ -252,8 +259,9 @@ capture TODO 内で明示的に検証対象として扱います。
 - [x] worker job には host agent / formatter 種別を含めるか、Codex 専用 worker entry を
       分ける。Codex の tool error から作った pending reminder が Claude 用 wrapper で
       drain されないことを test で固定する。
-- [ ] success、failure、missing text、malformed payload の unit test を追加する。
-- [ ] tool failure を 1 回起こし、Phase 0 で確認した context-capable な後続 hook
+- [ ] success、missing text、malformed payload の unit test を追加する。
+- [x] captured failure payload の unit test を追加する。
+- [x] tool failure を 1 回起こし、Phase 0 で確認した context-capable な後続 hook
       tick で pending reminder が drain されることを integration smoke で確認する。
       この smoke は Codex auth / network / model 実行に依存するため、通常 CI の
       unit test には入れず、manual e2e または明示 opt-in test として扱う。
@@ -261,9 +269,10 @@ capture TODO 内で明示的に検証対象として扱います。
 受け入れ条件:
 
 - [ ] 成功した tool では error reminder を生成しない。
-- [ ] 失敗した tool では foreground hook を block せず async reminder を enqueue
-      する。
-- [ ] Phase 0 で確認した context-capable hook tick で pending reminder が
+- [x] 失敗した tool では Codex `PostToolUse` が pending reminder を enqueue
+      する。Codex では exit code が stdin に無いため、既存 Caveat symptom に当たる
+      `tool_input` / `tool_response` に限定して扱う。
+- [x] Phase 0 で確認した context-capable hook tick で pending reminder が
       Codex-visible context に出る。
 
 ## Phase 4: Codex Stop
@@ -346,24 +355,24 @@ Installation:
 
 目的: この対応を理解・保守・release できる状態にする。
 
-- [ ] `docs/DUAL_AGENT_SUPPORT.md` に Codex hook adapter note を追加する。
+- [x] `docs/DUAL_AGENT_SUPPORT.md` に Codex hook adapter note を追加する。
 - [ ] user-facing install behavior が変わる場合のみ、`README.md` /
       `README.ja.md` を更新する。
 - [ ] Claude contract 自体が変わる場合のみ `CLAUDE.md` を更新する。
 - [ ] changelog entry を追加する。
-- [ ] Codex hook contract に非自明な罠があれば Caveat knowledge として登録する。
+- [x] Codex hook contract に非自明な罠があれば Caveat knowledge として登録する。
 - [ ] full test suite を実行する。
-- [ ] Codex hook diagnostics を実行する。
-- [ ] Codex hook の発火 smoke は、auth / network / model 実行が必要なら manual e2e
+- [x] Codex hook diagnostics を実行する。
+- [x] Codex hook の発火 smoke は、auth / network / model 実行が必要なら manual e2e
       として実行し、unit test 必須条件にはしない。
 - [ ] manual e2e が auth 不足や model が tool を呼ばない理由で skip / inconclusive の
       場合、release note では `operational` と書かず、fixture-based support と
       diagnostics までの到達として明記する。
-- [ ] installed package path を検証してから publish する。
+- [x] installed package path を検証してから publish する。
 
 受け入れ条件:
 
-- [ ] docs が Codex hooks を supported-but-underdocumented と明記している。
+- [x] docs が Codex hooks を supported-but-underdocumented と明記している。
 - [ ] Caveat の Claude behavior が canonical かつ unchanged のまま。
 - [ ] release notes が Codex hook support を rewrite ではなく adapter として説明
       している。

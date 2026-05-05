@@ -40,6 +40,10 @@ const silentLogger: Logger = {
 interface CodexWorkerJob {
   sessionId: string;
   searchText: string;
+  knownError?: boolean;
+  allowSymptomOnly?: boolean;
+  transcriptPath?: string;
+  toolUseId?: string;
 }
 
 async function readStdin(): Promise<string> {
@@ -145,10 +149,12 @@ function numericExitCode(v: unknown): number | null {
   return typeof v === 'number' && Number.isInteger(v) ? v : null;
 }
 
-function transcriptExitCode(payload: Record<string, unknown>): number | null {
-  const transcriptPath =
-    typeof payload.transcript_path === 'string' ? payload.transcript_path : '';
-  const toolUseId = typeof payload.tool_use_id === 'string' ? payload.tool_use_id : '';
+function processExitCodeFromText(text: string): number | null {
+  const m = /Process exited with code\s+(-?\d+)/.exec(text);
+  return m ? Number(m[1]) : null;
+}
+
+function transcriptToolOutput(transcriptPath: string, toolUseId: string): string | null {
   if (!transcriptPath || !toolUseId || !existsSync(transcriptPath)) return null;
 
   let raw = '';
@@ -171,11 +177,35 @@ function transcriptExitCode(payload: Record<string, unknown>): number | null {
     if (payloadObj === null || typeof payloadObj !== 'object') continue;
     const p = payloadObj as Record<string, unknown>;
     if (p.type !== 'function_call_output' || p.call_id !== toolUseId) continue;
-    const output = typeof p.output === 'string' ? p.output : '';
-    const m = /Process exited with code\s+(-?\d+)/.exec(output);
-    if (m) return Number(m[1]);
+    return typeof p.output === 'string' ? p.output : '';
   }
   return null;
+}
+
+function transcriptExitCode(payload: Record<string, unknown>): number | null {
+  const transcriptPath =
+    typeof payload.transcript_path === 'string' ? payload.transcript_path : '';
+  const toolUseId = typeof payload.tool_use_id === 'string' ? payload.tool_use_id : '';
+  const output = transcriptToolOutput(transcriptPath, toolUseId);
+  return output === null ? null : processExitCodeFromText(output);
+}
+
+function isShellLikeTool(payload: Record<string, unknown>): boolean {
+  const name = typeof payload.tool_name === 'string' ? payload.tool_name : '';
+  if (name === 'Bash' || name === 'exec_command') return true;
+  const input = payload.tool_input;
+  if (input !== null && typeof input === 'object' && !Array.isArray(input)) {
+    const r = input as Record<string, unknown>;
+    return typeof r.command === 'string' || typeof r.cmd === 'string';
+  }
+  return false;
+}
+
+function toolInputText(input: unknown): string {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) return '';
+  const r = input as Record<string, unknown>;
+  const command = r.command ?? r.cmd;
+  return typeof command === 'string' ? command : '';
 }
 
 export function isCodexToolError(payload: Record<string, unknown>): boolean {
@@ -189,9 +219,48 @@ export function isCodexToolError(payload: Record<string, unknown>): boolean {
     const exit = numericExitCode(r.exit_code ?? r.exitCode);
     if (exit !== null) return exit !== 0;
   }
+  const responseExit = processExitCodeFromText(extractToolResponseText(resp));
+  if (responseExit !== null) return responseExit !== 0;
   const transcriptExit = transcriptExitCode(payload);
   if (transcriptExit !== null) return transcriptExit !== 0;
   return false;
+}
+
+export function buildCodexPostToolUseWorkerJob(
+  payload: Record<string, unknown>,
+): CodexWorkerJob | null {
+  const sessionId = codexSessionId(payload);
+  if (!sessionId) return null;
+
+  const transcriptPath =
+    typeof payload.transcript_path === 'string' ? payload.transcript_path : undefined;
+  const toolUseId = typeof payload.tool_use_id === 'string' ? payload.tool_use_id : undefined;
+  const responseText = extractToolResponseText(payload.tool_response ?? payload.toolResponse);
+  const inputText = toolInputText(payload.tool_input);
+  const transcriptOutput =
+    transcriptPath && toolUseId ? transcriptToolOutput(transcriptPath, toolUseId) : null;
+  const searchText = [inputText, responseText, transcriptOutput ?? '']
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join('\n');
+
+  const knownError = isCodexToolError(payload);
+  if (knownError) {
+    return { sessionId, searchText, knownError: true, transcriptPath, toolUseId };
+  }
+
+  if (transcriptPath && toolUseId && isShellLikeTool(payload) && searchText) {
+    return {
+      sessionId,
+      searchText,
+      knownError: false,
+      allowSymptomOnly: true,
+      transcriptPath,
+      toolUseId,
+    };
+  }
+
+  return null;
 }
 
 export function codexContextOutput(text: string, eventName = 'UserPromptSubmit'): string {
@@ -252,6 +321,53 @@ function spawnCodexWorker(job: CodexWorkerJob): void {
   }
 }
 
+async function waitForTranscriptOutput(
+  transcriptPath: string,
+  toolUseId: string,
+): Promise<string | null> {
+  const deadline = Date.now() + 2000;
+  while (Date.now() <= deadline) {
+    const output = transcriptToolOutput(transcriptPath, toolUseId);
+    if (output !== null) return output;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return null;
+}
+
+async function processCodexWorkerJob(
+  job: CodexWorkerJob,
+  opts: { waitForTranscript: boolean } = { waitForTranscript: true },
+): Promise<void> {
+  if (!job.searchText || !job.sessionId) return;
+  let searchText = job.searchText;
+  let knownError = job.knownError === true;
+  if (opts.waitForTranscript && job.transcriptPath && job.toolUseId) {
+    const transcriptOutput = await waitForTranscriptOutput(job.transcriptPath, job.toolUseId);
+    if (transcriptOutput) {
+      const exit = processExitCodeFromText(transcriptOutput);
+      if (exit !== null) {
+        if (exit === 0) return;
+        knownError = true;
+      }
+      searchText = [searchText, transcriptOutput].filter(Boolean).join('\n');
+    }
+  }
+
+  if (!knownError && job.allowSymptomOnly !== true) return;
+
+  const hits = searchCaveatsFromTextSafely(searchText);
+  if (hits.length === 0) return;
+
+  const ctx = buildContextSafely();
+  if (!ctx) return;
+
+  try {
+    appendPendingReminder(ctx.caveatHome, job.sessionId, toolErrorReminderText(hits));
+  } catch {
+    // best-effort
+  }
+}
+
 async function runCodexWorker(workFile: string): Promise<void> {
   let raw: string;
   try {
@@ -270,19 +386,7 @@ async function runCodexWorker(workFile: string): Promise<void> {
   } catch {
     process.exit(0);
   }
-  if (!job.searchText || !job.sessionId) process.exit(0);
-
-  const hits = searchCaveatsFromTextSafely(job.searchText);
-  if (hits.length === 0) process.exit(0);
-
-  const ctx = buildContextSafely();
-  if (!ctx) process.exit(0);
-
-  try {
-    appendPendingReminder(ctx.caveatHome, job.sessionId, toolErrorReminderText(hits));
-  } catch {
-    // best-effort
-  }
+  await processCodexWorkerJob(job);
   process.exit(0);
 }
 
@@ -331,8 +435,8 @@ export async function runCodexHook(name: CodexHookName, arg?: string): Promise<v
   }
   const payload = parsePayload(raw);
   const sessionId = codexSessionId(payload);
-  if (sessionId) drainForSession(sessionId);
-  else process.stderr.write('[caveat:codex-hook] missing session_id; pending drain disabled\n');
+  if (sessionId && name === 'user-prompt-submit') drainForSession(sessionId);
+  else if (!sessionId) process.stderr.write('[caveat:codex-hook] missing session_id; pending drain disabled\n');
 
   if (name === 'user-prompt-submit') {
     const prompt = typeof payload.prompt === 'string' ? payload.prompt : '';
@@ -344,10 +448,8 @@ export async function runCodexHook(name: CodexHookName, arg?: string): Promise<v
   }
 
   if (name === 'post-tool-use') {
-    if (!sessionId) process.exit(0);
-    if (!isCodexToolError(payload)) process.exit(0);
-    const errText = extractToolResponseText(payload.tool_response ?? payload.toolResponse ?? payload);
-    if (errText) spawnCodexWorker({ sessionId, searchText: errText });
+    const job = buildCodexPostToolUseWorkerJob(payload);
+    if (job) await processCodexWorkerJob(job, { waitForTranscript: false });
     process.exit(0);
   }
 
