@@ -135,6 +135,12 @@ export function runUninstall(ctx: CliContext, opts: UninstallOptions): void {
     `UserPromptSubmit hook: ${result.hooks.userPromptSubmit === 'added' ? 'removed' : 'not present'}`,
   );
   ctx.logger.info(
+    `PostToolUse hook: ${result.hooks.postToolUse === 'added' ? 'removed' : 'not present'}`,
+  );
+  ctx.logger.info(
+    `PostToolUseFailure hook: ${result.hooks.postToolUseFailure === 'added' ? 'removed' : 'not present'}`,
+  );
+  ctx.logger.info(
     `Stop hook: ${result.hooks.stop === 'added' ? 'removed' : 'not present'}`,
   );
   if (result.backupPath) {
@@ -153,6 +159,10 @@ function reportInstallResult(
   );
   ctx.logger.info(
     `${prefix}UserPromptSubmit hook: ${result.hooks.userPromptSubmit}`,
+  );
+  ctx.logger.info(`${prefix}PostToolUse hook: ${result.hooks.postToolUse}`);
+  ctx.logger.info(
+    `${prefix}PostToolUseFailure hook: ${result.hooks.postToolUseFailure}`,
   );
   ctx.logger.info(`${prefix}Stop hook: ${result.hooks.stop}`);
   if (result.backupPath) {

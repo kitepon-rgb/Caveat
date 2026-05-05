@@ -57,7 +57,7 @@ describe('installClaudeIntegration (hooks only — MCP spawn tolerated)', () => 
     cleanup(fx);
   });
 
-  it('creates settings.json with all three hooks when none exists', () => {
+  it('creates settings.json with Claude hook events when none exists', () => {
     const result = installClaudeIntegration({
       claudeDir: fx.claudeDir,
       cliScriptPath: fx.cliScriptPath,
@@ -68,6 +68,7 @@ describe('installClaudeIntegration (hooks only — MCP spawn tolerated)', () => 
     });
     expect(result.hooks.userPromptSubmit).toBe('added');
     expect(result.hooks.postToolUse).toBe('added');
+    expect(result.hooks.postToolUseFailure).toBe('added');
     expect(result.hooks.stop).toBe('added');
 
     const raw = readFileSync(fx.settingsPath, 'utf-8');
@@ -78,6 +79,9 @@ describe('installClaudeIntegration (hooks only — MCP spawn tolerated)', () => 
       'hook user-prompt-submit',
     );
     expect(settings.hooks.PostToolUse[0]?.hooks[0]?.command).toContain(
+      'hook post-tool-use',
+    );
+    expect(settings.hooks.PostToolUseFailure[0]?.hooks[0]?.command).toContain(
       'hook post-tool-use',
     );
     expect(settings.hooks.Stop[0]?.hooks[0]?.command).toContain('hook stop');
@@ -148,6 +152,8 @@ describe('installClaudeIntegration (hooks only — MCP spawn tolerated)', () => 
       hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>>;
     };
     expect(settings.hooks.UserPromptSubmit).toHaveLength(1);
+    expect(settings.hooks.PostToolUse).toHaveLength(1);
+    expect(settings.hooks.PostToolUseFailure).toHaveLength(1);
     expect(settings.hooks.Stop).toHaveLength(1);
   });
 
@@ -197,12 +203,17 @@ describe('installClaudeIntegration (hooks only — MCP spawn tolerated)', () => 
     });
     expect(result.hooks.stop).toBe('unchanged');
     expect(result.hooks.postToolUse).toBe('unchanged');
+    expect(result.hooks.postToolUseFailure).toBe('added');
 
     const settings = JSON.parse(readFileSync(fx.settingsPath, 'utf-8')) as {
       hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>>;
     };
     expect(settings.hooks.Stop).toHaveLength(1);
     expect(settings.hooks.PostToolUse).toHaveLength(1);
+    expect(settings.hooks.PostToolUseFailure).toHaveLength(1);
+    expect(settings.hooks.PostToolUseFailure[0]?.hooks[0]?.command).toBe(
+      `CAVEAT_HOOK_CODEX_SIDECAR=auto ${postToolUseCmd}`,
+    );
   });
 
   it('dry-run leaves settings.json untouched', () => {
@@ -236,6 +247,7 @@ describe('installClaudeIntegration (hooks only — MCP spawn tolerated)', () => 
     });
     expect(result.hooks.userPromptSubmit).toBe('added'); // marker: was removed
     expect(result.hooks.postToolUse).toBe('added');
+    expect(result.hooks.postToolUseFailure).toBe('added');
     expect(result.hooks.stop).toBe('added');
 
     const settings = JSON.parse(readFileSync(fx.settingsPath, 'utf-8')) as {
@@ -243,6 +255,7 @@ describe('installClaudeIntegration (hooks only — MCP spawn tolerated)', () => 
     };
     expect(settings.hooks.UserPromptSubmit).toHaveLength(0);
     expect(settings.hooks.PostToolUse).toHaveLength(0);
+    expect(settings.hooks.PostToolUseFailure).toHaveLength(0);
     expect(settings.hooks.Stop).toHaveLength(0);
   });
 

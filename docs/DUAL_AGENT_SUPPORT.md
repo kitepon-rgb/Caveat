@@ -15,13 +15,18 @@ Caveat's Claude integration is unchanged by Codex sidecar support.
 - Claude settings targets:
   - MCP is registered through `claude mcp add --scope user caveat -- ...`
   - Hooks are merged into `~/.claude/settings.json`
+  - Caveat registers `PostToolUse` and `PostToolUseFailure` to the same
+    `caveat hook post-tool-use` command. Current Claude Code emits
+    `PostToolUseFailure` for failed tool runs with an `error` field instead of
+    a `tool_response` object.
 - Hook stdout contract:
   - Emits zero or more `<system-reminder>...</system-reminder>` blocks
   - Logs diagnostics to stderr with `[caveat:hook]`
 - Stop-hook recursion guard: `payload.stop_hook_active === true` exits silently
 - PostToolUse async behavior:
   - Foreground hook drains pending reminders
-  - Tool errors enqueue detached worker inspection
+  - Tool errors from either `PostToolUse` (`tool_response.is_error`) or
+    `PostToolUseFailure` (`error`) enqueue detached worker inspection
   - Worker writes reminders under Caveat pending storage for the next hook tick
 - Markdown entry contract:
   - Frontmatter is parsed with `gray-matter` and `js-yaml` `JSON_SCHEMA`
@@ -249,15 +254,15 @@ subagent API for background review or audit work. The existing background
 behavior is the `PostToolUse` detached worker:
 
 ```text
-Claude PostToolUse hook
+Claude PostToolUse / PostToolUseFailure hook
   -> detached Caveat worker
   -> Caveat DB search
   -> pending reminder for the next hook tick
 ```
 
-That worker is tied to Claude hook timing and Claude tool-response payloads, so
-it remains Claude-primary. When `codex-sidecar` is operational, the worker can
-append a Codex advisory to the same pending reminder. The original Caveat
+That worker is tied to Claude hook timing and Claude tool-response / failure
+payloads, so it remains Claude-primary. When `codex-sidecar` is operational,
+the worker can append a Codex advisory to the same pending reminder. The original Caveat
 reminder remains first and unchanged; the Codex text is a second opinion for
 Claude, not a new Caveat decision engine.
 

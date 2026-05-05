@@ -20,6 +20,7 @@ export interface ClaudeInstallResult {
   hooks: {
     userPromptSubmit: 'added' | 'unchanged';
     postToolUse: 'added' | 'unchanged';
+    postToolUseFailure: 'added' | 'unchanged';
     stop: 'added' | 'unchanged';
   };
   backupPath?: string;
@@ -27,6 +28,7 @@ export interface ClaudeInstallResult {
 
 const EVENT_USER_PROMPT_SUBMIT = 'UserPromptSubmit';
 const EVENT_POST_TOOL_USE = 'PostToolUse';
+const EVENT_POST_TOOL_USE_FAILURE = 'PostToolUseFailure';
 const EVENT_STOP = 'Stop';
 
 function quote(p: string): string {
@@ -81,6 +83,20 @@ function removeHook(settings: Settings, event: string, command: string): boolean
   if (filtered.length === before) return false;
   settings.hooks![event] = filtered;
   return true;
+}
+
+function findExistingHookCommand(
+  settings: Settings,
+  event: string,
+  command: string,
+): string | undefined {
+  const list = settings.hooks?.[event];
+  if (!list) return undefined;
+  for (const entry of list) {
+    const found = entry.hooks?.find((h) => isSameHookCommand(h.command, command));
+    if (found) return found.command;
+  }
+  return undefined;
 }
 
 function isSameHookCommand(actual: string, expected: string): boolean {
@@ -186,20 +202,30 @@ export function installClaudeIntegration(
   const usCmd = hookCommand(opts.nodePath, opts.cliScriptPath, 'user-prompt-submit');
   const ptCmd = hookCommand(opts.nodePath, opts.cliScriptPath, 'post-tool-use');
   const stopCmd = hookCommand(opts.nodePath, opts.cliScriptPath, 'stop');
+  const ptInstallCmd =
+    findExistingHookCommand(settings, EVENT_POST_TOOL_USE, ptCmd) ?? ptCmd;
 
   const userPromptSubmit = upsertHook(settings, EVENT_USER_PROMPT_SUBMIT, usCmd);
-  const postToolUse = upsertHook(settings, EVENT_POST_TOOL_USE, ptCmd);
+  const postToolUse = upsertHook(settings, EVENT_POST_TOOL_USE, ptInstallCmd);
+  const postToolUseFailure = upsertHook(
+    settings,
+    EVENT_POST_TOOL_USE_FAILURE,
+    ptInstallCmd,
+  );
   const stop = upsertHook(settings, EVENT_STOP, stopCmd);
 
   let backupPath: string | undefined;
   const anyAdded =
-    userPromptSubmit === 'added' || postToolUse === 'added' || stop === 'added';
+    userPromptSubmit === 'added' ||
+    postToolUse === 'added' ||
+    postToolUseFailure === 'added' ||
+    stop === 'added';
   if (!opts.dryRun && anyAdded) {
     const backup = writeSettings(settingsPath, settings);
     if (backup) backupPath = backup;
   } else if (opts.dryRun) {
     opts.logger.info(
-      `[dry-run] would ${userPromptSubmit === 'added' ? 'add' : 'keep'} UserPromptSubmit, ${postToolUse === 'added' ? 'add' : 'keep'} PostToolUse, ${stop === 'added' ? 'add' : 'keep'} Stop hook in ${settingsPath}`,
+      `[dry-run] would ${userPromptSubmit === 'added' ? 'add' : 'keep'} UserPromptSubmit, ${postToolUse === 'added' ? 'add' : 'keep'} PostToolUse, ${postToolUseFailure === 'added' ? 'add' : 'keep'} PostToolUseFailure, ${stop === 'added' ? 'add' : 'keep'} Stop hook in ${settingsPath}`,
     );
   }
 
@@ -207,7 +233,11 @@ export function installClaudeIntegration(
     ? ({ action: 'skipped', detail: 'skipped by caller' } as const)
     : registerMcp(opts.nodePath, opts.cliScriptPath, opts.dryRun, opts.logger);
 
-  return { mcp, hooks: { userPromptSubmit, postToolUse, stop }, backupPath };
+  return {
+    mcp,
+    hooks: { userPromptSubmit, postToolUse, postToolUseFailure, stop },
+    backupPath,
+  };
 }
 
 export function uninstallClaudeIntegration(
@@ -222,10 +252,11 @@ export function uninstallClaudeIntegration(
 
   const removedUs = removeHook(settings, EVENT_USER_PROMPT_SUBMIT, usCmd);
   const removedPt = removeHook(settings, EVENT_POST_TOOL_USE, ptCmd);
+  const removedPtf = removeHook(settings, EVENT_POST_TOOL_USE_FAILURE, ptCmd);
   const removedStop = removeHook(settings, EVENT_STOP, stopCmd);
 
   let backupPath: string | undefined;
-  if (!opts.dryRun && (removedUs || removedPt || removedStop)) {
+  if (!opts.dryRun && (removedUs || removedPt || removedPtf || removedStop)) {
     const backup = writeSettings(settingsPath, settings);
     if (backup) backupPath = backup;
   }
@@ -239,6 +270,7 @@ export function uninstallClaudeIntegration(
     hooks: {
       userPromptSubmit: removedUs ? 'added' : 'unchanged',
       postToolUse: removedPt ? 'added' : 'unchanged',
+      postToolUseFailure: removedPtf ? 'added' : 'unchanged',
       stop: removedStop ? 'added' : 'unchanged',
     },
     backupPath,

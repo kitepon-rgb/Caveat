@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクトの状態
 
+**v0.14.1**（2026-05-06、全 workspace test/typecheck passing）。**Codex primary hooks を追加し、Claude hook 実運用の失敗イベントも補正済み**。Codex 側は `caveat codex-hook install|diagnostics|user-prompt-submit|post-tool-use|stop` で Codex runtime から Caveat CLI を直接呼ぶ。Claude 側は従来の `caveat hook post-tool-use` を `PostToolUse` と `PostToolUseFailure` の両方に登録する。現行 Claude Code は失敗 tool で `PostToolUseFailure` を出し、payload の `error` field に失敗内容を入れるため、Caveat はこの field も既存の非同期 worker / pending reminder 経路へ流す。
+
 **v0.13.0**（2026-05-05、217 tests passing）。**Codex sidecar advisory を Claude hook の補助経路として追加**。Caveat の思想は変更しない: 既存の UserPromptSubmit / PostToolUse / Stop が「いつCaveatを出すか」を決め、本文先頭の `[caveat]` リマインダーも従来通り維持する。その後ろに、現在の project で `.codex-sidecar.yml` があり `codex-sidecar` が operational な場合だけ `[caveat:codex-sidecar] Codex advisory:` を追記する。
 
 追加点:
@@ -183,10 +185,10 @@ MCP stdio サーバは stdout に JSON-RPC 以外を書いてはいけない。`
 ## Claude Code 統合（Phase 10 で初期実装、Phase 12 でインストーラ化）
 
 - **MCP サーバ**: `~/.claude.json`（`claude mcp add --scope user` で書き込み）。`~/.claude/settings.json` には書けない（schema validation で `mcpServers` フィールドが reject される）
-- **Hooks**: `~/.claude/settings.json` の `hooks.UserPromptSubmit` と `hooks.Stop` に throughline 等と並ぶ形で**既存エントリを保持したまま追記**
+- **Hooks**: `~/.claude/settings.json` の `hooks.UserPromptSubmit` / `hooks.PostToolUse` / `hooks.PostToolUseFailure` / `hooks.Stop` に throughline 等と並ぶ形で**既存エントリを保持したまま追記**
 - **`caveat init`** ([apps/cli/src/claudeInstall.ts](apps/cli/src/claudeInstall.ts)) が自動で両方を設定:
   - MCP: `claude mcp remove` → `claude mcp add --scope user caveat -- <nodePath> --disable-warning=ExperimentalWarning <cliScriptPath> mcp-server`（idempotent）
-  - Hooks: `settings.json` を read → `hooks.UserPromptSubmit` と `hooks.Stop` に `node <cliScriptPath> hook <name>` を upsert → write（**書き込み前に `settings.json.caveat-backup-<ts>` を作成**）
+  - Hooks: `settings.json` を read → `hooks.UserPromptSubmit` / `hooks.PostToolUse` / `hooks.PostToolUseFailure` / `hooks.Stop` に `node <cliScriptPath> hook <name>` を upsert → write（**書き込み前に `settings.json.caveat-backup-<ts>` を作成**）
   - `cliScriptPath` は `process.argv[1]`（NPM global install 時は `%AppData%/npm/node_modules/caveat-cli/dist/caveat.js`）
 - **冪等性**: 既に同 command の hook エントリがあれば skip。重複追加しない
 - **テスト**: `apps/cli/tests/claudeInstall.test.ts` — `skipMcpRegistration: true` で spawn を抑制し、settings.json merge のみテスト。実 `~/.claude.json` を汚染しない
@@ -231,9 +233,9 @@ MCP stdio サーバは stdout に JSON-RPC 以外を書いてはいけない。`
 - **stop リマインダ本文**: シグナル具体数値を列挙（Y）+ `errorSnippets` と `searchQueries` を結合した text を `findCaveatsForPrompt` に食わせて共起 FTS し、既存罠に類似があれば `caveat_update` を、なければ `caveat_record` を促す（Z）。事前発火と同じ `findCaveatsForPrompt` を text 入力として再利用（hookCmd.ts の `searchCaveatsFromTextSafely`）
 - **Codex sidecar advisory (v0.13)**: `Stop` hook が発火した場合、`CAVEAT_HOOK_CODEX_SIDECAR` が `auto` / `require` なら `caveat codex-sidecar run explore` を同期的に呼び、既存 `stopReminderText` の後ろへ Codex の助言を追記する。`auto` は project root に `.codex-sidecar.yml` がある時だけ試す。`off` は pre-v0.13 と同じ本文のみ。失敗時は hidden fallback せず unavailable 行を出す
 - **再帰防止**: `payload.stop_hook_active === true` の場合は stdout 空で即 exit（不変）
-- **実行中発火（PostToolUse hook、v0.10）— 非同期パイプライン**:
-  - Claude Code は毎 tool 呼び出し後に PostToolUse hook を同期的に呼び出し、その stdout を次ターンのコンテキストに挿入する。同期的に FTS を走らせると tool ごとに 150-300ms のレイテンシが乗るので、**前景 hook は drain + worker spawn で ~20ms 返す**。
-  - 前景フロー: (1) `drainPendingReminders(caveatHome, sessionId)` で過去 worker が書いた reminder ファイルを読み → stdout に emit → unlink / (2) `tool_response.is_error === true` のときのみ tool_response のテキストを work file に書き出し、`spawn(node, [cli, 'hook', 'worker', workFile], {detached:true,stdio:'ignore'}).unref()` で detached worker を起動し即 exit
+- **実行中発火（PostToolUse / PostToolUseFailure hook、v0.10 / v0.14）— 非同期パイプライン**:
+  - Claude Code は tool 呼び出し後に PostToolUse 系 hook を同期的に呼び出し、その stdout を次ターンのコンテキストに挿入する。現行 Claude Code の失敗 tool は `PostToolUseFailure` として発火し、payload の `error` field に失敗内容を入れる。成功/通常系互換のため `PostToolUse` も維持する。同期的に FTS を走らせると tool ごとに 150-300ms のレイテンシが乗るので、**前景 hook は drain + worker spawn で ~20ms 返す**。
+  - 前景フロー: (1) `drainPendingReminders(caveatHome, sessionId)` で過去 worker が書いた reminder ファイルを読み → stdout に emit → unlink / (2) `tool_response.is_error === true` または `hook_event_name === 'PostToolUseFailure'` / `error` field があるときのみ失敗テキストを work file に書き出し、`spawn(node, [cli, 'hook', 'worker', workFile], {detached:true,stdio:'ignore'}).unref()` で detached worker を起動し即 exit
   - 非同期 worker (`caveat hook worker <workFile>`): work file を読んで unlink → `findCaveatsForPrompt(db, errorText)` を走らせ → hit > 0 なら `toolErrorReminderText(hits)` を `<caveatHome>/pending/<sessionId>/<ts>-<uuid>.txt` に appendPendingReminder。v0.13 以降は sidecar が使える時だけ Codex advisory を同じ pending reminder の末尾へ追記
   - drain は **全 hook(UserPromptSubmit / PostToolUse / Stop)の最初で実行**。どの hook が次に発火しても pending が回収される
   - pending ファイルはセッション id でディレクトリ分離 ([packages/core/src/pendingReminders.ts](packages/core/src/pendingReminders.ts))。`session_id` は `[^A-Za-z0-9_-]` を strip してサニタイズ、traversal 攻撃を防ぐ

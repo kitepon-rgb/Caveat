@@ -159,12 +159,14 @@ function extractToolResponseText(response: unknown): string {
 }
 
 function isToolError(payload: Record<string, unknown>): boolean {
+  if (payload.hook_event_name === 'PostToolUseFailure') return true;
   const resp = payload.tool_response ?? (payload as Record<string, unknown>).toolResponse;
   if (resp !== null && typeof resp === 'object' && !Array.isArray(resp)) {
     if ((resp as Record<string, unknown>).is_error === true) return true;
   }
   // Some transcripts surface the flag at top level
   if (payload.is_error === true) return true;
+  if (typeof payload.error === 'string' && payload.error.length > 0) return true;
   return false;
 }
 
@@ -444,7 +446,9 @@ export async function runHook(name: HookName, arg?: string): Promise<void> {
   if (name === 'post-tool-use') {
     // Fast path: we only enqueue on errors. Everything else is just drain.
     if (!isToolError(payload)) process.exit(0);
-    const errText = extractToolResponseText(payload.tool_response ?? payload);
+    const errText = extractToolResponseText(
+      payload.tool_response ?? payload.toolResponse ?? payload.error ?? payload,
+    );
     if (errText) {
       spawnWorker({ sessionId, searchText: errText });
     }
