@@ -2,7 +2,7 @@
   "name": "caveat",
   "private": true,
   "version": "0.0.0",
-  "description": "External spec gotcha knowledge base",
+  "description": "Long-term memory layer for Claude Code and Codex",
   "type": "module",
   "packageManager": "pnpm@10.0.0",
   "engines": {

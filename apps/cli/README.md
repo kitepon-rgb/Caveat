@@ -1,6 +1,6 @@
 # caveat-cli
 
-External spec gotcha knowledge base CLI — markdown + SQLite FTS5 + MCP server + Claude Code hooks. Personal / group knowledge tool, no central shared DB.
+Long-term memory CLI for Claude Code and Codex — markdown + SQLite FTS5 + MCP server + agent hooks. Personal / group knowledge tool, no central shared DB.
 
 **Source / full docs**: https://github.com/kitepon-rgb/Caveat
 
@@ -8,16 +8,27 @@ External spec gotcha knowledge base CLI — markdown + SQLite FTS5 + MCP server 
 
 ```sh
 npm install -g caveat-cli
-caveat init
+caveat init                          # Claude Code MCP + hooks
+caveat codex-hook install            # optional: native Codex hooks
 ```
 
-`caveat init` (idempotent, `--dry-run` supported) does 3 things:
+`caveat init` (idempotent, `--dry-run` supported) does the Claude Code setup:
 
 1. Scaffolds `~/.caveat/own/` (your personal knowledge repo) + `~/.caveat/index/caveat.db`
 2. Registers the MCP server with Claude Code (`claude mcp add --scope user`)
-3. Merges `UserPromptSubmit` / `Stop` hooks into `~/.claude/settings.json` (existing entries preserved, backup written before any change)
+3. Merges `UserPromptSubmit` / `PostToolUse` / `PostToolUseFailure` / `Stop` hooks into `~/.claude/settings.json` (existing entries preserved, backup written before any change)
 
 Opt-out: `--skip-claude`. `caveat uninstall` reverses the Claude Code changes without touching `~/.caveat/`. **No central DB is auto-subscribed** — add knowledge sources explicitly with `caveat community add`.
+
+For Codex, run `caveat codex-hook diagnostics` first if you want a health check,
+then `caveat codex-hook install`. It registers Caveat-owned
+`UserPromptSubmit`, `PostToolUse`, and `Stop` entries in `~/.codex/hooks.json`
+and enables Codex's native hook runtime.
+
+With either host enabled, Caveat surfaces matching entries at three moments:
+before prompts, after failed tools, and after struggle-heavy sessions. Stop
+reminders are queued for the next context-capable hook tick so the agent's final
+answer is not cluttered by hook output.
 
 ## Basic usage
 
@@ -31,6 +42,7 @@ caveat community remove <handle>    # unsubscribe + purge db rows
 caveat pull                         # community pull + re-index everything
 caveat serve                        # http://localhost:4242 read-only portal
 caveat uninstall                    # reverse `caveat init` Claude integration
+caveat codex-hook diagnostics       # inspect Codex hook availability/install state
 ```
 
 ## Sharing with a team
@@ -51,6 +63,10 @@ Exposed to Claude Code via the MCP server that `caveat init` registers:
 
 Claude can autonomously pull subscribed-repo updates (safe, idempotent). Recording / updating writes to your local `~/.caveat/own/` only — sharing is done by you via `git push` to your group repo.
 
+Codex uses native hooks rather than MCP for automatic surfacing. The optional
+`codex-sidecar` commands remain available for bounded second opinions, review,
+risk-check, and isolated work.
+
 ## Pointing at a different knowledge repo
 
 If you want `~/.caveat/own/` to live elsewhere (e.g. a git-tracked directory you sync to a team repo), override in `~/.caveatrc.json`:
@@ -63,7 +79,8 @@ If you want `~/.caveat/own/` to live elsewhere (e.g. a git-tracked directory you
 
 - Node 22.5+ (for built-in `node:sqlite`)
 - `git` for `caveat community add` / `caveat community pull`
-- Claude Code installed if you want MCP / hooks integration. Without it, `caveat init --skip-claude` still provisions local state.
+- Claude Code installed if you want Claude MCP / hooks integration. Without it, `caveat init --skip-claude` still provisions local state.
+- Codex installed if you want native Codex hooks via `caveat codex-hook install`.
 
 ## License
 
