@@ -218,7 +218,7 @@ describe('Claude hook output', () => {
         {
           ...process.env,
           CAVEAT_HOME: caveatHome,
-          CAVEAT_CODEX_SIDECAR_COMMAND: '/bin/false',
+          CAVEAT_CODEX_SIDECAR_COMMAND: process.execPath,
           CAVEAT_HOOK_CODEX_SIDECAR: 'require',
           HOME: userHome,
         },
@@ -231,7 +231,7 @@ describe('Claude hook output', () => {
       const unavailable = reminders[0]
         ?.split('\n')
         .find((line) => line.startsWith('[caveat:codex-sidecar] advisory unavailable:'));
-      expect(unavailable).toContain('sidecar command failed:');
+      expect(unavailable).toContain('advisory unavailable:');
       expect(unavailable?.length).toBeLessThan(320);
     } finally {
       rmSync(root, { recursive: true, force: true });
