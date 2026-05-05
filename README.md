@@ -18,14 +18,14 @@
 
 ```sh
 npm install -g caveat-cli
-caveat init                          # registers MCP server + 3 hooks with Claude Code
+caveat init                          # registers MCP server + Claude Code hooks
 caveat codex-hook install            # optional: register equivalent hooks with Codex
 ```
 
 Then in any Claude Code session:
 
-1. **You type a prompt** → `UserPromptSubmit` hook surfaces matching entries via three structural gates: **co-occurrence + symptom-section match + corpus-rarest anchor**. No keyword lists. Bare proper-noun mentions (`RTX 5090 CUDA で何かやってる`) stay silent; specific failure vocabulary (`cudaGetDeviceCount が 0 を返す`) fires the right entry. ([details](CHANGELOG.md#0120--2026-05-04))
-2. **A tool returns an error** → `PostToolUse` hook spawns a detached worker that searches in the background; the matching caveat lands on the next tick (~20ms foreground latency). If the current project has an operational `codex-sidecar`, Caveat appends a Codex second opinion after the original reminder.
+1. **You type a prompt** → `UserPromptSubmit` hook surfaces matching entries via three structural gates: **co-occurrence + symptom-section match + rare topical anchor**. No keyword lists. Bare proper-noun mentions (`RTX 5090 CUDA で何かやってる`) stay silent; specific failure vocabulary plus a curated topic anchor (`cudaGetDeviceCount が 0 を返す`) fires the right entry. ([details](CHANGELOG.md#0142--2026-05-06))
+2. **A tool returns an error** → `PostToolUse` / `PostToolUseFailure` hooks spawn a detached worker that searches in the background; the matching caveat lands on the next tick (~20ms foreground latency). If the current project has an operational `codex-sidecar`, Caveat appends a Codex second opinion after the original reminder.
 3. **The session ends** → `Stop` hook parses the transcript for objective struggle signals (tool failures, repeated edits, web searches, bash retries). If any are present, it nudges Claude to either `caveat_update` an existing entry or `caveat_record` a new one, again with optional Codex advice when sidecar is configured.
 
 In a primary Codex session, `caveat codex-hook install` wires the same three
@@ -46,7 +46,7 @@ The knowledge repo is plain markdown-in-git. Open it as an Obsidian vault. Share
 | Catches struggle the AI didn't self-report | ✅ transcript signal mining | ❌ | ❌ | ❌ |
 | Mixes external-spec gotchas with repo-specific context | ✅ public / private tiers | ⚠️ no separation | ⚠️ | ⚠️ |
 
-**Status**: v0.14.0, 233 tests passing. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install.
+**Status**: v0.14.2, 238 tests passing. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install.
 
 <details>
 <summary><strong>Why no central shared DB?</strong> (v0.7 pivot)</summary>
@@ -81,7 +81,7 @@ flowchart LR
         S["Session end<br/>(transcript signals)"]
     end
 
-    P -.->|"UserPromptSubmit<br/>事前発火"| H1{"co-occurrence<br/>+ symptom + rare-anchor"}
+    P -.->|"UserPromptSubmit<br/>事前発火"| H1{"co-occurrence<br/>+ symptom<br/>+ topical anchor"}
     T -.->|"PostToolUse<br/>実行中発火 ~20ms"| H2{"async detached<br/>worker"}
     S -.->|"Stop<br/>事後発火"| H3{"signal-gated<br/>+ FTS"}
 
@@ -96,9 +96,9 @@ flowchart LR
 - **`markdown-in-git` is the source of truth.** SQLite (FTS5 trigram) is a rebuildable derived index, gitignored.
 - **Per-group sharing via plain git.** Your `~/.caveat/own/` is yours. Share via any git repo (your own, a team's `acme-corp/caveats`, etc.). Subscribers add it with `caveat community add <github-url>`; updates flow via `caveat community pull`. The tool stays out of the publish path.
 - **`visibility: public | private`** frontmatter + `.husky/pre-commit` gate keeps private entries out of any repo you commit to.
-- **Claude Code integration.** An MCP server exposes 6 tools (`caveat_search` / `caveat_get` / `caveat_record` / `caveat_update` / `caveat_list_recent` / `caveat_pull`). Three hooks fire at complementary points and surface matching caveats automatically — no hardcoded keyword lists:
-  - **UserPromptSubmit** (事前発火): when you submit a prompt, tokenize it (path-stripping + self-identity + pure-hiragana glue removal + CJK group dedup), FTS the DB, and surface entries that pass **three structural gates** — (1) ≥ 2 distinct group matches (co-occurrence), (2) ≥ 1 match in the entry's `## Symptom` section (not just topic words), (3) that match is on the corpus-rarest side by document frequency. Bare proper-noun mentions like `RTX 5090 CUDA で何かやってる` stay silent; only specific failure-state vocabulary (`cudaGetDeviceCount`, `SQLITE_READONLY`, …) fires the gate. No hardcoded word lists.
-  - **PostToolUse** (実行中発火): when a tool returns `is_error: true`, spawn a detached worker that does the FTS asynchronously so the foreground hook returns in ~20ms; the reminder lands on the next hook tick. If `codex-sidecar` is configured, Codex advice is appended to the same reminder after Caveat's original text.
+- **Claude Code integration.** An MCP server exposes 6 tools (`caveat_search` / `caveat_get` / `caveat_record` / `caveat_update` / `caveat_list_recent` / `caveat_pull`). Three hook timings fire at complementary points and surface matching caveats automatically — no hardcoded keyword lists:
+  - **UserPromptSubmit** (事前発火): when you submit a prompt, tokenize it (path-stripping + self-identity + pure-hiragana glue removal + CJK group dedup), FTS the DB, and surface entries that pass **three structural gates** — (1) ≥ 2 distinct group matches (co-occurrence), (2) ≥ 1 match in the entry's `## Symptom` section (failure-state evidence), (3) ≥ 1 corpus-rarest prompt token in `topical_text` (title + tags + environment values, topic evidence). Bare proper-noun mentions like `RTX 5090 CUDA で何かやってる` stay silent; only specific failure-state vocabulary plus a curated topic anchor (`cudaGetDeviceCount`, `SQLITE_READONLY`, …) fires the gate. No hardcoded word lists.
+  - **PostToolUse / PostToolUseFailure** (実行中発火): when a tool returns `is_error: true` or Claude Code emits a failed-tool `error` payload, spawn a detached worker that does the FTS asynchronously so the foreground hook returns in ~20ms; the reminder lands on the next hook tick. If `codex-sidecar` is configured, Codex advice is appended to the same reminder after Caveat's original text.
   - **Stop** (事後発火): parse the session transcript for objective struggle signals (tool failures, repeated file edits, web searches, bash retries). If any are present, surface matching entries and nudge `caveat_update` or `caveat_record`. Optional Codex advice can challenge or sharpen that nudge without replacing Caveat's trigger logic.
 - **Codex primary hook adapter.** `caveat codex-hook install` registers
   `UserPromptSubmit`, `PostToolUse`, and `Stop` in `~/.codex/hooks.json` and
@@ -153,7 +153,7 @@ What `caveat init` does on first run:
 - Writes `~/.caveatrc.json` (empty `{}` — defaults come from a constant in the CLI)
 - Scaffolds `~/.caveat/own/` (your knowledge repo root) + `~/.caveat/index/caveat.db`
 - Runs `claude mcp add --scope user caveat -- <node> --disable-warning=ExperimentalWarning <cliPath> mcp-server`
-- Merges `UserPromptSubmit` / `PostToolUse` / `Stop` hook entries into `~/.claude/settings.json` (existing entries preserved; backup written before any change)
+- Merges `UserPromptSubmit` / `PostToolUse` / `PostToolUseFailure` / `Stop` hook entries into `~/.claude/settings.json` (existing entries preserved; backup written before any change)
 
 Use `--skip-claude` to skip Claude Code wiring, or `--dry-run` to preview. `caveat uninstall` reverses Claude Code changes without touching `~/.caveat/`. **No central DB is auto-subscribed** — add knowledge sources explicitly with `caveat community add`.
 

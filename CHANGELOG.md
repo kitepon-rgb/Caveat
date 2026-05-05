@@ -2,6 +2,24 @@
 
 All notable changes are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.2] — 2026-05-06
+
+### Fixed
+- **Prompt surfacing rare-anchor now uses `topical_text`, not `symptom_text`.** `findCaveatsForPrompt` now treats `symptom_text` and `topical_text` as independent evidence: a prompt must overlap the entry's Symptom section to prove the user is describing a failure state, and it must also contain a corpus-rarest topical anchor in `topical_text` (title + tags + environment values) to prove the caveat's curated topic matches. This blocks symptom-prose conversational false positives such as generic "hook worked normally?" or "which hook mistriggered?" prompts surfacing unrelated entries.
+
+### Verification
+- Added regression coverage for the two observed symptom-only false-positive classes and a positive control where symptom evidence and rare topical anchor are independent.
+- Total test count: 238 across workspace packages.
+
+## [0.14.1] — 2026-05-06
+
+### Fixed
+- **Claude failed tools now route through Caveat's mid-turn reminder path.** Current Claude Code can emit failed tool events as `PostToolUseFailure` with a top-level `error` field, not as plain `PostToolUse` with `tool_response.is_error`. `caveat init` now registers `caveat hook post-tool-use` under both `PostToolUse` and `PostToolUseFailure`, preserving any env-prefixed command policy such as `CAVEAT_HOOK_CODEX_SIDECAR=auto`.
+- `caveat hook post-tool-use` treats `hook_event_name === "PostToolUseFailure"` or a non-empty top-level `error` field as tool-error input and passes that text to the existing detached worker / pending-reminder pipeline.
+
+### Verification
+- Real Claude CLI stream-json smoke confirmed: failing Bash tool -> `PostToolUseFailure` -> Caveat worker -> next hook tick surfaces `[caveat] 直前のエラー...` -> pending queue drains to zero.
+
 ## [0.14.0] — 2026-05-05
 
 ### Added

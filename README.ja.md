@@ -18,14 +18,14 @@
 
 ```sh
 npm install -g caveat-cli
-caveat init                          # MCP サーバと 3 種の hook を Claude Code に登録
+caveat init                          # MCP サーバと Claude Code hooks を登録
 caveat codex-hook install            # 任意: 同等の hook を Codex に登録
 ```
 
 これで Claude Code セッションの中で:
 
-1. **プロンプト送信時** → `UserPromptSubmit` hook が **3 段の構造的ゲート**でマッチエントリを surface: 共起 + 症状セクション一致 + corpus-rarest anchor。キーワード allowlist も stopword リストもなし。固有名詞だけの言及 (`RTX 5090 CUDA で何かやってる`) は silent、症状語彙 (`cudaGetDeviceCount が 0 を返す`) で正解エントリだけ発火する。([詳細](CHANGELOG.md#0120--2026-05-04))
-2. **ツールがエラー返却したとき** → `PostToolUse` hook が detached worker を起動して非同期に検索。前景は ~20ms で返るのでターン遅延ゼロ、結果は次の hook tick で Claude のコンテキストに載ります。現在の project で `codex-sidecar` が operational なら、既存リマインダーの後ろに Codex の second opinion も追記されます。
+1. **プロンプト送信時** → `UserPromptSubmit` hook が **3 段の構造的ゲート**でマッチエントリを surface: 共起 + 症状セクション一致 + rare topical anchor。キーワード allowlist も stopword リストもなし。固有名詞だけの言及 (`RTX 5090 CUDA で何かやってる`) は silent、症状語彙と curated topic anchor (`cudaGetDeviceCount が 0 を返す`) が揃うと正解エントリだけ発火する。([詳細](CHANGELOG.md#0142--2026-05-06))
+2. **ツールがエラー返却したとき** → `PostToolUse` / `PostToolUseFailure` hook が detached worker を起動して非同期に検索。前景は ~20ms で返るのでターン遅延ゼロ、結果は次の hook tick で Claude のコンテキストに載ります。現在の project で `codex-sidecar` が operational なら、既存リマインダーの後ろに Codex の second opinion も追記されます。
 3. **セッション終了時** → `Stop` hook が transcript を解析し、客観的な「もがきシグナル」（ツール失敗、同一ファイル複数編集、Web 検索、Bash 再実行）を抽出。一つでも観測されれば、Claude に対して既存エントリの `caveat_update` か新規 `caveat_record` を促します。sidecar 設定済みなら、この判断材料にも Codex 助言が添えられます。
 
 Codex を primary session として使う場合は、`caveat codex-hook install` が
@@ -46,7 +46,7 @@ second opinion、review、risk-check、isolated work 用に残します。
 | AI が自覚しないもがきも検出 | ✅ transcript シグナル抽出 | ❌ | ❌ | ❌ |
 | 外部仕様の罠と repo 固有メモを混在管理 | ✅ public / private 2 tier | ⚠️ 分離なし | ⚠️ | ⚠️ |
 
-**ステータス**: v0.14.0、233 tests passing。個人および小規模チームが主な想定ユースケースです。中央 DB なし、インストール時の自動購読なし。
+**ステータス**: v0.14.2、238 tests passing。個人および小規模チームが主な想定ユースケースです。中央 DB なし、インストール時の自動購読なし。
 
 <details>
 <summary><strong>なぜ中央 DB を持たない？</strong>（v0.7 での方針転換）</summary>
@@ -81,7 +81,7 @@ flowchart LR
         S["セッション終了<br/>(transcript signals)"]
     end
 
-    P -.->|"UserPromptSubmit<br/>事前発火"| H1{"共起 + 症状特異<br/>+ rare-anchor"}
+    P -.->|"UserPromptSubmit<br/>事前発火"| H1{"共起 + 症状特異<br/>+ topical anchor"}
     T -.->|"PostToolUse<br/>実行中発火 ~20ms"| H2{"detached<br/>worker"}
     S -.->|"Stop<br/>事後発火"| H3{"シグナル gate<br/>+ FTS"}
 
@@ -94,12 +94,12 @@ flowchart LR
 ```
 
 - **`markdown-in-git`** が真実の源。SQLite (FTS5 trigram) は再構築可能な派生 index で gitignore 済
-- 3 つの発火点 (UserPromptSubmit / PostToolUse / Stop) は **同じ共起 FTS ロジック** を異なる入力（プロンプト / ツールエラー / セッションシグナル）で再利用
+- 3 つの発火タイミング (UserPromptSubmit / PostToolUse 系 / Stop) は **同じ共起 FTS ロジック** を異なる入力（プロンプト / ツールエラー / セッションシグナル）で再利用
 - マッチした既存エントリを `<system-reminder>` で Claude のコンテキストに注入 → AI が「このエラーは既知罠 XYZ」を認識できる
 - Codex primary hook adapter は `~/.codex/hooks.json` に `UserPromptSubmit` /
   `PostToolUse` / `Stop` を登録し、Codex payload parser と Codex stdout formatter
   だけを差し替えて同じ Caveat ロジックを使います
-- `codex-sidecar` が operational な project では、PostToolUse / Stop の既存リマインダー末尾に Codex の second opinion を追記できます。Caveat の発火判定や記録思想は変えず、助言だけを外部化する補助経路です
+- `codex-sidecar` が operational な project では、PostToolUse 系 / Stop の既存リマインダー末尾に Codex の second opinion を追記できます。Caveat の発火判定や記録思想は変えず、助言だけを外部化する補助経路です
 
 ## クイックスタート（NPM ユーザ）
 
@@ -117,7 +117,7 @@ caveat serve                                               # http://localhost:42
 - `~/.caveatrc.json` を生成（中身は空 `{}` — デフォルトは CLI 内部の定数）
 - `~/.caveat/own/`（ナレッジ repo ルート）と `~/.caveat/index/caveat.db` を scaffold
 - `claude mcp add --scope user caveat ...` で MCP サーバを登録
-- `~/.claude/settings.json` に `UserPromptSubmit` / `PostToolUse` / `Stop` の 3 hook をマージ（既存エントリは保持、書き込み前にバックアップ作成）
+- `~/.claude/settings.json` に `UserPromptSubmit` / `PostToolUse` / `PostToolUseFailure` / `Stop` hook をマージ（既存エントリは保持、書き込み前にバックアップ作成）
 
 `--skip-claude` で Claude 連携をスキップ、`--dry-run` でプレビュー。`caveat uninstall` で `~/.caveat/` を残したまま Claude 連携だけ解除。**自動購読される中央 DB はありません** — 知識ソースは `caveat community add` で明示的に追加してください。
 
