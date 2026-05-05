@@ -25,7 +25,7 @@ caveat codex-hook install            # 任意: Codex native hooks を登録
 Claude Code または Codex の hook を有効にすると:
 
 1. **プロンプト送信時** → `UserPromptSubmit` hook が **3 段の構造的ゲート**でマッチエントリを surface: 共起 + 症状セクション一致 + rare topical anchor。キーワード allowlist も stopword リストもなし。固有名詞だけの言及 (`RTX 5090 CUDA で何かやってる`) は silent、症状語彙と curated topic anchor (`cudaGetDeviceCount が 0 を返す`) が揃うと正解エントリだけ発火する。([詳細](CHANGELOG.md#0142--2026-05-06))
-2. **ツールがエラー返却したとき** → `PostToolUse` hook が detached worker を起動して非同期に検索。前景は ~20ms で返るのでターン遅延ゼロ、結果は次の hook tick で載ります。現在の Claude Code では failed-tool payload 用に `PostToolUseFailure` も登録します。
+2. **ツールがエラー返却したとき** → Claude hook は detached worker を起動して非同期に検索し、結果は次の hook tick で載ります。Codex hook は現行 payload と transcript timing の都合で bounded foreground lookup を行い、次の `UserPromptSubmit` で結果を載せます。現在の Claude Code では failed-tool payload 用に `PostToolUseFailure` も登録します。
 3. **セッション終了時** → `Stop` hook が transcript を解析し、客観的な「もがきシグナル」（ツール失敗、同一ファイル複数編集、Web 検索、Bash 再実行）を抽出。一つでも観測されれば、実行中の agent に既存エントリの更新か新規記録を促します。
 
 Claude は Caveat reminder を `<system-reminder>` として受け取り、MCP tools で
@@ -99,7 +99,9 @@ flowchart LR
 - Claude ではマッチした既存エントリを `<system-reminder>` でコンテキストに注入、Codex では Codex 用 hook output として返す
 - Codex primary hook adapter は `~/.codex/hooks.json` に `UserPromptSubmit` /
   `PostToolUse` / `Stop` を登録し、Codex payload parser と Codex stdout formatter
-  だけを差し替えて同じ Caveat ロジックを使います
+  だけを差し替えて同じ Caveat ロジックを使います。Codex hook stdout は 1 invocation
+  につき単一 JSON object とし、pending reminder は compact してから 1 つの context
+  文字列へ結合します
 - Claude-hosted session では、`codex-sidecar` が operational な project に限り、PostToolUse 系 / Stop の既存リマインダー末尾に Codex の second opinion を追記できます。Caveat の発火判定や記録思想は変えず、助言だけを外部化する補助経路です
 
 ## クイックスタート（NPM ユーザ）

@@ -37,6 +37,10 @@ const silentLogger: Logger = {
   error: (m) => process.stderr.write(`[caveat:codex-hook] ${m}\n`),
 };
 
+const CODEX_MAX_CONTEXT_BLOCKS = 3;
+const CODEX_STOP_REMINDER_PREFIX =
+  '[caveat] このセッションで外部仕様の罠に当たった可能性を示すシグナル:';
+
 interface CodexWorkerJob {
   sessionId: string;
   searchText: string;
@@ -272,19 +276,45 @@ export function codexContextOutput(text: string, eventName = 'UserPromptSubmit')
   });
 }
 
-export function codexStopOutput(text: string): string {
-  return JSON.stringify({
-    decision: 'block',
-    reason: text,
-  });
+function drainForSession(sessionId: string): string[] {
+  const ctx = buildContextSafely();
+  if (!ctx) return [];
+  return drainPendingReminders(ctx.caveatHome, sessionId);
 }
 
-function drainForSession(sessionId: string, eventName = 'UserPromptSubmit'): void {
+function codexContextDedupeKey(text: string): string {
+  if (text.startsWith(CODEX_STOP_REMINDER_PREFIX)) return 'codex-stop-reminder';
+  return text.trim();
+}
+
+function compactCodexContexts(contexts: string[]): string[] {
+  const selected: string[] = [];
+  const seen = new Set<string>();
+  for (let i = contexts.length - 1; i >= 0; i -= 1) {
+    const text = contexts[i]?.trim();
+    if (!text) continue;
+    const key = codexContextDedupeKey(text);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    selected.push(text);
+  }
+  selected.reverse();
+  const limited = selected.slice(-CODEX_MAX_CONTEXT_BLOCKS);
+  const omitted = contexts.filter((t) => t.trim().length > 0).length - limited.length;
+  if (omitted > 0) {
+    limited.push(`[caveat] pending reminder ${omitted} 件を重複または上限により省略しました。`);
+  }
+  return limited;
+}
+
+function queueForSession(sessionId: string, text: string): void {
   const ctx = buildContextSafely();
   if (!ctx) return;
-  const reminders = drainPendingReminders(ctx.caveatHome, sessionId);
-  for (const text of reminders) {
-    process.stdout.write(`${codexContextOutput(text, eventName)}\n`);
+  try {
+    appendPendingReminder(ctx.caveatHome, sessionId, text);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`[caveat:codex-hook] pending reminder write error: ${msg}\n`);
   }
 }
 
@@ -435,14 +465,18 @@ export async function runCodexHook(name: CodexHookName, arg?: string): Promise<v
   }
   const payload = parsePayload(raw);
   const sessionId = codexSessionId(payload);
-  if (sessionId && name === 'user-prompt-submit') drainForSession(sessionId);
-  else if (!sessionId) process.stderr.write('[caveat:codex-hook] missing session_id; pending drain disabled\n');
+  if (!sessionId) process.stderr.write('[caveat:codex-hook] missing session_id; pending drain disabled\n');
 
   if (name === 'user-prompt-submit') {
+    const contexts = sessionId ? drainForSession(sessionId) : [];
     const prompt = typeof payload.prompt === 'string' ? payload.prompt : '';
     const hits = searchCaveatsFromTextSafely(prompt);
     if (hits.length > 0) {
-      process.stdout.write(`${codexContextOutput(userPromptSubmitReminderText(hits))}\n`);
+      contexts.push(userPromptSubmitReminderText(hits));
+    }
+    const compacted = compactCodexContexts(contexts);
+    if (compacted.length > 0) {
+      process.stdout.write(`${codexContextOutput(compacted.join('\n\n'))}\n`);
     }
     process.exit(0);
   }
@@ -460,7 +494,7 @@ export async function runCodexHook(name: CodexHookName, arg?: string): Promise<v
     const signals = transcriptPath ? loadSignalsSafely(transcriptPath) : null;
     if (!signals || !hasAnyStruggleSignal(signals)) process.exit(0);
     const related = searchCaveatsFromTextSafely(struggleSearchText(signals));
-    process.stdout.write(`${codexStopOutput(stopReminderText(signals, related))}\n`);
+    if (sessionId) queueForSession(sessionId, stopReminderText(signals, related));
     process.exit(0);
   }
 

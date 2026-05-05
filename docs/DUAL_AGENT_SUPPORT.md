@@ -99,8 +99,16 @@ Observed Codex hook config keys are PascalCase (`UserPromptSubmit`,
 `PostToolUse`, `Stop`). Observed runtime payloads include `session_id`,
 `turn_id`, `transcript_path`, `cwd`, `hook_event_name`, `model`, and
 `permission_mode`. `UserPromptSubmit` context is returned with
-`hookSpecificOutput.additionalContext`; `Stop` blocking reminders are returned
-as `{"decision":"block","reason":"..."}`.
+`hookSpecificOutput.additionalContext`. Codex hook stdout must be a single JSON
+object for each hook invocation; if multiple pending reminders need to surface,
+join them into one `additionalContext` string instead of writing JSONL or
+multiple JSON objects. The Codex formatter dedupes repeated `Stop` reminders,
+keeps the newest session-level `Stop` summary, and caps surfaced context blocks
+to avoid dumping a stale backlog into the prompt. Codex `Stop` reminders are
+queued into the same per-session pending-reminder store and drained on the next
+`UserPromptSubmit`, rather than returned as `{"decision":"block","reason":"..."}`
+from `Stop`, because blocking `Stop` causes Codex's final assistant message to
+be visually grouped with collapsed work in the app UI.
 
 `PostToolUse` uses the same Caveat pending-reminder model as Claude, but drains
 through Codex's `UserPromptSubmit` formatter instead of Claude

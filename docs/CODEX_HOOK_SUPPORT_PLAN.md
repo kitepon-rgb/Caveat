@@ -40,6 +40,12 @@ Caveat が Claude で持っている 3 つの hook 発火点と同等の動作�
 - `UserPromptSubmit` の stdout は
   `hookSpecificOutput.additionalContext` により次 turn の developer context として
   見えることを capture で確認済み。
+- Codex は hook stdout 全体を 1 個の JSON object として parse する。pending
+  reminder が複数ある場合や pending reminder と prompt hit が同時にある場合でも、
+  stdout に JSONL / 複数 JSON object を出さず、`additionalContext` 文字列へ結合する。
+- Codex の `UserPromptSubmit` drain では、古い backlog を一気に表示しない。
+  repeated `Stop` reminder は最新 1 件に畳み、表示する context block 数には上限を置き、
+  省略があれば短い summary line だけを追加する。
 - `PostToolUse` payload は `tool_response` を持つが、少なくとも capture した
   Bash 失敗 payload では exit code field が stdin に含まれない。Codex transcript
   の同じ `tool_use_id` / `call_id` に対応する `function_call_output` から
@@ -118,7 +124,9 @@ capture TODO 内で明示的に検証対象として扱います。
 - [x] Codex `postToolUse` の stdin JSON は成功時・失敗時でどう違うか。
 - [x] Codex `stop` の stdin JSON は具体的にどんな形か。
 - [x] どの stdout field が次の Codex turn へ context を注入するか。
-- [x] `stop` の block stdout field は `{"decision":"block","reason":"..."}` として扱う。
+- [x] `stop` は `{"decision":"block","reason":"..."}` を使わず、pending reminder に積んで
+      次の `UserPromptSubmit` で drain する。実 UI で Stop block が最終回答を折り畳み表示へ
+      巻き込むため。
 - [ ] warning / hook failure 用 stdout field の詳細は Caveat の現行 3 hook では未使用。
 - [ ] `postToolUse` は Codex の全 tool 種別で発火するのか、現行 build では
       local shell / command execution に限定されるのか。
@@ -287,7 +295,8 @@ capture TODO 内で明示的に検証対象として扱います。
       web fetch 相当を Caveat の signal model に mapping する。
 - [x] Claude 文言を変えずに、可能な範囲で `stopReminderText` の意味論を再利用
       する。
-- [x] Codex-specific stop formatter を追加する。
+- [x] Codex `Stop` は block formatter を使わず、session pending reminder に enqueue
+      して次の `UserPromptSubmit` で Codex-specific context formatter から drain する。
 - [ ] no-signal、failure-signal、repeated-command、related caveat search の test
       を追加する。
 - [x] web search / web fetch 相当の signal test を追加する。
@@ -295,9 +304,25 @@ capture TODO 内で明示的に検証対象として扱います。
 受け入れ条件:
 
 - [ ] 苦戦シグナルがなければ record/update reminder を出さない。
-- [ ] 客観的な苦戦シグナルが 1 つ以上あれば reminder を出す。
+- [x] 客観的な苦戦シグナルが 1 つ以上あれば reminder を pending queue に積む。
 - [ ] co-occurrence search で関連 caveat が見つかれば reminder に埋め込む。
 - [ ] Codex session log が必要なのに読めない場合、diagnostics が理由を出す。
+
+実機確認 (2026-05-06):
+
+- `~/.codex/hooks.json` の `Stop` が
+  `/usr/bin/node /home/kite/.npm-global/bin/caveat codex-hook stop` を呼ぶ状態で確認した。
+- `rtk proxy /usr/bin/node /home/kite/.npm-global/bin/caveat codex-hook diagnostics` で
+  `codex_hooks: enabled`、`installation: installed`、`stop: true` を確認した。
+- 失敗 tool output を含む transcript で `codex-hook stop` を直接実行し、status 0、
+  stdout 0 bytes、stderr 0 bytes を確認した。Stop は
+  `{"decision":"block","reason":"..."}` を返さない。
+- 同じ `session_id` の次の `codex-hook user-prompt-submit` で
+  `hookSpecificOutput.additionalContext` として Stop reminder が出力され、さらに次の
+  `UserPromptSubmit` は空になった。pending reminder は一度だけ drain される。
+- nested `codex exec --json` で失敗 command 後に Stop を発火させた session log では、
+  最終回答 `done` が通常の `agent_message` / `task_complete.last_agent_message` として
+  記録された。該当 session transcript に `blocked` / `decision` は出ていない。
 
 ## Phase 5: Codex Hook Install and Diagnostics
 

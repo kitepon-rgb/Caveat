@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { appendPendingReminder, drainPendingReminders } from '@caveat/core';
 import {
   buildCodexPostToolUseWorkerJob,
   codexContextOutput,
-  codexStopOutput,
   isCodexToolError,
 } from '../src/commands/codexHookCmd.js';
 
@@ -24,12 +26,187 @@ describe('Codex hook output formatting', () => {
       },
     });
   });
+});
 
-  it('formats stop reminder as a block decision', () => {
-    expect(JSON.parse(codexStopOutput('record this'))).toEqual({
-      decision: 'block',
-      reason: 'record this',
-    });
+describe('Codex stop hook', () => {
+  it('drains multiple user prompt contexts as one JSON object', () => {
+    const root = mkdtempSync(join(tmpdir(), 'caveat-codex-user-prompt-'));
+    const caveatHome = join(root, 'caveat-home');
+    const userHome = join(root, 'home');
+    try {
+      mkdirSync(caveatHome, { recursive: true });
+      mkdirSync(userHome, { recursive: true });
+      appendPendingReminder(caveatHome, 'sess-1', 'first reminder');
+      appendPendingReminder(caveatHome, 'sess-1', 'second reminder');
+
+      const result = spawnSync(
+        process.execPath,
+        [
+          '--import',
+          'tsx',
+          fileURLToPath(new URL('../src/index.ts', import.meta.url)),
+          'codex-hook',
+          'user-prompt-submit',
+        ],
+        {
+          cwd: fileURLToPath(new URL('..', import.meta.url)),
+          input: JSON.stringify({
+            session_id: 'sess-1',
+            hook_event_name: 'UserPromptSubmit',
+            prompt: 'continue',
+          }),
+          encoding: 'utf-8',
+          env: {
+            ...process.env,
+            CAVEAT_HOME: caveatHome,
+            HOME: userHome,
+          },
+        },
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim().split('\n')).toHaveLength(1);
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.hookSpecificOutput.hookEventName).toBe('UserPromptSubmit');
+      expect(parsed.hookSpecificOutput.additionalContext).toContain('first reminder');
+      expect(parsed.hookSpecificOutput.additionalContext).toContain('second reminder');
+      expect(parsed.hookSpecificOutput.additionalContext).toContain('\n\n');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('dedupes repeated stop reminders and caps user prompt context blocks', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'caveat-codex-user-prompt-'));
+    const caveatHome = join(root, 'caveat-home');
+    const userHome = join(root, 'home');
+    try {
+      mkdirSync(caveatHome, { recursive: true });
+      mkdirSync(userHome, { recursive: true });
+      appendPendingReminder(caveatHome, 'sess-1', 'old reminder');
+      await new Promise((r) => setTimeout(r, 5));
+      appendPendingReminder(
+        caveatHome,
+        'sess-1',
+        [
+          '[caveat] このセッションで外部仕様の罠に当たった可能性を示すシグナル:',
+          '- tool failure: 1 件',
+        ].join('\n'),
+      );
+      await new Promise((r) => setTimeout(r, 5));
+      appendPendingReminder(
+        caveatHome,
+        'sess-1',
+        [
+          '[caveat] このセッションで外部仕様の罠に当たった可能性を示すシグナル:',
+          '- tool failure: 2 件',
+        ].join('\n'),
+      );
+      await new Promise((r) => setTimeout(r, 5));
+      appendPendingReminder(caveatHome, 'sess-1', 'recent reminder 1');
+      await new Promise((r) => setTimeout(r, 5));
+      appendPendingReminder(caveatHome, 'sess-1', 'recent reminder 2');
+
+      const result = spawnSync(
+        process.execPath,
+        [
+          '--import',
+          'tsx',
+          fileURLToPath(new URL('../src/index.ts', import.meta.url)),
+          'codex-hook',
+          'user-prompt-submit',
+        ],
+        {
+          cwd: fileURLToPath(new URL('..', import.meta.url)),
+          input: JSON.stringify({
+            session_id: 'sess-1',
+            hook_event_name: 'UserPromptSubmit',
+            prompt: 'continue',
+          }),
+          encoding: 'utf-8',
+          env: {
+            ...process.env,
+            CAVEAT_HOME: caveatHome,
+            HOME: userHome,
+          },
+        },
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim().split('\n')).toHaveLength(1);
+      const parsed = JSON.parse(result.stdout);
+      const text = parsed.hookSpecificOutput.additionalContext;
+      expect(text).not.toContain('old reminder');
+      expect(text).not.toContain('tool failure: 1');
+      expect(text).toContain('tool failure: 2');
+      expect(text).toContain('recent reminder 1');
+      expect(text).toContain('recent reminder 2');
+      expect(text).toContain('pending reminder 2 件を重複または上限により省略しました');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('queues stop reminders without blocking stdout', () => {
+    const root = mkdtempSync(join(tmpdir(), 'caveat-codex-stop-'));
+    const caveatHome = join(root, 'caveat-home');
+    const userHome = join(root, 'home');
+    const transcript = join(root, 'session.jsonl');
+    try {
+      mkdirSync(caveatHome, { recursive: true });
+      mkdirSync(userHome, { recursive: true });
+      writeFileSync(
+        transcript,
+        [
+          JSON.stringify({
+            timestamp: '2026-05-05T14:36:29.058Z',
+            type: 'response_item',
+            payload: {
+              type: 'function_call_output',
+              call_id: 'call_123',
+              output: 'Chunk ID: fd566f\nProcess exited with code 1\nOutput:\nfailed\n',
+            },
+          }),
+          '',
+        ].join('\n'),
+        'utf-8',
+      );
+
+      const result = spawnSync(
+        process.execPath,
+        [
+          '--import',
+          'tsx',
+          fileURLToPath(new URL('../src/index.ts', import.meta.url)),
+          'codex-hook',
+          'stop',
+        ],
+        {
+          cwd: fileURLToPath(new URL('..', import.meta.url)),
+          input: JSON.stringify({
+            session_id: 'sess-1',
+            transcript_path: transcript,
+            hook_event_name: 'Stop',
+            stop_hook_active: false,
+          }),
+          encoding: 'utf-8',
+          env: {
+            ...process.env,
+            CAVEAT_HOME: caveatHome,
+            HOME: userHome,
+          },
+        },
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe('');
+      const reminders = drainPendingReminders(caveatHome, 'sess-1');
+      expect(reminders).toHaveLength(1);
+      expect(reminders[0]).toContain('[caveat]');
+      expect(reminders[0]).toContain('tool failure: 1');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
