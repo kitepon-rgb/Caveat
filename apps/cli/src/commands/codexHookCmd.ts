@@ -1,8 +1,8 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import {
   appendPendingReminder,
@@ -40,6 +40,7 @@ const silentLogger: Logger = {
 const CODEX_MAX_CONTEXT_BLOCKS = 3;
 const CODEX_STOP_REMINDER_PREFIX =
   '[caveat] このセッションで外部仕様の罠に当たった可能性を示すシグナル:';
+const CODEX_STOP_STATE_DIR = 'codex-stop-state';
 
 interface CodexWorkerJob {
   sessionId: string;
@@ -307,11 +308,51 @@ function compactCodexContexts(contexts: string[]): string[] {
   return limited;
 }
 
-function queueForSession(sessionId: string, text: string): void {
+function sanitizeCodexStateId(raw: string): string {
+  const clean = raw.replace(/[^A-Za-z0-9_-]/g, '');
+  return clean.length > 0 ? clean : '_unknown';
+}
+
+function stopSignalKey(signals: SessionSignals, related: SearchResult[]): string {
+  const body = JSON.stringify({
+    toolFailureCount: signals.toolFailureCount,
+    fileEditCounts: signals.fileEditCounts.map((e) => [e.path, e.count]),
+    webSearchCount: signals.webSearchCount,
+    webFetchCount: signals.webFetchCount,
+    bashRetryCount: signals.bashRetryCount,
+    searchQueries: signals.searchQueries,
+    related: related.map((h) => [h.source, h.id]),
+  });
+  return createHash('sha256').update(body).digest('hex');
+}
+
+function stopStatePath(caveatHome: string, sessionId: string): string {
+  return join(caveatHome, CODEX_STOP_STATE_DIR, `${sanitizeCodexStateId(sessionId)}.txt`);
+}
+
+function wasStopReminderQueued(caveatHome: string, sessionId: string, key: string): boolean {
+  const path = stopStatePath(caveatHome, sessionId);
+  try {
+    return readFileSync(path, 'utf-8') === key;
+  } catch {
+    return false;
+  }
+}
+
+function markStopReminderQueued(caveatHome: string, sessionId: string, key: string): void {
+  const path = stopStatePath(caveatHome, sessionId);
+  mkdirSync(join(caveatHome, CODEX_STOP_STATE_DIR), { recursive: true });
+  writeFileSync(path, key, 'utf-8');
+}
+
+function queueStopForSession(sessionId: string, signals: SessionSignals, related: SearchResult[]): void {
   const ctx = buildContextSafely();
   if (!ctx) return;
+  const key = stopSignalKey(signals, related);
+  if (wasStopReminderQueued(ctx.caveatHome, sessionId, key)) return;
   try {
-    appendPendingReminder(ctx.caveatHome, sessionId, text);
+    appendPendingReminder(ctx.caveatHome, sessionId, stopReminderText(signals, related));
+    markStopReminderQueued(ctx.caveatHome, sessionId, key);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[caveat:codex-hook] pending reminder write error: ${msg}\n`);
@@ -494,7 +535,7 @@ export async function runCodexHook(name: CodexHookName, arg?: string): Promise<v
     const signals = transcriptPath ? loadSignalsSafely(transcriptPath) : null;
     if (!signals || !hasAnyStruggleSignal(signals)) process.exit(0);
     const related = searchCaveatsFromTextSafely(struggleSearchText(signals));
-    if (sessionId) queueForSession(sessionId, stopReminderText(signals, related));
+    if (sessionId) queueStopForSession(sessionId, signals, related);
     process.exit(0);
   }
 

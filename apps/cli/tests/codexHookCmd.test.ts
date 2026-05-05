@@ -208,6 +208,73 @@ describe('Codex stop hook', () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it('does not requeue unchanged stop reminders for the same session', () => {
+    const root = mkdtempSync(join(tmpdir(), 'caveat-codex-stop-'));
+    const caveatHome = join(root, 'caveat-home');
+    const userHome = join(root, 'home');
+    const transcript = join(root, 'session.jsonl');
+    try {
+      mkdirSync(caveatHome, { recursive: true });
+      mkdirSync(userHome, { recursive: true });
+      writeFileSync(
+        transcript,
+        [
+          JSON.stringify({
+            timestamp: '2026-05-05T14:36:29.058Z',
+            type: 'response_item',
+            payload: {
+              type: 'function_call_output',
+              call_id: 'call_123',
+              output: 'Chunk ID: fd566f\nProcess exited with code 1\nOutput:\nfailed\n',
+            },
+          }),
+          '',
+        ].join('\n'),
+        'utf-8',
+      );
+
+      const runStop = () =>
+        spawnSync(
+          process.execPath,
+          [
+            '--import',
+            'tsx',
+            fileURLToPath(new URL('../src/index.ts', import.meta.url)),
+            'codex-hook',
+            'stop',
+          ],
+          {
+            cwd: fileURLToPath(new URL('..', import.meta.url)),
+            input: JSON.stringify({
+              session_id: 'sess-1',
+              transcript_path: transcript,
+              hook_event_name: 'Stop',
+              stop_hook_active: false,
+            }),
+            encoding: 'utf-8',
+            env: {
+              ...process.env,
+              CAVEAT_HOME: caveatHome,
+              HOME: userHome,
+            },
+          },
+        );
+
+      const first = runStop();
+      const second = runStop();
+
+      expect(first.status).toBe(0);
+      expect(first.stdout).toBe('');
+      expect(second.status).toBe(0);
+      expect(second.stdout).toBe('');
+      const reminders = drainPendingReminders(caveatHome, 'sess-1');
+      expect(reminders).toHaveLength(1);
+      expect(reminders[0]).toContain('tool failure: 1');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('isCodexToolError', () => {

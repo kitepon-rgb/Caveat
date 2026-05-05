@@ -104,8 +104,10 @@ object for each hook invocation; if multiple pending reminders need to surface,
 join them into one `additionalContext` string instead of writing JSONL or
 multiple JSON objects. The Codex formatter dedupes repeated `Stop` reminders,
 keeps the newest session-level `Stop` summary, and caps surfaced context blocks
-to avoid dumping a stale backlog into the prompt. Codex `Stop` reminders are
-queued into the same per-session pending-reminder store and drained on the next
+to avoid dumping a stale backlog into the prompt. Codex also records a per-session
+Stop signal digest, so an unchanged transcript signal is not re-queued on every
+turn after the first reminder. Codex `Stop` reminders are queued into the same
+per-session pending-reminder store and drained on the next
 `UserPromptSubmit`, rather than returned as `{"decision":"block","reason":"..."}`
 from `Stop`, because blocking `Stop` causes Codex's final assistant message to
 be visually grouped with collapsed work in the app UI.

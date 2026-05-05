@@ -46,6 +46,9 @@ Caveat が Claude で持っている 3 つの hook 発火点と同等の動作�
 - Codex の `UserPromptSubmit` drain では、古い backlog を一気に表示しない。
   repeated `Stop` reminder は最新 1 件に畳み、表示する context block 数には上限を置き、
   省略があれば短い summary line だけを追加する。
+- Codex `Stop` は per-session signal digest を保存し、同じ transcript signal を
+  毎 turn 再 enqueue しない。tool failure 数や related caveat などが変化した場合だけ
+  新しい Stop reminder を積む。
 - `PostToolUse` payload は `tool_response` を持つが、少なくとも capture した
   Bash 失敗 payload では exit code field が stdin に含まれない。Codex transcript
   の同じ `tool_use_id` / `call_id` に対応する `function_call_output` から
@@ -297,6 +300,7 @@ capture TODO 内で明示的に検証対象として扱います。
       する。
 - [x] Codex `Stop` は block formatter を使わず、session pending reminder に enqueue
       して次の `UserPromptSubmit` で Codex-specific context formatter から drain する。
+- [x] Codex `Stop` は同じ session / 同じ signal digest を再 enqueue しない。
 - [ ] no-signal、failure-signal、repeated-command、related caveat search の test
       を追加する。
 - [x] web search / web fetch 相当の signal test を追加する。
@@ -323,6 +327,10 @@ capture TODO 内で明示的に検証対象として扱います。
 - nested `codex exec --json` で失敗 command 後に Stop を発火させた session log では、
   最終回答 `done` が通常の `agent_message` / `task_complete.last_agent_message` として
   記録された。該当 session transcript に `blocked` / `decision` は出ていない。
+- 追加 smoke では、新規 `codex exec` session で tool failure を起こした後、
+  `codex exec resume --last` の次 turn transcript に Stop reminder が `developer`
+  message として注入されること、stderr に `invalid user prompt submit JSON output` が
+  出ないこと、同じ Stop signal が resume 終了時に再 enqueue されないことを確認した。
 
 ## Phase 5: Codex Hook Install and Diagnostics
 
