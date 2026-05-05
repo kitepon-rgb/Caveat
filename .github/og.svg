@@ -30,7 +30,7 @@
   <rect x="80" y="280" width="80" height="3" fill="url(#accent)"/>
 
   <!-- description -->
-  <text x="80" y="335" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="28" fill="#c9d1d9">Long-term memory layer for Claude Code.</text>
+  <text x="80" y="335" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="28" fill="#c9d1d9">Long-term memory layer for Claude Code and Codex.</text>
   <text x="80" y="375" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="28" fill="#c9d1d9">Markdown-in-git source of truth, FTS5 retrieval,</text>
   <text x="80" y="415" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="28" fill="#c9d1d9">3 hook firing points — auto-surfaces relevant gotchas.</text>
 
@@ -40,7 +40,7 @@
     <text x="190" y="510" text-anchor="middle" fill="#7ee787">MCP server</text>
 
     <rect x="316" y="480" width="220" height="48" rx="24" fill="#161b22" stroke="#30363d" stroke-width="1"/>
-    <text x="426" y="510" text-anchor="middle" fill="#79c0ff">3 Claude hooks</text>
+    <text x="426" y="510" text-anchor="middle" fill="#79c0ff">agent hooks</text>
 
     <rect x="552" y="480" width="220" height="48" rx="24" fill="#161b22" stroke="#30363d" stroke-width="1"/>
     <text x="662" y="510" text-anchor="middle" fill="#d2a8ff">Obsidian-compatible</text>

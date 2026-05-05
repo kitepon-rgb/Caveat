@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/og.png" alt="Caveat — Claude Code のための長期記憶レイヤ" width="100%">
+  <img src=".github/og.png" alt="Caveat — コーディングエージェントのための長期記憶レイヤ" width="100%">
 </p>
 
 # Caveat
@@ -10,7 +10,7 @@
 [![node](https://img.shields.io/node/v/caveat-cli?color=339933&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![GitHub release](https://img.shields.io/github/v/release/kitepon-rgb/Caveat?color=24292e&logo=github)](https://github.com/kitepon-rgb/Caveat/releases)
 
-> **同じ罠を二度踏まないために。** Caveat は Claude Code のための長期記憶レイヤです。外部仕様の地雷を踏んで時間を溶かしたり、自分の repo 固有の独自設計を忘れたりしたとき、**一度書き留めておけば** 次に同じ場面に出くわした瞬間に自動で関連メモが浮上します（あなたが意識していなくても、AI が意識していなくても）。
+> **同じ罠を二度踏まないために。** Caveat は Claude Code と Codex のための長期記憶レイヤです。外部仕様の地雷を踏んで時間を溶かしたり、自分の repo 固有の独自設計を忘れたりしたとき、**一度書き留めておけば** 次に同じ場面に出くわした瞬間に自動で関連メモが浮上します（あなたが意識していなくても、AI が意識していなくても）。
 
 🇬🇧 **English**: [README.md](README.md)
 
@@ -18,26 +18,27 @@
 
 ```sh
 npm install -g caveat-cli
-caveat init                          # MCP サーバと Claude Code hooks を登録
-caveat codex-hook install            # 任意: 同等の hook を Codex に登録
+caveat init                          # Claude Code MCP + hooks を登録
+caveat codex-hook install            # 任意: Codex native hooks を登録
 ```
 
-これで Claude Code セッションの中で:
+Claude Code または Codex の hook を有効にすると:
 
 1. **プロンプト送信時** → `UserPromptSubmit` hook が **3 段の構造的ゲート**でマッチエントリを surface: 共起 + 症状セクション一致 + rare topical anchor。キーワード allowlist も stopword リストもなし。固有名詞だけの言及 (`RTX 5090 CUDA で何かやってる`) は silent、症状語彙と curated topic anchor (`cudaGetDeviceCount が 0 を返す`) が揃うと正解エントリだけ発火する。([詳細](CHANGELOG.md#0142--2026-05-06))
-2. **ツールがエラー返却したとき** → `PostToolUse` / `PostToolUseFailure` hook が detached worker を起動して非同期に検索。前景は ~20ms で返るのでターン遅延ゼロ、結果は次の hook tick で Claude のコンテキストに載ります。現在の project で `codex-sidecar` が operational なら、既存リマインダーの後ろに Codex の second opinion も追記されます。
-3. **セッション終了時** → `Stop` hook が transcript を解析し、客観的な「もがきシグナル」（ツール失敗、同一ファイル複数編集、Web 検索、Bash 再実行）を抽出。一つでも観測されれば、Claude に対して既存エントリの `caveat_update` か新規 `caveat_record` を促します。sidecar 設定済みなら、この判断材料にも Codex 助言が添えられます。
+2. **ツールがエラー返却したとき** → `PostToolUse` hook が detached worker を起動して非同期に検索。前景は ~20ms で返るのでターン遅延ゼロ、結果は次の hook tick で載ります。現在の Claude Code では failed-tool payload 用に `PostToolUseFailure` も登録します。
+3. **セッション終了時** → `Stop` hook が transcript を解析し、客観的な「もがきシグナル」（ツール失敗、同一ファイル複数編集、Web 検索、Bash 再実行）を抽出。一つでも観測されれば、実行中の agent に既存エントリの更新か新規記録を促します。
 
-Codex を primary session として使う場合は、`caveat codex-hook install` が
-Codex native hook runtime に同じ 3 タイミングを登録します。これは Caveat CLI を
-直接呼ぶ統合であり、`codex-sidecar` を呼ぶ経路ではありません。sidecar は境界のある
-second opinion、review、risk-check、isolated work 用に残します。
+Claude は Caveat reminder を `<system-reminder>` として受け取り、MCP tools で
+search / record / update できます。Codex primary session は Codex native hook
+runtime と Codex 用 formatter を使います。この経路は Caveat CLI を直接呼ぶ統合であり、
+`codex-sidecar` を呼ぶ経路ではありません。sidecar は境界のある second opinion、
+review、risk-check、isolated work 用に残します。
 
 ナレッジ repo は **markdown-in-git** が真実の源。Obsidian の vault としてそのまま開けます。チームで共有したければ普通に `git push` すれば良い。中央サーバは存在しません — 信頼は「自動検査」ではなく「**社会的文脈**」で引きます（あなた・チーム・組織が誰を購読するかで決まる、`caveat community add <github-url>`）。
 
 ## 競合との違い
 
-| | **Caveat** | `.cursorrules` / `CLAUDE.md` | ドキュメント RAG | Notion / Obsidian（手動） |
+| | **Caveat** | `.cursorrules` / `CLAUDE.md` / `AGENTS.md` | ドキュメント RAG | Notion / Obsidian（手動） |
 |---|---|---|---|---|
 | 関連コンテキストの **自動 surface** | ✅ 3 発火点 hook | ❌ 常時 on、コンテキスト圧迫 | ⚠️ 明示クエリ要 | ❌ 自分で思い出す |
 | 罠ごとの粒度で取り出し | ✅ FTS5 共起 | ❌ モノリシックなファイル | ✅ embeddings | ❌ |
@@ -62,7 +63,7 @@ second opinion、review、risk-check、isolated work 用に残します。
 - **Public** — 同じ外部ツール・仕様を使えば誰でも踏める罠（GPU ドライバ、ネイティブモジュールビルド、IDE の癖、バージョン制約等）。
 - **Private** — コードを読むだけでは復元できない repo 固有の非自明文脈（意図的な非標準挙動、upstream 修正待ちのワークアラウンド、プロジェクト横断の個人的な慣習等）。
 
-判定は `caveat_record` のツール記述に書かれた二項基準で Claude が自動分類します（ユーザの明示指示が最優先）。`.husky/pre-commit` のゲートが `visibility: private` のエントリを共有 repo にコミットさせない仕組み。検索は意図的にフラット — 本文の語彙が自然に仕分けます（public は外部ツール名、private は repo 固有識別子）。詳細は [docs/private-tier-design.md](docs/private-tier-design.md)。
+判定基準は `caveat_record` のツール記述に書かれており、実行中の agent がその二項基準で分類します（ユーザの明示指示が最優先）。`.husky/pre-commit` のゲートが `visibility: private` のエントリを共有 repo にコミットさせない仕組み。検索は意図的にフラット — 本文の語彙が自然に仕分けます（public は外部ツール名、private は repo 固有識別子）。詳細は [docs/private-tier-design.md](docs/private-tier-design.md)。
 </details>
 
 ## アーキテクチャ
@@ -75,7 +76,7 @@ flowchart LR
 
     MD -->|caveat index| FTS[("SQLite + FTS5<br/>trigram")]
 
-    subgraph CC["Claude Code セッション"]
+    subgraph AG["Agent session (Claude Code / Codex)"]
         P["プロンプト送信"]
         T["ツールエラー<br/>(is_error: true)"]
         S["セッション終了<br/>(transcript signals)"]
@@ -89,31 +90,31 @@ flowchart LR
     H2 --> FTS
     H3 --> FTS
 
-    FTS ==>|該当エントリ| R["&lt;system-reminder&gt;<br/>コンテキストに注入"]
-    R ==> CC
+    FTS ==>|該当エントリ| R["Claude: &lt;system-reminder&gt;<br/>Codex: hook output"]
+    R ==> AG
 ```
 
 - **`markdown-in-git`** が真実の源。SQLite (FTS5 trigram) は再構築可能な派生 index で gitignore 済
 - 3 つの発火タイミング (UserPromptSubmit / PostToolUse 系 / Stop) は **同じ共起 FTS ロジック** を異なる入力（プロンプト / ツールエラー / セッションシグナル）で再利用
-- マッチした既存エントリを `<system-reminder>` で Claude のコンテキストに注入 → AI が「このエラーは既知罠 XYZ」を認識できる
+- Claude ではマッチした既存エントリを `<system-reminder>` でコンテキストに注入、Codex では Codex 用 hook output として返す
 - Codex primary hook adapter は `~/.codex/hooks.json` に `UserPromptSubmit` /
   `PostToolUse` / `Stop` を登録し、Codex payload parser と Codex stdout formatter
   だけを差し替えて同じ Caveat ロジックを使います
-- `codex-sidecar` が operational な project では、PostToolUse 系 / Stop の既存リマインダー末尾に Codex の second opinion を追記できます。Caveat の発火判定や記録思想は変えず、助言だけを外部化する補助経路です
+- Claude-hosted session では、`codex-sidecar` が operational な project に限り、PostToolUse 系 / Stop の既存リマインダー末尾に Codex の second opinion を追記できます。Caveat の発火判定や記録思想は変えず、助言だけを外部化する補助経路です
 
 ## クイックスタート（NPM ユーザ）
 
 ```sh
 npm install -g caveat-cli
 caveat init                                                # 初回セットアップ
-caveat codex-hook install                                  # 任意: Codex hook セットアップ
+caveat codex-hook install                                  # 任意: Codex native hook セットアップ
 caveat search "rtx"                                        # ローカルエントリを検索
 caveat community add https://github.com/acme-corp/caveats  # チームの repo を購読
 caveat pull                                                # 購読 repo を git-pull + 再 index
 caveat serve                                               # http://localhost:4242/ 読み取り専用ポータル
 ```
 
-`caveat init` の動作:
+Claude Code 向けの `caveat init` の動作:
 - `~/.caveatrc.json` を生成（中身は空 `{}` — デフォルトは CLI 内部の定数）
 - `~/.caveat/own/`（ナレッジ repo ルート）と `~/.caveat/index/caveat.db` を scaffold
 - `claude mcp add --scope user caveat ...` で MCP サーバを登録

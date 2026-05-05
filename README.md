@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/og.png" alt="Caveat — long-term memory layer for Claude Code" width="100%">
+  <img src=".github/og.png" alt="Caveat — long-term memory layer for coding agents" width="100%">
 </p>
 
 # Caveat
@@ -10,7 +10,7 @@
 [![node](https://img.shields.io/node/v/caveat-cli?color=339933&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![GitHub release](https://img.shields.io/github/v/release/kitepon-rgb/Caveat?color=24292e&logo=github)](https://github.com/kitepon-rgb/Caveat/releases)
 
-> **Stop rediscovering the same trap.** Caveat is a long-term memory layer for Claude Code: every time you bleed for an external-spec quirk or a repo-specific oddity, write it down once — and the next time anyone (you or your AI) is about to step on the same rake, the relevant note surfaces automatically.
+> **Stop rediscovering the same trap.** Caveat is a long-term memory layer for Claude Code and Codex: every time you bleed for an external-spec quirk or a repo-specific oddity, write it down once — and the next time anyone (you or your AI) is about to step on the same rake, the relevant note surfaces automatically.
 
 🇯🇵 **日本語版**: [README.ja.md](README.ja.md)
 
@@ -18,26 +18,27 @@
 
 ```sh
 npm install -g caveat-cli
-caveat init                          # registers MCP server + Claude Code hooks
-caveat codex-hook install            # optional: register equivalent hooks with Codex
+caveat init                          # registers Claude Code MCP + hooks
+caveat codex-hook install            # optional: register native Codex hooks
 ```
 
-Then in any Claude Code session:
+With Claude Code or Codex hooks enabled:
 
 1. **You type a prompt** → `UserPromptSubmit` hook surfaces matching entries via three structural gates: **co-occurrence + symptom-section match + rare topical anchor**. No keyword lists. Bare proper-noun mentions (`RTX 5090 CUDA で何かやってる`) stay silent; specific failure vocabulary plus a curated topic anchor (`cudaGetDeviceCount が 0 を返す`) fires the right entry. ([details](CHANGELOG.md#0142--2026-05-06))
-2. **A tool returns an error** → `PostToolUse` / `PostToolUseFailure` hooks spawn a detached worker that searches in the background; the matching caveat lands on the next tick (~20ms foreground latency). If the current project has an operational `codex-sidecar`, Caveat appends a Codex second opinion after the original reminder.
-3. **The session ends** → `Stop` hook parses the transcript for objective struggle signals (tool failures, repeated edits, web searches, bash retries). If any are present, it nudges Claude to either `caveat_update` an existing entry or `caveat_record` a new one, again with optional Codex advice when sidecar is configured.
+2. **A tool returns an error** → `PostToolUse` hooks spawn a detached worker that searches in the background; the matching caveat lands on the next hook tick (~20ms foreground latency). Claude Code also registers `PostToolUseFailure` for current failed-tool payloads.
+3. **The session ends** → `Stop` hook parses the transcript for objective struggle signals (tool failures, repeated edits, web searches, bash retries). If any are present, it nudges the active agent to update an existing entry or record a new one.
 
-In a primary Codex session, `caveat codex-hook install` wires the same three
-Caveat timings through Codex's native hook runtime. This is direct Caveat CLI
-integration, not a `codex-sidecar` call; sidecar remains for bounded second
-opinions, review, risk-check, and isolated work.
+Claude receives Caveat reminders as `<system-reminder>` blocks and can use the
+MCP tools to search, record, and update entries. A primary Codex session uses
+Codex's native hook runtime and Codex-formatted hook output. That path calls
+Caveat CLI directly; `codex-sidecar` remains for bounded second opinions,
+review, risk-check, and isolated work.
 
 The knowledge repo is plain markdown-in-git. Open it as an Obsidian vault. Share it as a team repo with `git push`. There is no central server — trust is defined **socially**, by who you choose to subscribe to via `caveat community add <github-url>`.
 
 ## How it compares
 
-| | **Caveat** | `.cursorrules` / `CLAUDE.md` | RAG over docs | Notion / Obsidian (manual) |
+| | **Caveat** | `.cursorrules` / `CLAUDE.md` / `AGENTS.md` | RAG over docs | Notion / Obsidian (manual) |
 |---|---|---|---|---|
 | Surfaces context **automatically** | ✅ 3 hook firing points | ❌ always-on, fills context | ⚠️ on explicit query | ❌ manual recall |
 | Granular per-trap retrieval | ✅ FTS5 co-occurrence | ❌ monolithic file | ✅ embeddings | ❌ |
@@ -75,7 +76,7 @@ flowchart LR
 
     MD -->|caveat index| FTS[("SQLite + FTS5<br/>trigram")]
 
-    subgraph CC["Claude Code session"]
+    subgraph AG["Agent session (Claude Code / Codex)"]
         P["User prompt"]
         T["Tool error<br/>(is_error: true)"]
         S["Session end<br/>(transcript signals)"]
@@ -89,17 +90,17 @@ flowchart LR
     H2 --> FTS
     H3 --> FTS
 
-    FTS ==>|matched entries| R["&lt;system-reminder&gt;<br/>injected into context"]
-    R ==> CC
+    FTS ==>|matched entries| R["Claude: &lt;system-reminder&gt;<br/>Codex: hook output"]
+    R ==> AG
 ```
 
 - **`markdown-in-git` is the source of truth.** SQLite (FTS5 trigram) is a rebuildable derived index, gitignored.
 - **Per-group sharing via plain git.** Your `~/.caveat/own/` is yours. Share via any git repo (your own, a team's `acme-corp/caveats`, etc.). Subscribers add it with `caveat community add <github-url>`; updates flow via `caveat community pull`. The tool stays out of the publish path.
 - **`visibility: public | private`** frontmatter + `.husky/pre-commit` gate keeps private entries out of any repo you commit to.
-- **Claude Code integration.** An MCP server exposes 6 tools (`caveat_search` / `caveat_get` / `caveat_record` / `caveat_update` / `caveat_list_recent` / `caveat_pull`). Three hook timings fire at complementary points and surface matching caveats automatically — no hardcoded keyword lists:
+- **Agent integrations.** Claude Code gets an MCP server exposing 6 tools (`caveat_search` / `caveat_get` / `caveat_record` / `caveat_update` / `caveat_list_recent` / `caveat_pull`) plus hooks. Codex gets native hooks through `caveat codex-hook install`. Both surfaces reuse the same retrieval gates — no hardcoded keyword lists:
   - **UserPromptSubmit** (事前発火): when you submit a prompt, tokenize it (path-stripping + self-identity + pure-hiragana glue removal + CJK group dedup), FTS the DB, and surface entries that pass **three structural gates** — (1) ≥ 2 distinct group matches (co-occurrence), (2) ≥ 1 match in the entry's `## Symptom` section (failure-state evidence), (3) ≥ 1 corpus-rarest prompt token in `topical_text` (title + tags + environment values, topic evidence). Bare proper-noun mentions like `RTX 5090 CUDA で何かやってる` stay silent; only specific failure-state vocabulary plus a curated topic anchor (`cudaGetDeviceCount`, `SQLITE_READONLY`, …) fires the gate. No hardcoded word lists.
-  - **PostToolUse / PostToolUseFailure** (実行中発火): when a tool returns `is_error: true` or Claude Code emits a failed-tool `error` payload, spawn a detached worker that does the FTS asynchronously so the foreground hook returns in ~20ms; the reminder lands on the next hook tick. If `codex-sidecar` is configured, Codex advice is appended to the same reminder after Caveat's original text.
-  - **Stop** (事後発火): parse the session transcript for objective struggle signals (tool failures, repeated file edits, web searches, bash retries). If any are present, surface matching entries and nudge `caveat_update` or `caveat_record`. Optional Codex advice can challenge or sharpen that nudge without replacing Caveat's trigger logic.
+  - **PostToolUse** (+ Claude **PostToolUseFailure**) (実行中発火): when a tool returns `is_error: true` or Claude Code emits a failed-tool `error` payload, spawn a detached worker that does the FTS asynchronously so the foreground hook returns in ~20ms; the reminder lands on the next hook tick. In Claude-hosted sessions, an operational `codex-sidecar` can append Codex advice after Caveat's original text.
+  - **Stop** (事後発火): parse the session transcript for objective struggle signals (tool failures, repeated file edits, web searches, bash retries). If any are present, surface matching entries and nudge `caveat_update` or `caveat_record`. In Claude-hosted sessions, optional Codex advice can challenge or sharpen that nudge without replacing Caveat's trigger logic.
 - **Codex primary hook adapter.** `caveat codex-hook install` registers
   `UserPromptSubmit`, `PostToolUse`, and `Stop` in `~/.codex/hooks.json` and
   enables `[features].codex_hooks = true`. It reuses Caveat's existing search,
@@ -112,7 +113,8 @@ flowchart LR
 ```
 packages/core/        @caveat/core — DB (node:sqlite + FTS5 trigram), indexer, frontmatter,
                       env fingerprint, repository, record/update, community, paths,
-                      Claude Code hook logic (claudeHooks.ts)
+                      shared hook retrieval logic (claudeHooks.ts; Claude name
+                      retained for the canonical Claude contract)
 apps/cli/             caveat-cli (published to npm) — bundled CLI with subcommands:
                         init / uninstall / index [--full] / search / list / stale / show /
                         stats / serve / mcp-server / hook <name> / community add|pull|list /
@@ -142,14 +144,14 @@ docs/archive/         Superseded drafts (legacy brainstorms, etc.)
 ```sh
 npm install -g caveat-cli
 caveat init                                                # one-time setup (see below)
-caveat codex-hook install                                  # optional Codex hook setup
+caveat codex-hook install                                  # optional native Codex hook setup
 caveat search "rtx"                                        # search your local entries
 caveat community add https://github.com/acme-corp/caveats  # subscribe to a group repo
 caveat pull                                                # git-pull subscribed repos and re-index
 caveat serve                                               # http://localhost:4242/ read-only portal
 ```
 
-What `caveat init` does on first run:
+What `caveat init` does on first run for Claude Code:
 - Writes `~/.caveatrc.json` (empty `{}` — defaults come from a constant in the CLI)
 - Scaffolds `~/.caveat/own/` (your knowledge repo root) + `~/.caveat/index/caveat.db`
 - Runs `claude mcp add --scope user caveat -- <node> --disable-warning=ExperimentalWarning <cliPath> mcp-server`
