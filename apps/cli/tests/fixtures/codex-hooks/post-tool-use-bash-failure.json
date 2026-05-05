@@ -1,0 +1,15 @@
+{
+  "session_id": "019df891-9566-7223-8e9d-3d093a63b166",
+  "turn_id": "019df891-958f-7fd1-95ca-0b9fc95e2e6f",
+  "transcript_path": "/tmp/caveat-codex-capture/sessions/rollout.jsonl",
+  "cwd": "/repo/Caveat",
+  "hook_event_name": "PostToolUse",
+  "model": "gpt-5.5",
+  "permission_mode": "bypassPermissions",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "__caveat_missing_command_12345"
+  },
+  "tool_response": "/bin/bash: line 1: __caveat_missing_command_12345: command not found\n",
+  "tool_use_id": "call_dASy1j0HCKmwNgfdBT7Zkh2K"
+}

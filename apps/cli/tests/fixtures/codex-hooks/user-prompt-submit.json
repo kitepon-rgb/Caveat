@@ -1,0 +1,10 @@
+{
+  "session_id": "019df890-c627-7d12-96c9-0c6bdabd8b9c",
+  "turn_id": "019df890-c656-71c0-bee8-c8531d0f3ac8",
+  "transcript_path": "/tmp/caveat-codex-capture/sessions/rollout.jsonl",
+  "cwd": "/repo/Caveat",
+  "hook_event_name": "UserPromptSubmit",
+  "model": "gpt-5.5",
+  "permission_mode": "bypassPermissions",
+  "prompt": "Reply with exactly: capture ok"
+}

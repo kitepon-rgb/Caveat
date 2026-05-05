@@ -6,6 +6,8 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ### Added
 - **Codex sidecar advisory for Claude hooks.** `PostToolUse` worker reminders and `Stop` hook reminders keep the existing Caveat text first, then optionally append a `[caveat:codex-sidecar] Codex advisory:` second opinion when `codex-sidecar` is operational for the current project. This improves Claude's next-step advice without changing Caveat's core philosophy: Caveat still decides when to surface memory; Codex only comments on the surfaced context.
+- **Codex primary hook adapter.** `caveat codex-hook install|uninstall|diagnostics` and runtime commands for `user-prompt-submit`, `post-tool-use`, `stop`, and `worker` wire Caveat directly into Codex native hooks. The adapter writes Caveat-owned `UserPromptSubmit` / `PostToolUse` / `Stop` entries to `~/.codex/hooks.json`, enables `[features].codex_hooks = true`, uses Codex-specific stdout formats, and keeps `codex-sidecar` separate as a bounded second-opinion / isolated-work route.
+- **Codex transcript signal reader.** `readCodexSessionSignals` maps Codex rollout JSONL into Caveat's existing stop-signal model: tool failures from `function_call_output`, repeated `exec_command` calls, repeated patch targets, web searches, web fetches, and duration.
 - **`caveat codex-sidecar` CLI namespace.** Adds diagnostics, read-only smoke, context-routed `run <review|explore|opinion|risk-check>`, and isolated `work-smoke` commands so consuming projects can verify `codex-sidecar` availability explicitly.
 - **Caveat-to-sidecar context adapter.** `@caveat/core` now exports `caveatEntryToSidecarContextBlock` / `caveatEntriesToSidecarContextBlocks`, producing plain JSON `caveat_entry` context blocks for `codex-sidecar` CLI/MCP inputs.
 - **Repository-local sidecar policy.** `.codex-sidecar.yml` defines Caveat's allowed paths, deny paths, and presets for read-only and isolated worktree workflows.
@@ -20,8 +22,9 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 - `CAVEAT_CODEX_SIDECAR_NODE_CLI` and `CAVEAT_CODEX_SIDECAR_COMMAND` select the sidecar command path. `CAVEAT_HOOK_CODEX_SIDECAR_TIMEOUT_MS` controls the synchronous advisory timeout.
 
 ### Verification
-- Total test count: 217 across workspace packages.
+- Total test count: 233 across workspace packages.
 - Real hook smoke verified `post-tool-use-worker codex=yes` and `stop-hook codex=yes`.
+- Codex hook diagnostics verified `availability=available` and `installation=installed` after global npm install + `caveat codex-hook install`.
 
 ## [0.12.0] — 2026-05-04
 

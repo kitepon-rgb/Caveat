@@ -19,6 +19,7 @@
 ```sh
 npm install -g caveat-cli
 caveat init                          # registers MCP server + 3 hooks with Claude Code
+caveat codex-hook install            # optional: register equivalent hooks with Codex
 ```
 
 Then in any Claude Code session:
@@ -26,6 +27,11 @@ Then in any Claude Code session:
 1. **You type a prompt** → `UserPromptSubmit` hook surfaces matching entries via three structural gates: **co-occurrence + symptom-section match + corpus-rarest anchor**. No keyword lists. Bare proper-noun mentions (`RTX 5090 CUDA で何かやってる`) stay silent; specific failure vocabulary (`cudaGetDeviceCount が 0 を返す`) fires the right entry. ([details](CHANGELOG.md#0120--2026-05-04))
 2. **A tool returns an error** → `PostToolUse` hook spawns a detached worker that searches in the background; the matching caveat lands on the next tick (~20ms foreground latency). If the current project has an operational `codex-sidecar`, Caveat appends a Codex second opinion after the original reminder.
 3. **The session ends** → `Stop` hook parses the transcript for objective struggle signals (tool failures, repeated edits, web searches, bash retries). If any are present, it nudges Claude to either `caveat_update` an existing entry or `caveat_record` a new one, again with optional Codex advice when sidecar is configured.
+
+In a primary Codex session, `caveat codex-hook install` wires the same three
+Caveat timings through Codex's native hook runtime. This is direct Caveat CLI
+integration, not a `codex-sidecar` call; sidecar remains for bounded second
+opinions, review, risk-check, and isolated work.
 
 The knowledge repo is plain markdown-in-git. Open it as an Obsidian vault. Share it as a team repo with `git push`. There is no central server — trust is defined **socially**, by who you choose to subscribe to via `caveat community add <github-url>`.
 
@@ -40,7 +46,7 @@ The knowledge repo is plain markdown-in-git. Open it as an Obsidian vault. Share
 | Catches struggle the AI didn't self-report | ✅ transcript signal mining | ❌ | ❌ | ❌ |
 | Mixes external-spec gotchas with repo-specific context | ✅ public / private tiers | ⚠️ no separation | ⚠️ | ⚠️ |
 
-**Status**: v0.13.0, 217 tests passing. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install.
+**Status**: v0.13.0, 233 tests passing. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install.
 
 <details>
 <summary><strong>Why no central shared DB?</strong> (v0.7 pivot)</summary>
@@ -94,6 +100,11 @@ flowchart LR
   - **UserPromptSubmit** (事前発火): when you submit a prompt, tokenize it (path-stripping + self-identity + pure-hiragana glue removal + CJK group dedup), FTS the DB, and surface entries that pass **three structural gates** — (1) ≥ 2 distinct group matches (co-occurrence), (2) ≥ 1 match in the entry's `## Symptom` section (not just topic words), (3) that match is on the corpus-rarest side by document frequency. Bare proper-noun mentions like `RTX 5090 CUDA で何かやってる` stay silent; only specific failure-state vocabulary (`cudaGetDeviceCount`, `SQLITE_READONLY`, …) fires the gate. No hardcoded word lists.
   - **PostToolUse** (実行中発火): when a tool returns `is_error: true`, spawn a detached worker that does the FTS asynchronously so the foreground hook returns in ~20ms; the reminder lands on the next hook tick. If `codex-sidecar` is configured, Codex advice is appended to the same reminder after Caveat's original text.
   - **Stop** (事後発火): parse the session transcript for objective struggle signals (tool failures, repeated file edits, web searches, bash retries). If any are present, surface matching entries and nudge `caveat_update` or `caveat_record`. Optional Codex advice can challenge or sharpen that nudge without replacing Caveat's trigger logic.
+- **Codex primary hook adapter.** `caveat codex-hook install` registers
+  `UserPromptSubmit`, `PostToolUse`, and `Stop` in `~/.codex/hooks.json` and
+  enables `[features].codex_hooks = true`. It reuses Caveat's existing search,
+  pending-reminder, and stop-signal logic with Codex-specific payload parsing
+  and stdout formatting.
 - **Obsidian-compatible.** The knowledge repo is a valid Obsidian vault — open it as a folder, edit with Obsidian's graph/backlinks/Dataview, the tool re-indexes on `caveat index`.
 
 ## Layout
@@ -105,6 +116,7 @@ packages/core/        @caveat/core — DB (node:sqlite + FTS5 trigram), indexer,
 apps/cli/             caveat-cli (published to npm) — bundled CLI with subcommands:
                         init / uninstall / index [--full] / search / list / stale / show /
                         stats / serve / mcp-server / hook <name> / community add|pull|list /
+                        codex-hook install|uninstall|diagnostics|... /
                         codex-sidecar diagnostics|smoke|run|work-smoke
 apps/mcp/             @caveat/mcp — stdio MCP server exposing 6 tools via
                       @modelcontextprotocol/sdk. Imported by caveat-cli as `mcp-server`
@@ -130,6 +142,7 @@ docs/archive/         Superseded drafts (legacy brainstorms, etc.)
 ```sh
 npm install -g caveat-cli
 caveat init                                                # one-time setup (see below)
+caveat codex-hook install                                  # optional Codex hook setup
 caveat search "rtx"                                        # search your local entries
 caveat community add https://github.com/acme-corp/caveats  # subscribe to a group repo
 caveat pull                                                # git-pull subscribed repos and re-index
@@ -143,6 +156,10 @@ What `caveat init` does on first run:
 - Merges `UserPromptSubmit` / `PostToolUse` / `Stop` hook entries into `~/.claude/settings.json` (existing entries preserved; backup written before any change)
 
 Use `--skip-claude` to skip Claude Code wiring, or `--dry-run` to preview. `caveat uninstall` reverses Claude Code changes without touching `~/.caveat/`. **No central DB is auto-subscribed** — add knowledge sources explicitly with `caveat community add`.
+
+For Codex, run `caveat codex-hook diagnostics` first if you want a health check.
+It reports hook availability separately from whether Caveat-owned hooks are
+installed.
 
 ### Sharing with a group / team / company
 

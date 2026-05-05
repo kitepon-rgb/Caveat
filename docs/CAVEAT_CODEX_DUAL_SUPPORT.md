@@ -24,6 +24,11 @@ Claude での既存動作はそのまま維持しつつ、repo-specific gotcha�
 
 runtime environment で Codex が使えない場合は、現在の Claude subagent behavior をそのまま維持します。Codex adapter が存在するからといって、既存の Claude path を削ったり劣化させたりしないでください。
 
+注意: この文書の主対象は `codex-sidecar` 経由の second opinion / review /
+scoped work です。Codex primary session で Caveat の hook を使う対応は別面であり、
+`codex-sidecar` ではなく Codex runtime から Caveat CLI を直接呼ぶ方針です。詳細な
+試験・実装 TODO は `docs/CODEX_HOOK_SUPPORT_PLAN.md` を正とします。
+
 ## Architecture 方針
 
 概念上、次の layer に分けます。
@@ -32,14 +37,15 @@ runtime environment で Codex が使えない場合は、現在の Claude subage
 |---|---|
 | Agent-neutral core | Caveat entry、markdown-in-git storage、parsing、lookup、indexing、validation |
 | Claude adapter | Claude Code command、hook、transcript 前提、Claude-facing prompt |
-| Codex adapter | `caveat_entry` context block、`codex-sidecar` request shaping、structured result handling |
+| Codex sidecar adapter | `caveat_entry` context block、`codex-sidecar` request shaping、structured result handling |
+| Codex hook adapter | Codex hook payload parse、Codex stdout/context formatter、Codex hook install / diagnostics |
 | Shared fixtures | Claude / Codex adapter の両方で使う caveat entry 例と expected output |
 
 「Claude Caveat」と「Codex Caveat」に分岐させないでください。Caveat core は 1 つに保ち、複数の agent adapter を持つ形にします。
 
 ## Codex Sidecar Integration
 
-Codex 向けには、Caveat が `codex-sidecar` contract に合う plain JSON context block を生成します。
+Codex sidecar 向けには、Caveat が `codex-sidecar` contract に合う plain JSON context block を生成します。
 
 ```json
 {
@@ -142,7 +148,7 @@ Availability policy:
 
 これは hidden fallback ではありません。互換モードです。Codex が使えない環境では、現在の Claude-backed behavior を baseline とします。
 
-「Codex が使える」の最小実用定義は、単に `codex` binary があることではありません。`codex-sidecar` が存在し、対象 repository で diagnostics を成功させられることです。`codex-sidecar` がない場合、Caveat は Codex unavailable と扱ってください。
+sidecar 経路で「Codex が使える」の最小実用定義は、単に `codex` binary があることではありません。`codex-sidecar` が存在し、対象 repository で diagnostics を成功させられることです。Codex primary hook 経路の availability は別定義で、`codex` binary、`codex_hooks` feature、hook config path、Caveat hook command、実 hook 発火 smoke を確認します。
 
 Preferred health check:
 

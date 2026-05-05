@@ -13,6 +13,8 @@ import { runStats } from './commands/stats.js';
 import { runServe } from './commands/serve.js';
 import { runMcpServer } from './commands/mcpServer.js';
 import { runHook, type HookName } from './commands/hookCmd.js';
+import { runCodexHook } from './commands/codexHookCmd.js';
+import { installCodexHooks, uninstallCodexHooks } from './codexHookInstall.js';
 import { runPull } from './commands/pull.js';
 import {
   runCodexSidecarDiagnostics,
@@ -166,6 +168,98 @@ program
   )
   .action(async (name: string, arg?: string) => {
     await runHook(name as HookName, arg);
+  });
+
+const codexHook = program
+  .command('codex-hook')
+  .description('Install or run Codex hooks for Caveat');
+
+codexHook
+  .command('install')
+  .description('Install Caveat hooks into ~/.codex/hooks.json and enable codex_hooks')
+  .option('--dry-run', 'show planned changes without writing', false)
+  .option('--codex-home <path>', 'Codex home directory', process.env.CODEX_HOME ?? `${process.env.HOME}/.codex`)
+  .action((opts: { dryRun: boolean; codexHome: string }) => {
+    const cliScriptPath = process.argv[1];
+    if (!cliScriptPath) {
+      process.stderr.write('[caveat:error] cannot determine CLI script path\n');
+      process.exit(1);
+    }
+    const result = installCodexHooks({
+      codexHome: opts.codexHome,
+      cliScriptPath,
+      nodePath: process.execPath,
+      dryRun: opts.dryRun,
+      logger: stdoutLogger,
+    });
+    stdoutLogger.info(`UserPromptSubmit hook: ${result.hooks.userPromptSubmit}`);
+    stdoutLogger.info(`PostToolUse hook: ${result.hooks.postToolUse}`);
+    stdoutLogger.info(`Stop hook: ${result.hooks.stop}`);
+    stdoutLogger.info(`codex_hooks feature: ${result.feature}`);
+    if (result.backupPath) stdoutLogger.info(`hooks.json backed up: ${result.backupPath}`);
+    if (result.configBackupPath) {
+      stdoutLogger.info(`config.toml backed up: ${result.configBackupPath}`);
+    }
+  });
+
+codexHook
+  .command('uninstall')
+  .description('Remove Caveat-owned Codex hooks from ~/.codex/hooks.json')
+  .option('--dry-run', 'show planned changes without writing', false)
+  .option('--codex-home <path>', 'Codex home directory', process.env.CODEX_HOME ?? `${process.env.HOME}/.codex`)
+  .action((opts: { dryRun: boolean; codexHome: string }) => {
+    const cliScriptPath = process.argv[1];
+    if (!cliScriptPath) {
+      process.stderr.write('[caveat:error] cannot determine CLI script path\n');
+      process.exit(1);
+    }
+    const result = uninstallCodexHooks({
+      codexHome: opts.codexHome,
+      cliScriptPath,
+      nodePath: process.execPath,
+      dryRun: opts.dryRun,
+      logger: stdoutLogger,
+    });
+    stdoutLogger.info(`UserPromptSubmit hook: ${result.hooks.userPromptSubmit === 'added' ? 'removed' : 'not present'}`);
+    stdoutLogger.info(`PostToolUse hook: ${result.hooks.postToolUse === 'added' ? 'removed' : 'not present'}`);
+    stdoutLogger.info(`Stop hook: ${result.hooks.stop === 'added' ? 'removed' : 'not present'}`);
+    if (result.backupPath) stdoutLogger.info(`hooks.json backed up: ${result.backupPath}`);
+  });
+
+codexHook
+  .command('diagnostics')
+  .description('Check local Codex hook availability')
+  .option('--codex-home <path>', 'Codex home directory', process.env.CODEX_HOME ?? `${process.env.HOME}/.codex`)
+  .action(async (opts: { codexHome: string }) => {
+    await runCodexHook('diagnostics', opts.codexHome);
+  });
+
+codexHook
+  .command('user-prompt-submit')
+  .description('Run the Codex UserPromptSubmit hook')
+  .action(async () => {
+    await runCodexHook('user-prompt-submit');
+  });
+
+codexHook
+  .command('post-tool-use')
+  .description('Run the Codex PostToolUse hook')
+  .action(async () => {
+    await runCodexHook('post-tool-use');
+  });
+
+codexHook
+  .command('stop')
+  .description('Run the Codex Stop hook')
+  .action(async () => {
+    await runCodexHook('stop');
+  });
+
+codexHook
+  .command('worker <workFile>')
+  .description('Run the detached Codex hook worker')
+  .action(async (workFile: string) => {
+    await runCodexHook('worker', workFile);
   });
 
 const codexSidecar = program

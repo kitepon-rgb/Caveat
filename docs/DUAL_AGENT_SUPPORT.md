@@ -67,6 +67,46 @@ can consume `caveat_entry` blocks through `codex-sidecar`.
 - CLI: `--context-file <json>`
 - MCP: `context: [...]` tool input
 
+## Codex Primary Hooks
+
+Codex primary hook support is a separate adapter surface from `codex-sidecar`.
+When Caveat is running inside a primary Codex session, Caveat should use Codex's
+own hook runtime to call `caveat codex-hook ...` directly. It should not call
+`codex-sidecar` just to reach another Codex process.
+
+The Codex hook adapter uses these commands:
+
+```bash
+caveat codex-hook install
+caveat codex-hook uninstall
+caveat codex-hook diagnostics
+caveat codex-hook user-prompt-submit
+caveat codex-hook post-tool-use
+caveat codex-hook stop
+```
+
+`install` writes Caveat-owned entries to user-level `~/.codex/hooks.json` and
+ensures `[features].codex_hooks = true` in `~/.codex/config.toml`. Commands in
+the hook config use absolute `nodePath` + `cliScriptPath` so Codex App Server
+does not need `caveat` or `node` to be discoverable through `PATH`.
+
+Observed Codex hook config keys are PascalCase (`UserPromptSubmit`,
+`PostToolUse`, `Stop`). Observed runtime payloads include `session_id`,
+`turn_id`, `transcript_path`, `cwd`, `hook_event_name`, `model`, and
+`permission_mode`. `UserPromptSubmit` context is returned with
+`hookSpecificOutput.additionalContext`; `Stop` blocking reminders are returned
+as `{"decision":"block","reason":"..."}`.
+
+`PostToolUse` uses the same Caveat pending-reminder model as Claude, but drains
+through Codex's `UserPromptSubmit` formatter instead of Claude
+`<system-reminder>` text. The foreground hook stays short and spawns
+`caveat codex-hook worker <workFile>` for DB lookup.
+
+`codex-sidecar` remains appropriate for Claude-hosted second opinions and for
+Codex-hosted work that has a real boundary, such as an isolated worktree,
+structured result, explicit second pass, or review/risk role separation. The
+Codex hook implementation TODO lives in `docs/CODEX_HOOK_SUPPORT_PLAN.md`.
+
 ## Execution Policy
 
 `decideCodexSidecarExecution` prevents accidental recursive delegation.
