@@ -151,6 +151,60 @@ describe('installClaudeIntegration (hooks only — MCP spawn tolerated)', () => 
     expect(settings.hooks.Stop).toHaveLength(1);
   });
 
+  it('treats env-prefixed caveat hooks as already installed', () => {
+    const stopCmd = 'C:/fake/node.exe C:/fake/dist/index.js hook stop';
+    const postToolUseCmd = 'C:/fake/node.exe C:/fake/dist/index.js hook post-tool-use';
+    writeFileSync(
+      fx.settingsPath,
+      JSON.stringify(
+        {
+          hooks: {
+            Stop: [
+              {
+                hooks: [
+                  {
+                    type: 'command',
+                    command: `CAVEAT_HOOK_CODEX_SIDECAR=auto ${stopCmd}`,
+                  },
+                ],
+              },
+            ],
+            PostToolUse: [
+              {
+                hooks: [
+                  {
+                    type: 'command',
+                    command: `CAVEAT_HOOK_CODEX_SIDECAR=auto ${postToolUseCmd}`,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    );
+
+    const result = installClaudeIntegration({
+      claudeDir: fx.claudeDir,
+      cliScriptPath: fx.cliScriptPath,
+      nodePath: fx.nodePath,
+      dryRun: false,
+      logger: silentLogger,
+      skipMcpRegistration: true,
+    });
+    expect(result.hooks.stop).toBe('unchanged');
+    expect(result.hooks.postToolUse).toBe('unchanged');
+
+    const settings = JSON.parse(readFileSync(fx.settingsPath, 'utf-8')) as {
+      hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>>;
+    };
+    expect(settings.hooks.Stop).toHaveLength(1);
+    expect(settings.hooks.PostToolUse).toHaveLength(1);
+  });
+
   it('dry-run leaves settings.json untouched', () => {
     installClaudeIntegration({
       claudeDir: fx.claudeDir,
@@ -189,6 +243,47 @@ describe('installClaudeIntegration (hooks only — MCP spawn tolerated)', () => 
     };
     expect(settings.hooks.UserPromptSubmit).toHaveLength(0);
     expect(settings.hooks.PostToolUse).toHaveLength(0);
+    expect(settings.hooks.Stop).toHaveLength(0);
+  });
+
+  it('uninstall removes env-prefixed caveat hooks', () => {
+    const stopCmd = 'C:/fake/node.exe C:/fake/dist/index.js hook stop';
+    writeFileSync(
+      fx.settingsPath,
+      JSON.stringify(
+        {
+          hooks: {
+            Stop: [
+              {
+                hooks: [
+                  {
+                    type: 'command',
+                    command: `CAVEAT_HOOK_CODEX_SIDECAR=auto ${stopCmd}`,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    );
+
+    const result = uninstallClaudeIntegration({
+      claudeDir: fx.claudeDir,
+      cliScriptPath: fx.cliScriptPath,
+      nodePath: fx.nodePath,
+      dryRun: false,
+      logger: silentLogger,
+      skipMcpRegistration: true,
+    });
+    expect(result.hooks.stop).toBe('added');
+
+    const settings = JSON.parse(readFileSync(fx.settingsPath, 'utf-8')) as {
+      hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>>;
+    };
     expect(settings.hooks.Stop).toHaveLength(0);
   });
 

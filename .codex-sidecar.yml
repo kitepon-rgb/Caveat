@@ -1,0 +1,68 @@
+project: caveat
+
+defaults:
+  readonly: true
+  result_format: json
+
+safety_profile: markdown-memory-repo
+
+allowed_paths:
+  - README.md
+  - README.ja.md
+  - CHANGELOG.md
+  - CONTRIBUTING.md
+  - SECURITY.md
+  - CLAUDE.md
+  - docs/
+  - entries/
+  - hooks/
+  - apps/
+  - packages/
+  - package.json
+  - pnpm-workspace.yaml
+  - tsconfig.base.json
+
+deny_paths:
+  - .env
+  - .env.*
+  - "**/*.key"
+  - "**/*.pem"
+  - "**/*.sqlite"
+  - "**/*.sqlite3"
+  - "**/*.db"
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - ".claude/**"
+  - ".codex/**"
+  - ".codegraph/**"
+  - ".index/**"
+  - ".spotter/**"
+  - ".templates/**"
+
+presets:
+  review:
+    workflow: review
+    readonly: true
+    prompt: "Review Caveat changes for Claude workflow regressions, schema drift, and missing tests."
+  explore:
+    workflow: explore
+    readonly: true
+    prompt: "Answer with Caveat codebase evidence and file references."
+  opinion:
+    workflow: opinion
+    readonly: true
+    prompt: "Challenge this Caveat design and identify hidden assumptions."
+  risk:
+    workflow: risk-check
+    readonly: true
+    focus:
+      - mcp
+      - claude-hooks
+      - transcript
+      - markdown-memory
+      - codex-sidecar
+  work:
+    workflow: work
+    readonly: false
+    require_worktree: true
+    prompt: "Implement a small scoped Caveat change inside allowed_paths."

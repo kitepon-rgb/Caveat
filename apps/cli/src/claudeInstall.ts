@@ -64,7 +64,7 @@ function upsertHook(
   settings.hooks ??= {};
   const list = (settings.hooks[event] ??= []);
   const alreadyPresent = list.some((entry) =>
-    entry.hooks?.some((h) => h.command === command),
+    entry.hooks?.some((h) => isSameHookCommand(h.command, command)),
   );
   if (alreadyPresent) return 'unchanged';
   list.push({ hooks: [{ type: 'command', command }] });
@@ -76,11 +76,15 @@ function removeHook(settings: Settings, event: string, command: string): boolean
   if (!list) return false;
   const before = list.length;
   const filtered = list.filter(
-    (entry) => !entry.hooks?.some((h) => h.command === command),
+    (entry) => !entry.hooks?.some((h) => isSameHookCommand(h.command, command)),
   );
   if (filtered.length === before) return false;
   settings.hooks![event] = filtered;
   return true;
+}
+
+function isSameHookCommand(actual: string, expected: string): boolean {
+  return actual === expected || actual.endsWith(` ${expected}`);
 }
 
 function readSettings(path: string): Settings {

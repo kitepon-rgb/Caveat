@@ -2,6 +2,27 @@
 
 All notable changes are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] — 2026-05-05
+
+### Added
+- **Codex sidecar advisory for Claude hooks.** `PostToolUse` worker reminders and `Stop` hook reminders keep the existing Caveat text first, then optionally append a `[caveat:codex-sidecar] Codex advisory:` second opinion when `codex-sidecar` is operational for the current project. This improves Claude's next-step advice without changing Caveat's core philosophy: Caveat still decides when to surface memory; Codex only comments on the surfaced context.
+- **`caveat codex-sidecar` CLI namespace.** Adds diagnostics, read-only smoke, context-routed `run <review|explore|opinion|risk-check>`, and isolated `work-smoke` commands so consuming projects can verify `codex-sidecar` availability explicitly.
+- **Caveat-to-sidecar context adapter.** `@caveat/core` now exports `caveatEntryToSidecarContextBlock` / `caveatEntriesToSidecarContextBlocks`, producing plain JSON `caveat_entry` context blocks for `codex-sidecar` CLI/MCP inputs.
+- **Repository-local sidecar policy.** `.codex-sidecar.yml` defines Caveat's allowed paths, deny paths, and presets for read-only and isolated worktree workflows.
+- **Codex-facing agent notes.** `AGENTS.md` points Codex users back to `CLAUDE.md` as the source of truth and keeps Codex-specific guidance additive.
+
+### Changed
+- **Claude hook install idempotency recognizes env-prefixed Caveat hooks.** This lets users pass `CAVEAT_HOOK_CODEX_SIDECAR`, `CAVEAT_CODEX_SIDECAR_NODE_CLI`, `CODEX_BINARY`, or `CODEX_HOME` through `~/.claude/settings.json` without `caveat init` later duplicating the same hook.
+- **CLI serve import is lazy.** Non-serve commands no longer import the web server chunk as a side effect, and the CLI build patch now restores stripped `node:` specifiers across all emitted chunks.
+
+### Configuration
+- `CAVEAT_HOOK_CODEX_SIDECAR=off|auto|require` controls hook advisory. Default `auto` only calls Codex when the current project has `.codex-sidecar.yml`; `off` preserves pre-Codex hook behavior; `require` attempts Codex and reports explicit unavailability if it cannot run.
+- `CAVEAT_CODEX_SIDECAR_NODE_CLI` and `CAVEAT_CODEX_SIDECAR_COMMAND` select the sidecar command path. `CAVEAT_HOOK_CODEX_SIDECAR_TIMEOUT_MS` controls the synchronous advisory timeout.
+
+### Verification
+- Total test count: 217 across workspace packages.
+- Real hook smoke verified `post-tool-use-worker codex=yes` and `stop-hook codex=yes`.
+
 ## [0.12.0] — 2026-05-04
 
 ### Added (BREAKING for hook surfacing behavior)

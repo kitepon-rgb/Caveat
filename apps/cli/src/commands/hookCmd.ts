@@ -1,5 +1,12 @@
-import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
@@ -166,6 +173,8 @@ interface WorkerJob {
   searchText: string;
 }
 
+type HookCodexSidecarMode = 'off' | 'auto' | 'require';
+
 function spawnWorker(job: WorkerJob): void {
   const workFile = join(
     tmpdir(),
@@ -230,11 +239,173 @@ async function runWorker(workFile: string): Promise<void> {
   if (!ctx) process.exit(0);
 
   try {
-    appendPendingReminder(ctx.caveatHome, job.sessionId, toolErrorReminderText(hits));
+    appendPendingReminder(ctx.caveatHome, job.sessionId, buildToolErrorReminder(job, hits));
   } catch {
     // best-effort; next hook will not drain anything but session continues
   }
   process.exit(0);
+}
+
+function buildToolErrorReminder(job: WorkerJob, hits: SearchResult[]): string {
+  const base = toolErrorReminderText(hits);
+  const mode = hookCodexSidecarMode();
+  if (mode === 'off') return base;
+
+  const projectRoot = process.cwd();
+  const hasSidecarConfig = existsSync(join(projectRoot, '.codex-sidecar.yml'));
+  if (mode === 'auto' && !hasSidecarConfig) return base;
+
+  const advisory = runCodexSidecarAdvisory({
+    searchText: job.searchText,
+    limit: hits.length,
+    projectRoot,
+    prompt: [
+      'A Claude Code tool just returned an error.',
+      'Use the provided Caveat context to give concise next-step advice.',
+      'Do not tell Claude to search Caveat again unless the context is insufficient.',
+    ].join(' '),
+  });
+  if (advisory.status === 'ok') {
+    return [
+      base,
+      '',
+      '[caveat:codex-sidecar] Codex advisory:',
+      advisory.summary,
+      advisory.rawEventLogRef ? `rawEventLogRef: ${advisory.rawEventLogRef}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  return [
+    base,
+    '',
+    `[caveat:codex-sidecar] advisory unavailable: ${advisory.message}`,
+  ].join('\n');
+}
+
+function hookCodexSidecarMode(): HookCodexSidecarMode {
+  const raw = process.env.CAVEAT_HOOK_CODEX_SIDECAR;
+  if (raw === 'off' || raw === 'auto' || raw === 'require') return raw;
+  return 'auto';
+}
+
+function buildStopReminder(
+  signals: SessionSignals,
+  related: SearchResult[],
+): string {
+  const base = stopReminderText(signals, related);
+  const mode = hookCodexSidecarMode();
+  if (mode === 'off') return base;
+
+  const projectRoot = process.cwd();
+  const hasSidecarConfig = existsSync(join(projectRoot, '.codex-sidecar.yml'));
+  if (mode === 'auto' && !hasSidecarConfig) return base;
+
+  const advisory = runCodexSidecarAdvisory({
+    searchText: struggleSearchText(signals),
+    limit: Math.max(related.length, 1),
+    projectRoot,
+    prompt: [
+      'A Claude Code session is ending after objective struggle signals.',
+      'Use the provided Caveat context and the signal text to advise whether Claude should update an existing caveat or record a new one.',
+      'Be concise and preserve Caveat visibility rules.',
+    ].join(' '),
+  });
+
+  if (advisory.status === 'ok') {
+    return [
+      base,
+      '',
+      '[caveat:codex-sidecar] Codex advisory:',
+      advisory.summary,
+      advisory.rawEventLogRef ? `rawEventLogRef: ${advisory.rawEventLogRef}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  return [
+    base,
+    '',
+    `[caveat:codex-sidecar] advisory unavailable: ${advisory.message}`,
+  ].join('\n');
+}
+
+function runCodexSidecarAdvisory(input: {
+  searchText: string;
+  limit: number;
+  projectRoot: string;
+  prompt: string;
+}): { status: 'ok'; summary: string; rawEventLogRef?: string } | { status: 'failed'; message: string } {
+  const cliScript = process.argv[1];
+  if (!cliScript) {
+    return { status: 'failed', message: 'current Caveat CLI script path is unavailable' };
+  }
+
+  const args = [
+    '--disable-warning=ExperimentalWarning',
+    cliScript,
+    'codex-sidecar',
+    'run',
+    'explore',
+    input.prompt,
+    '--query',
+    input.searchText,
+    '--limit',
+    String(Math.max(1, input.limit)),
+    '--host-agent',
+    'claude',
+    '--availability',
+    'operational',
+  ];
+  const resultDir = mkdtempSync(join(tmpdir(), 'caveat-codex-advisory-'));
+  const resultFile = join(resultDir, 'result.json');
+  args.push('--save-result', resultFile);
+
+  const nodeCli = process.env.CAVEAT_CODEX_SIDECAR_NODE_CLI;
+  if (nodeCli) {
+    args.push('--node-cli', nodeCli);
+  } else {
+    const command = process.env.CAVEAT_CODEX_SIDECAR_COMMAND;
+    if (command) args.push('--command', command);
+  }
+
+  try {
+    const result = spawnSync(process.execPath, args, {
+      cwd: input.projectRoot,
+      encoding: 'utf-8',
+      timeout: Number(process.env.CAVEAT_HOOK_CODEX_SIDECAR_TIMEOUT_MS ?? 120_000),
+      maxBuffer: 10 * 1024 * 1024,
+    });
+
+    if (result.error) {
+      return { status: 'failed', message: result.error.message };
+    }
+    if (result.status !== 0) {
+      const detail = (result.stderr || result.stdout || `exit ${result.status}`).trim();
+      return { status: 'failed', message: detail.slice(0, 500) };
+    }
+
+    const parsed = JSON.parse(readFileSync(resultFile, 'utf-8')) as {
+      status?: string;
+      summary?: unknown;
+      rawEventLogRef?: unknown;
+    };
+    if (parsed.status !== 'ok' || typeof parsed.summary !== 'string') {
+      return { status: 'failed', message: `unexpected SidecarResult status: ${String(parsed.status)}` };
+    }
+    return {
+      status: 'ok',
+      summary: parsed.summary,
+      ...(typeof parsed.rawEventLogRef === 'string' ? { rawEventLogRef: parsed.rawEventLogRef } : {}),
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { status: 'failed', message: `invalid SidecarResult JSON: ${msg}` };
+  } finally {
+    rmSync(resultDir, { recursive: true, force: true });
+  }
 }
 
 export async function runHook(name: HookName, arg?: string): Promise<void> {
@@ -287,9 +458,7 @@ export async function runHook(name: HookName, arg?: string): Promise<void> {
     const signals = transcriptPath ? loadSignalsSafely(transcriptPath) : null;
     if (!signals || !hasAnyStruggleSignal(signals)) process.exit(0);
     const related = searchCaveatsFromTextSafely(struggleSearchText(signals));
-    process.stdout.write(
-      `<system-reminder>${stopReminderText(signals, related)}</system-reminder>\n`,
-    );
+    process.stdout.write(`<system-reminder>${buildStopReminder(signals, related)}</system-reminder>\n`);
     process.exit(0);
   }
 

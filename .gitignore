@@ -6,6 +6,10 @@ dist/
 .index/
 data/
 
+# Local agent/tool indexes and sidecar runtime logs
+.codegraph/
+.codex-sidecar/
+
 # Private entries (file-name axis, in addition to visibility frontmatter gate)
 *.private.md
 

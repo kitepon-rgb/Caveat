@@ -24,8 +24,8 @@ caveat init                          # registers MCP server + 3 hooks with Claud
 Then in any Claude Code session:
 
 1. **You type a prompt** → `UserPromptSubmit` hook surfaces matching entries via three structural gates: **co-occurrence + symptom-section match + corpus-rarest anchor**. No keyword lists. Bare proper-noun mentions (`RTX 5090 CUDA で何かやってる`) stay silent; specific failure vocabulary (`cudaGetDeviceCount が 0 を返す`) fires the right entry. ([details](CHANGELOG.md#0120--2026-05-04))
-2. **A tool returns an error** → `PostToolUse` hook spawns a detached worker that searches in the background; the matching caveat lands on the next tick (~20ms foreground latency).
-3. **The session ends** → `Stop` hook parses the transcript for objective struggle signals (tool failures, repeated edits, web searches, bash retries). If any are present, it nudges Claude to either `caveat_update` an existing entry or `caveat_record` a new one.
+2. **A tool returns an error** → `PostToolUse` hook spawns a detached worker that searches in the background; the matching caveat lands on the next tick (~20ms foreground latency). If the current project has an operational `codex-sidecar`, Caveat appends a Codex second opinion after the original reminder.
+3. **The session ends** → `Stop` hook parses the transcript for objective struggle signals (tool failures, repeated edits, web searches, bash retries). If any are present, it nudges Claude to either `caveat_update` an existing entry or `caveat_record` a new one, again with optional Codex advice when sidecar is configured.
 
 The knowledge repo is plain markdown-in-git. Open it as an Obsidian vault. Share it as a team repo with `git push`. There is no central server — trust is defined **socially**, by who you choose to subscribe to via `caveat community add <github-url>`.
 
@@ -40,7 +40,7 @@ The knowledge repo is plain markdown-in-git. Open it as an Obsidian vault. Share
 | Catches struggle the AI didn't self-report | ✅ transcript signal mining | ❌ | ❌ | ❌ |
 | Mixes external-spec gotchas with repo-specific context | ✅ public / private tiers | ⚠️ no separation | ⚠️ | ⚠️ |
 
-**Status**: v0.12.0, 202 tests passing. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install.
+**Status**: v0.13.0, 217 tests passing. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install.
 
 <details>
 <summary><strong>Why no central shared DB?</strong> (v0.7 pivot)</summary>
@@ -92,8 +92,8 @@ flowchart LR
 - **`visibility: public | private`** frontmatter + `.husky/pre-commit` gate keeps private entries out of any repo you commit to.
 - **Claude Code integration.** An MCP server exposes 6 tools (`caveat_search` / `caveat_get` / `caveat_record` / `caveat_update` / `caveat_list_recent` / `caveat_pull`). Three hooks fire at complementary points and surface matching caveats automatically — no hardcoded keyword lists:
   - **UserPromptSubmit** (事前発火): when you submit a prompt, tokenize it (path-stripping + self-identity + pure-hiragana glue removal + CJK group dedup), FTS the DB, and surface entries that pass **three structural gates** — (1) ≥ 2 distinct group matches (co-occurrence), (2) ≥ 1 match in the entry's `## Symptom` section (not just topic words), (3) that match is on the corpus-rarest side by document frequency. Bare proper-noun mentions like `RTX 5090 CUDA で何かやってる` stay silent; only specific failure-state vocabulary (`cudaGetDeviceCount`, `SQLITE_READONLY`, …) fires the gate. No hardcoded word lists.
-  - **PostToolUse** (実行中発火): when a tool returns `is_error: true`, spawn a detached worker that does the FTS asynchronously so the foreground hook returns in ~20ms; the reminder lands on the next hook tick. Zero added latency in the happy path.
-  - **Stop** (事後発火): parse the session transcript for objective struggle signals (tool failures, repeated file edits, web searches, bash retries). If any are present, surface matching entries and nudge `caveat_update` or `caveat_record`.
+  - **PostToolUse** (実行中発火): when a tool returns `is_error: true`, spawn a detached worker that does the FTS asynchronously so the foreground hook returns in ~20ms; the reminder lands on the next hook tick. If `codex-sidecar` is configured, Codex advice is appended to the same reminder after Caveat's original text.
+  - **Stop** (事後発火): parse the session transcript for objective struggle signals (tool failures, repeated file edits, web searches, bash retries). If any are present, surface matching entries and nudge `caveat_update` or `caveat_record`. Optional Codex advice can challenge or sharpen that nudge without replacing Caveat's trigger logic.
 - **Obsidian-compatible.** The knowledge repo is a valid Obsidian vault — open it as a folder, edit with Obsidian's graph/backlinks/Dataview, the tool re-indexes on `caveat index`.
 
 ## Layout
@@ -104,7 +104,8 @@ packages/core/        @caveat/core — DB (node:sqlite + FTS5 trigram), indexer,
                       Claude Code hook logic (claudeHooks.ts)
 apps/cli/             caveat-cli (published to npm) — bundled CLI with subcommands:
                         init / uninstall / index [--full] / search / list / stale / show /
-                        stats / serve / mcp-server / hook <name> / community add|pull|list
+                        stats / serve / mcp-server / hook <name> / community add|pull|list /
+                        codex-sidecar diagnostics|smoke|run|work-smoke
 apps/mcp/             @caveat/mcp — stdio MCP server exposing 6 tools via
                       @modelcontextprotocol/sdk. Imported by caveat-cli as `mcp-server`
 apps/web/             @caveat/web — Hono SSR read-only share portal (/, /g/:id, /community) +

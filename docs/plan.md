@@ -442,6 +442,15 @@ caveat nlm-brief <topic>              # ターミナルから brief 生成
     - **migration**: 既存 v1 DB には `002_last_hit_at.sql` で `ALTER TABLE entries ADD COLUMN last_hit_at TEXT` を自動適用
     - **未実装**: private のマシン跨ぎ sync。現状の pre-commit visibility gate が private commit を弾く。1 台運用の間は保留、複数マシン運用が要る時点で private 専用 repo 分離 or gate 調整を検討
 
+19. **Codex sidecar advisory — Claude hook の補助判断を Codex に渡せる経路を追加** ✅ 完了（2026-05-05、v0.13、217 tests passing）。Caveat の思想は「Caveat が自分で何でもする」ではなく「関連罠を適切なタイミングで浮上させ、Claude が記録/更新を判断できる材料を渡す」。その前提を崩さず、`codex-sidecar` が operational な project だけ Codex の second opinion を追加:
+    - **既存挙動は先頭に維持**: `toolErrorReminderText` / `stopReminderText` の本文は従来通り。Codex advisory は `[caveat:codex-sidecar] Codex advisory:` として末尾に追記するだけ
+    - **PostToolUse worker**: error text で Caveat DB を検索 → hit があれば従来 reminder を pending queue に保存 → sidecar が使える場合だけ `caveat codex-sidecar run explore` の summary を同じ pending reminder へ追記
+    - **Stop hook**: transcript struggle signal が発火した時だけ、既存 stop reminder の末尾に Codex advice を追記。Codex は「既存 caveat 更新か新規記録か」を助言するが、Caveat の発火判定そのものは変えない
+    - **制御変数**: `CAVEAT_HOOK_CODEX_SIDECAR=off|auto|require`。default `auto` は `.codex-sidecar.yml` がある project だけ試す。失敗時は hidden fallback せず unavailable 行を表示
+    - **Codex adapter**: `caveatEntryToSidecarContextBlock` が Caveat entry を `caveat_entry` JSON context block に変換。CLI は Caveat DB search → full entry fetch → context file → `codex-sidecar --context-file` の順に渡す
+    - **Codex-on-Codex 抑制**: `decideCodexSidecarExecution` は host agent と availability / isolation / structured result の境界を見て、無意味な Codex 再帰委譲を避ける
+    - **docs**: `docs/DUAL_AGENT_SUPPORT.md` に Claude contract、Codex adapter、execution policy、hook advisory、smoke command を集約。`AGENTS.md` は `CLAUDE.md` を正本とするリンクだけを持ち、Claude 固有記載を Codex 風に上書きしない
+
 ## 検証
 
 - `pnpm install && pnpm -r build`

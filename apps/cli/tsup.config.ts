@@ -1,5 +1,13 @@
 import { defineConfig } from 'tsup';
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const repoRoot = resolve(__dirname, '..', '..');
@@ -50,9 +58,12 @@ export default defineConfig({
     const distDir = join(__dirname, 'dist');
     if (!existsSync(distDir)) mkdirSync(distDir, { recursive: true });
 
-    const outFile = join(distDir, 'index.js');
-    const patched = restoreNodePrefix(readFileSync(outFile, 'utf-8'));
-    writeFileSync(outFile, patched, 'utf-8');
+    for (const file of readdirSync(distDir)) {
+      if (!file.endsWith('.js')) continue;
+      const outFile = join(distDir, file);
+      const patched = restoreNodePrefix(readFileSync(outFile, 'utf-8'));
+      writeFileSync(outFile, patched, 'utf-8');
+    }
 
     // Write a thin bootstrap wrapper (no static imports) that installs a
     // warning handler BEFORE the ESM bundle's imports hoist. This swallows the

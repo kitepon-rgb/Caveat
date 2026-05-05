@@ -17,3 +17,4 @@ export * from './pendingReminders.js';
 export * from './markHit.js';
 export * from './stale.js';
 export * from './visibilityGate.js';
+export * from './codexSidecar.js';

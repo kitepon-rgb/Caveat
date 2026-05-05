@@ -1,0 +1,28 @@
+{
+  "kind": "caveat_entry",
+  "source": "caveat",
+  "trust": "local",
+  "summary": "Claude Code hooks are not hot reloaded: Editing ~/.claude/settings.json while Claude Code is running does not affect the active hook set.",
+  "references": [
+    {
+      "path": "entries/claude-code/hooks-no-hot-reload.md",
+      "label": "source caveat"
+    }
+  ],
+  "data": {
+    "id": "hooks-no-hot-reload",
+    "source": "own",
+    "title": "Claude Code hooks are not hot reloaded",
+    "tags": [
+      "claude-code",
+      "hooks"
+    ],
+    "confidence": "confirmed",
+    "visibility": "public",
+    "outcome": "resolved",
+    "environment": {
+      "claude": "code"
+    },
+    "last_verified": "2026-04-22T00:00:00.000Z"
+  }
+}

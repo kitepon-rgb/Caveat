@@ -24,8 +24,8 @@ caveat init                          # MCP サーバと 3 種の hook を Claude
 これで Claude Code セッションの中で:
 
 1. **プロンプト送信時** → `UserPromptSubmit` hook が **3 段の構造的ゲート**でマッチエントリを surface: 共起 + 症状セクション一致 + corpus-rarest anchor。キーワード allowlist も stopword リストもなし。固有名詞だけの言及 (`RTX 5090 CUDA で何かやってる`) は silent、症状語彙 (`cudaGetDeviceCount が 0 を返す`) で正解エントリだけ発火する。([詳細](CHANGELOG.md#0120--2026-05-04))
-2. **ツールがエラー返却したとき** → `PostToolUse` hook が detached worker を起動して非同期に検索。前景は ~20ms で返るのでターン遅延ゼロ、結果は次の hook tick で Claude のコンテキストに載ります。
-3. **セッション終了時** → `Stop` hook が transcript を解析し、客観的な「もがきシグナル」（ツール失敗、同一ファイル複数編集、Web 検索、Bash 再実行）を抽出。一つでも観測されれば、Claude に対して既存エントリの `caveat_update` か新規 `caveat_record` を促します。
+2. **ツールがエラー返却したとき** → `PostToolUse` hook が detached worker を起動して非同期に検索。前景は ~20ms で返るのでターン遅延ゼロ、結果は次の hook tick で Claude のコンテキストに載ります。現在の project で `codex-sidecar` が operational なら、既存リマインダーの後ろに Codex の second opinion も追記されます。
+3. **セッション終了時** → `Stop` hook が transcript を解析し、客観的な「もがきシグナル」（ツール失敗、同一ファイル複数編集、Web 検索、Bash 再実行）を抽出。一つでも観測されれば、Claude に対して既存エントリの `caveat_update` か新規 `caveat_record` を促します。sidecar 設定済みなら、この判断材料にも Codex 助言が添えられます。
 
 ナレッジ repo は **markdown-in-git** が真実の源。Obsidian の vault としてそのまま開けます。チームで共有したければ普通に `git push` すれば良い。中央サーバは存在しません — 信頼は「自動検査」ではなく「**社会的文脈**」で引きます（あなた・チーム・組織が誰を購読するかで決まる、`caveat community add <github-url>`）。
 
@@ -40,7 +40,7 @@ caveat init                          # MCP サーバと 3 種の hook を Claude
 | AI が自覚しないもがきも検出 | ✅ transcript シグナル抽出 | ❌ | ❌ | ❌ |
 | 外部仕様の罠と repo 固有メモを混在管理 | ✅ public / private 2 tier | ⚠️ 分離なし | ⚠️ | ⚠️ |
 
-**ステータス**: v0.12.0、202 tests passing。個人および小規模チームが主な想定ユースケースです。中央 DB なし、インストール時の自動購読なし。
+**ステータス**: v0.13.0、217 tests passing。個人および小規模チームが主な想定ユースケースです。中央 DB なし、インストール時の自動購読なし。
 
 <details>
 <summary><strong>なぜ中央 DB を持たない？</strong>（v0.7 での方針転換）</summary>
@@ -90,6 +90,7 @@ flowchart LR
 - **`markdown-in-git`** が真実の源。SQLite (FTS5 trigram) は再構築可能な派生 index で gitignore 済
 - 3 つの発火点 (UserPromptSubmit / PostToolUse / Stop) は **同じ共起 FTS ロジック** を異なる入力（プロンプト / ツールエラー / セッションシグナル）で再利用
 - マッチした既存エントリを `<system-reminder>` で Claude のコンテキストに注入 → AI が「このエラーは既知罠 XYZ」を認識できる
+- `codex-sidecar` が operational な project では、PostToolUse / Stop の既存リマインダー末尾に Codex の second opinion を追記できます。Caveat の発火判定や記録思想は変えず、助言だけを外部化する補助経路です
 
 ## クイックスタート（NPM ユーザ）
 
