@@ -2,6 +2,16 @@
 
 All notable changes are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.4] — 2026-05-06
+
+### Changed
+- **Refresh npm package presentation for Claude + Codex support.** The published `caveat-cli` README, package description, and npm keywords now describe Caveat as a long-term memory CLI for both Claude Code and Codex, including native Codex hook setup and the pending Stop reminder UX.
+- **GitHub public metadata was aligned with the current dual-agent positioning.** Repository description and topics now include Codex / OpenAI / coding-agent discoverability terms.
+
+### Verification
+- Packed `caveat-cli` with `pnpm pack` and inspected the tarball manifest and README before publish.
+- `caveat-cli` hook regression subset remains green.
+
 ## [0.14.3] — 2026-05-06
 
 ### Fixed
