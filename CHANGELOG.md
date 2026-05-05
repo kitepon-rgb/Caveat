@@ -2,17 +2,25 @@
 
 All notable changes are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.3] — 2026-05-06
+
+### Fixed
+- **Claude Stop reminders now use the same pending UX as Codex.** `caveat hook stop` no longer writes a `<system-reminder>` directly after the final answer. It queues the Stop reminder in per-session pending storage, dedupes unchanged Stop signal digests, and surfaces compacted pending context on the next `UserPromptSubmit` or `PostToolUse` hook as at most one `<system-reminder>` block.
+- **CLI bootstrap remains executable after local builds.** The `tsup` post-build wrapper now chmods `dist/caveat.js` to `0755`, keeping direct `.../bin/caveat` hook commands usable after rebuilding the linked development install.
+- **Release docs now require `pnpm publish`.** `pnpm pack/publish` rewrites workspace protocol dev dependencies in the public manifest; direct `npm publish` leaves `workspace:*` strings in the tarball.
+
+### Verification
+- Added Claude hook regression coverage for compacting multiple pending reminders, deferring Stop stdout, avoiding repeated unchanged Stop reminders, and keeping sidecar-unavailable diagnostics compact.
+- Total test count: 242 across workspace packages.
+
 ## [0.14.2] — 2026-05-06
 
 ### Fixed
 - **Prompt surfacing rare-anchor now uses `topical_text`, not `symptom_text`.** `findCaveatsForPrompt` now treats `symptom_text` and `topical_text` as independent evidence: a prompt must overlap the entry's Symptom section to prove the user is describing a failure state, and it must also contain a corpus-rarest topical anchor in `topical_text` (title + tags + environment values) to prove the caveat's curated topic matches. This blocks symptom-prose conversational false positives such as generic "hook worked normally?" or "which hook mistriggered?" prompts surfacing unrelated entries.
-- **Claude Stop reminders now use the same pending UX as Codex.** `caveat hook stop` no longer writes a `<system-reminder>` directly after the final answer. It queues the Stop reminder in per-session pending storage, dedupes unchanged Stop signal digests, and surfaces compacted pending context on the next `UserPromptSubmit` or `PostToolUse` hook as at most one `<system-reminder>` block.
-- **CLI bootstrap remains executable after local builds.** The `tsup` post-build wrapper now chmods `dist/caveat.js` to `0755`, keeping direct `.../bin/caveat` hook commands usable after rebuilding the linked development install.
 
 ### Verification
 - Added regression coverage for the two observed symptom-only false-positive classes and a positive control where symptom evidence and rare topical anchor are independent.
-- Added Claude hook regression coverage for compacting multiple pending reminders, deferring Stop stdout, avoiding repeated unchanged Stop reminders, and keeping sidecar-unavailable diagnostics compact.
-- Total test count: 242 across workspace packages.
+- Total test count: 238 across workspace packages.
 
 ## [0.14.1] — 2026-05-06
 

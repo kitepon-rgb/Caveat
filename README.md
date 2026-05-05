@@ -47,7 +47,7 @@ The knowledge repo is plain markdown-in-git. Open it as an Obsidian vault. Share
 | Catches struggle the AI didn't self-report | ✅ transcript signal mining | ❌ | ❌ | ❌ |
 | Mixes external-spec gotchas with repo-specific context | ✅ public / private tiers | ⚠️ no separation | ⚠️ | ⚠️ |
 
-**Status**: v0.14.2, 242 tests passing. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install.
+**Status**: v0.14.3, 242 tests passing. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install.
 
 <details>
 <summary><strong>Why no central shared DB?</strong> (v0.7 pivot)</summary>
@@ -196,6 +196,10 @@ corepack pnpm -r build
 cd apps/cli && corepack pnpm pack        # caveat-cli-<ver>.tgz
 npm install -g ./caveat-cli-<ver>.tgz    # now `caveat` is on PATH
 ```
+
+For npm releases, publish from `apps/cli` with `corepack pnpm publish`.
+Do not use `npm publish` directly; pnpm normalizes workspace dev dependencies
+in the packed manifest, while npm leaves `workspace:*` strings intact.
 
 For iterative dev, `npm link` inside `apps/cli/` keeps the global shim tracking your local build.
 

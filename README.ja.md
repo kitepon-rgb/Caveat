@@ -47,7 +47,7 @@ review、risk-check、isolated work 用に残します。
 | AI が自覚しないもがきも検出 | ✅ transcript シグナル抽出 | ❌ | ❌ | ❌ |
 | 外部仕様の罠と repo 固有メモを混在管理 | ✅ public / private 2 tier | ⚠️ 分離なし | ⚠️ | ⚠️ |
 
-**ステータス**: v0.14.2、242 tests passing。個人および小規模チームが主な想定ユースケースです。中央 DB なし、インストール時の自動購読なし。
+**ステータス**: v0.14.3、242 tests passing。個人および小規模チームが主な想定ユースケースです。中央 DB なし、インストール時の自動購読なし。
 
 <details>
 <summary><strong>なぜ中央 DB を持たない？</strong>（v0.7 での方針転換）</summary>
@@ -145,6 +145,9 @@ corepack pnpm -r build
 cd apps/cli && corepack pnpm pack        # caveat-cli-<ver>.tgz
 npm install -g ./caveat-cli-<ver>.tgz    # PATH に caveat が入る
 ```
+
+npm release は `apps/cli` で `corepack pnpm publish` を使います。
+`npm publish` を直接使うと packed manifest に `workspace:*` が残るため禁止です。
 
 iterative 開発時は `apps/cli/` 内で `npm link` するとグローバル shim がローカルビルドを追従します。
 
