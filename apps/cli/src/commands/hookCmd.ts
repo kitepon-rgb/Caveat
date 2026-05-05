@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -10,7 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import {
   appendPendingReminder,
   defaultSelfIdentityTokens,
@@ -37,6 +38,11 @@ const silentLogger: Logger = {
   warn: () => {},
   error: (m) => process.stderr.write(`[caveat:hook] ${m}\n`),
 };
+
+const CLAUDE_MAX_CONTEXT_BLOCKS = 3;
+const CLAUDE_STOP_REMINDER_PREFIX =
+  '[caveat] このセッションで外部仕様の罠に当たった可能性を示すシグナル:';
+const CLAUDE_STOP_STATE_DIR = 'claude-stop-state';
 
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
@@ -110,18 +116,96 @@ function loadSignalsSafely(path: string): SessionSignals | null {
   }
 }
 
-/**
- * Flush any reminders that a previous async worker queued for this session.
- * Called at the start of every hook so deferred results surface on the next
- * Claude turn. Keeps stdout order: drained reminders first, then any
- * synchronous reminder this hook produces.
- */
-function drainForSession(sessionId: string): void {
+function systemReminderOutput(text: string): string {
+  return `<system-reminder>${text}</system-reminder>`;
+}
+
+function drainForSession(sessionId: string): string[] {
+  const ctx = buildContextSafely();
+  if (!ctx) return [];
+  return drainPendingReminders(ctx.caveatHome, sessionId);
+}
+
+function claudeContextDedupeKey(text: string): string {
+  if (text.startsWith(CLAUDE_STOP_REMINDER_PREFIX)) return 'claude-stop-reminder';
+  return text.trim();
+}
+
+function compactClaudeContexts(contexts: string[]): string[] {
+  const selected: string[] = [];
+  const seen = new Set<string>();
+  for (let i = contexts.length - 1; i >= 0; i -= 1) {
+    const text = contexts[i]?.trim();
+    if (!text) continue;
+    const key = claudeContextDedupeKey(text);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    selected.push(text);
+  }
+  selected.reverse();
+  const limited = selected.slice(-CLAUDE_MAX_CONTEXT_BLOCKS);
+  const omitted =
+    contexts.filter((t) => t.trim().length > 0).length - limited.length;
+  if (omitted > 0) {
+    limited.push(
+      `[caveat] pending reminder ${omitted} 件を重複または上限により省略しました。`,
+    );
+  }
+  return limited;
+}
+
+function sanitizeClaudeStateId(raw: string): string {
+  const clean = raw.replace(/[^A-Za-z0-9_-]/g, '');
+  return clean.length > 0 ? clean : '_unknown';
+}
+
+function stopSignalKey(signals: SessionSignals, related: SearchResult[]): string {
+  const body = JSON.stringify({
+    toolFailureCount: signals.toolFailureCount,
+    fileEditCounts: signals.fileEditCounts.map((e) => [e.path, e.count]),
+    webSearchCount: signals.webSearchCount,
+    webFetchCount: signals.webFetchCount,
+    bashRetryCount: signals.bashRetryCount,
+    searchQueries: signals.searchQueries,
+    related: related.map((h) => [h.source, h.id]),
+  });
+  return createHash('sha256').update(body).digest('hex');
+}
+
+function stopStatePath(caveatHome: string, sessionId: string): string {
+  return join(caveatHome, CLAUDE_STOP_STATE_DIR, `${sanitizeClaudeStateId(sessionId)}.txt`);
+}
+
+function wasStopReminderQueued(caveatHome: string, sessionId: string, key: string): boolean {
+  const path = stopStatePath(caveatHome, sessionId);
+  try {
+    return readFileSync(path, 'utf-8') === key;
+  } catch {
+    return false;
+  }
+}
+
+function markStopReminderQueued(caveatHome: string, sessionId: string, key: string): void {
+  const path = stopStatePath(caveatHome, sessionId);
+  mkdirSync(join(caveatHome, CLAUDE_STOP_STATE_DIR), { recursive: true });
+  writeFileSync(path, key, 'utf-8');
+}
+
+function queueStopForSession(
+  sessionId: string,
+  signals: SessionSignals,
+  related: SearchResult[],
+): void {
   const ctx = buildContextSafely();
   if (!ctx) return;
-  const reminders = drainPendingReminders(ctx.caveatHome, sessionId);
-  for (const text of reminders) {
-    process.stdout.write(`<system-reminder>${text}</system-reminder>\n`);
+  const key = stopSignalKey(signals, related);
+  if (wasStopReminderQueued(ctx.caveatHome, sessionId, key)) return;
+  try {
+    appendPendingReminder(ctx.caveatHome, sessionId, buildStopReminder(signals, related));
+    markStopReminderQueued(ctx.caveatHome, sessionId, key);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`[caveat:hook] pending reminder write error: ${msg}\n`);
   }
 }
 
@@ -334,6 +418,26 @@ function buildStopReminder(
   ].join('\n');
 }
 
+function compactFailureMessage(message: string): string {
+  const singleLine = message.replace(/\s+/g, ' ').trim();
+  if (!singleLine) return 'unknown error';
+  return singleLine.length > 220 ? `${singleLine.slice(0, 220)}...` : singleLine;
+}
+
+function sidecarFailureDetail(output: string): string {
+  const protocol = output.match(/PROTOCOL_ERROR:[^"\r\n]+/);
+  if (protocol) return compactFailureMessage(protocol[0]!);
+
+  const lines = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const diagnostic = lines.find(
+    (line) => !line.startsWith('[caveat] [codex-sidecar] codex-sidecar '),
+  );
+  return compactFailureMessage(diagnostic ?? output);
+}
+
 function runCodexSidecarAdvisory(input: {
   searchText: string;
   limit: number;
@@ -382,11 +486,14 @@ function runCodexSidecarAdvisory(input: {
     });
 
     if (result.error) {
-      return { status: 'failed', message: result.error.message };
+      return { status: 'failed', message: compactFailureMessage(result.error.message) };
     }
     if (result.status !== 0) {
       const detail = (result.stderr || result.stdout || `exit ${result.status}`).trim();
-      return { status: 'failed', message: detail.slice(0, 500) };
+      return {
+        status: 'failed',
+        message: `sidecar command failed: ${sidecarFailureDetail(detail)}`,
+      };
     }
 
     const parsed = JSON.parse(readFileSync(resultFile, 'utf-8')) as {
@@ -395,7 +502,10 @@ function runCodexSidecarAdvisory(input: {
       rawEventLogRef?: unknown;
     };
     if (parsed.status !== 'ok' || typeof parsed.summary !== 'string') {
-      return { status: 'failed', message: `unexpected SidecarResult status: ${String(parsed.status)}` };
+      return {
+        status: 'failed',
+        message: compactFailureMessage(`unexpected SidecarResult status: ${String(parsed.status)}`),
+      };
     }
     return {
       status: 'ok',
@@ -404,7 +514,10 @@ function runCodexSidecarAdvisory(input: {
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { status: 'failed', message: `invalid SidecarResult JSON: ${msg}` };
+    return {
+      status: 'failed',
+      message: compactFailureMessage(`invalid SidecarResult JSON: ${msg}`),
+    };
   } finally {
     rmSync(resultDir, { recursive: true, force: true });
   }
@@ -428,22 +541,26 @@ export async function runHook(name: HookName, arg?: string): Promise<void> {
   const payload = parsePayload(raw);
   const sessionId = getSessionId(payload);
 
-  // Every hook drains queued async reminders first so they show up on the
-  // next Claude turn even if no further PostToolUse fires.
-  drainForSession(sessionId);
+  const contexts = name === 'stop' ? [] : drainForSession(sessionId);
 
   if (name === 'user-prompt-submit') {
     const prompt = typeof payload.prompt === 'string' ? payload.prompt : '';
     const hits = searchCaveatsFromTextSafely(prompt);
     if (hits.length > 0) {
-      process.stdout.write(
-        `<system-reminder>${userPromptSubmitReminderText(hits)}</system-reminder>\n`,
-      );
+      contexts.push(userPromptSubmitReminderText(hits));
+    }
+    const compacted = compactClaudeContexts(contexts);
+    if (compacted.length > 0) {
+      process.stdout.write(`${systemReminderOutput(compacted.join('\n\n'))}\n`);
     }
     process.exit(0);
   }
 
   if (name === 'post-tool-use') {
+    const compacted = compactClaudeContexts(contexts);
+    if (compacted.length > 0) {
+      process.stdout.write(`${systemReminderOutput(compacted.join('\n\n'))}\n`);
+    }
     // Fast path: we only enqueue on errors. Everything else is just drain.
     if (!isToolError(payload)) process.exit(0);
     const errText = extractToolResponseText(
@@ -462,7 +579,7 @@ export async function runHook(name: HookName, arg?: string): Promise<void> {
     const signals = transcriptPath ? loadSignalsSafely(transcriptPath) : null;
     if (!signals || !hasAnyStruggleSignal(signals)) process.exit(0);
     const related = searchCaveatsFromTextSafely(struggleSearchText(signals));
-    process.stdout.write(`<system-reminder>${buildStopReminder(signals, related)}</system-reminder>\n`);
+    queueStopForSession(sessionId, signals, related);
     process.exit(0);
   }
 

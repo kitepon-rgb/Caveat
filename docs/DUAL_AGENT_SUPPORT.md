@@ -5,7 +5,10 @@ description of Caveat's existing Claude Code behavior.
 
 ## Current Claude Contract
 
-Caveat's Claude integration is unchanged by Codex sidecar support.
+Caveat's Claude integration remains the canonical contract; Codex-specific
+support is additive. Claude and Codex now share the same pending-reminder policy:
+Stop reminders are queued and surfaced on the next context-capable hook instead
+of being emitted directly from Stop.
 
 - CLI install command: `caveat init [--skip-claude] [--dry-run]`
 - CLI uninstall command: `caveat uninstall [--dry-run]`
@@ -20,7 +23,8 @@ Caveat's Claude integration is unchanged by Codex sidecar support.
     `PostToolUseFailure` for failed tool runs with an `error` field instead of
     a `tool_response` object.
 - Hook stdout contract:
-  - Emits zero or more `<system-reminder>...</system-reminder>` blocks
+  - Emits at most one `<system-reminder>...</system-reminder>` block per hook invocation
+  - Compacts multiple pending reminders into one block with dedupe and an omitted-count line
   - Logs diagnostics to stderr with `[caveat:hook]`
 - Stop-hook recursion guard: `payload.stop_hook_active === true` exits silently
 - PostToolUse async behavior:
@@ -28,6 +32,10 @@ Caveat's Claude integration is unchanged by Codex sidecar support.
   - Tool errors from either `PostToolUse` (`tool_response.is_error`) or
     `PostToolUseFailure` (`error`) enqueue detached worker inspection
   - Worker writes reminders under Caveat pending storage for the next hook tick
+- Stop behavior:
+  - Objective struggle signals enqueue a per-session pending reminder
+  - Unchanged Stop signal digests are not re-queued
+  - Stop itself emits no stdout, avoiding final-answer clutter
 - Markdown entry contract:
   - Frontmatter is parsed with `gray-matter` and `js-yaml` `JSON_SCHEMA`
   - Canonical fields are the `Frontmatter` type in `packages/core/src/types.ts`

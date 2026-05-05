@@ -1,5 +1,6 @@
 import { defineConfig } from 'tsup';
 import {
+  chmodSync,
   copyFileSync,
   cpSync,
   existsSync,
@@ -68,8 +69,9 @@ export default defineConfig({
     // Write a thin bootstrap wrapper (no static imports) that installs a
     // warning handler BEFORE the ESM bundle's imports hoist. This swallows the
     // node:sqlite ExperimentalWarning without hiding other warnings.
+    const bootstrapPath = join(distDir, 'caveat.js');
     writeFileSync(
-      join(distDir, 'caveat.js'),
+      bootstrapPath,
       [
         '#!/usr/bin/env node',
         "process.removeAllListeners('warning');",
@@ -85,6 +87,7 @@ export default defineConfig({
       ].join('\n'),
       'utf-8',
     );
+    chmodSync(bootstrapPath, 0o755);
 
     copyFileSync(coreSchema, join(distDir, 'schema.sql'));
     const destMigrations = join(distDir, 'migrations');

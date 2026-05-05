@@ -26,7 +26,7 @@ Claude Code または Codex の hook を有効にすると:
 
 1. **プロンプト送信時** → `UserPromptSubmit` hook が **3 段の構造的ゲート**でマッチエントリを surface: 共起 + 症状セクション一致 + rare topical anchor。キーワード allowlist も stopword リストもなし。固有名詞だけの言及 (`RTX 5090 CUDA で何かやってる`) は silent、症状語彙と curated topic anchor (`cudaGetDeviceCount が 0 を返す`) が揃うと正解エントリだけ発火する。([詳細](CHANGELOG.md#0142--2026-05-06))
 2. **ツールがエラー返却したとき** → Claude hook は detached worker を起動して非同期に検索し、結果は次の hook tick で載ります。Codex hook は現行 payload と transcript timing の都合で bounded foreground lookup を行い、次の `UserPromptSubmit` で結果を載せます。現在の Claude Code では failed-tool payload 用に `PostToolUseFailure` も登録します。
-3. **セッション終了時** → `Stop` hook が transcript を解析し、客観的な「もがきシグナル」（ツール失敗、同一ファイル複数編集、Web 検索、Bash 再実行）を抽出。一つでも観測されれば、実行中の agent に既存エントリの更新か新規記録を促します。
+3. **セッション終了時** → `Stop` hook が transcript を解析し、客観的な「もがきシグナル」（ツール失敗、同一ファイル複数編集、Web 検索、Bash 再実行）を抽出。一つでも観測されれば、最終回答を汚さないよう reminder を次の hook tick 向けに compact して積み、次ターンで実行中の agent に既存エントリの更新か新規記録を促します。
 
 Claude は Caveat reminder を `<system-reminder>` として受け取り、MCP tools で
 search / record / update できます。Codex primary session は Codex native hook
@@ -47,7 +47,7 @@ review、risk-check、isolated work 用に残します。
 | AI が自覚しないもがきも検出 | ✅ transcript シグナル抽出 | ❌ | ❌ | ❌ |
 | 外部仕様の罠と repo 固有メモを混在管理 | ✅ public / private 2 tier | ⚠️ 分離なし | ⚠️ | ⚠️ |
 
-**ステータス**: v0.14.2、238 tests passing。個人および小規模チームが主な想定ユースケースです。中央 DB なし、インストール時の自動購読なし。
+**ステータス**: v0.14.2、242 tests passing。個人および小規模チームが主な想定ユースケースです。中央 DB なし、インストール時の自動購読なし。
 
 <details>
 <summary><strong>なぜ中央 DB を持たない？</strong>（v0.7 での方針転換）</summary>
@@ -96,12 +96,12 @@ flowchart LR
 
 - **`markdown-in-git`** が真実の源。SQLite (FTS5 trigram) は再構築可能な派生 index で gitignore 済
 - 3 つの発火タイミング (UserPromptSubmit / PostToolUse 系 / Stop) は **同じ共起 FTS ロジック** を異なる入力（プロンプト / ツールエラー / セッションシグナル）で再利用
-- Claude ではマッチした既存エントリを `<system-reminder>` でコンテキストに注入、Codex では Codex 用 hook output として返す
+- Claude ではマッチした既存エントリを最大 1 個の `<system-reminder>` でコンテキストに注入、Codex では Codex 用 hook output として返す
 - Codex primary hook adapter は `~/.codex/hooks.json` に `UserPromptSubmit` /
   `PostToolUse` / `Stop` を登録し、Codex payload parser と Codex stdout formatter
-  だけを差し替えて同じ Caveat ロジックを使います。Codex hook stdout は 1 invocation
-  につき単一 JSON object とし、pending reminder は compact してから 1 つの context
-  文字列へ結合します
+  だけを差し替えて同じ Caveat ロジックを使います。Claude hook stdout は 1 invocation
+  につき最大 1 個の `<system-reminder>` block、Codex hook stdout は単一 JSON object
+  とし、pending reminder は compact してから 1 つの host-specific context 文字列へ結合します
 - Claude-hosted session では、`codex-sidecar` が operational な project に限り、PostToolUse 系 / Stop の既存リマインダー末尾に Codex の second opinion を追記できます。Caveat の発火判定や記録思想は変えず、助言だけを外部化する補助経路です
 
 ## クイックスタート（NPM ユーザ）

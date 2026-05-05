@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクトの状態
 
-**v0.14.2**（2026-05-06、全 workspace test/typecheck passing）。**Codex primary hooks を追加し、Claude hook 実運用の失敗イベントも補正済み。さらに事前発火 rare-anchor を `symptom_text` 依存から `topical_text` 依存へ修正**。Codex 側は `caveat codex-hook install|diagnostics|user-prompt-submit|post-tool-use|stop` で Codex runtime から Caveat CLI を直接呼ぶ。Claude 側は従来の `caveat hook post-tool-use` を `PostToolUse` と `PostToolUseFailure` の両方に登録する。現行 Claude Code は失敗 tool で `PostToolUseFailure` を出し、payload の `error` field に失敗内容を入れるため、Caveat はこの field も既存の非同期 worker / pending reminder 経路へ流す。prompt surface は `symptom_text` が失敗状態を述べる根拠、`topical_text` が罠の主題と重なる根拠として独立に要求する。
+**v0.14.2**（2026-05-06、242 tests passing、全 workspace typecheck passing）。**Codex primary hooks を追加し、Claude hook 実運用の失敗イベントも補正済み。さらに事前発火 rare-anchor を `symptom_text` 依存から `topical_text` 依存へ修正**。Codex 側は `caveat codex-hook install|diagnostics|user-prompt-submit|post-tool-use|stop` で Codex runtime から Caveat CLI を直接呼ぶ。Claude 側は従来の `caveat hook post-tool-use` を `PostToolUse` と `PostToolUseFailure` の両方に登録する。現行 Claude Code は失敗 tool で `PostToolUseFailure` を出し、payload の `error` field に失敗内容を入れるため、Caveat はこの field も既存の非同期 worker / pending reminder 経路へ流す。Claude / Codex とも Stop reminder はその場で最終回答に混ぜず pending 化し、次の context-capable hook で compact して出す。prompt surface は `symptom_text` が失敗状態を述べる根拠、`topical_text` が罠の主題と重なる根拠として独立に要求する。
 
 **v0.13.0**（2026-05-05、217 tests passing）。**Codex sidecar advisory を Claude hook の補助経路として追加**。Caveat の思想は変更しない: 既存の UserPromptSubmit / PostToolUse / Stop が「いつCaveatを出すか」を決め、本文先頭の `[caveat]` リマインダーも従来通り維持する。その後ろに、現在の project で `.codex-sidecar.yml` があり `codex-sidecar` が operational な場合だけ `[caveat:codex-sidecar] Codex advisory:` を追記する。
 
@@ -198,13 +198,13 @@ MCP stdio サーバは stdout に JSON-RPC 以外を書いてはいけない。`
 ## Hook 規約
 
 - **必ず `exit 0`**。stdin の JSON パースエラーでも exit 0 + stderr にログだけ。
-- **stdout**: `<system-reminder>[caveat] ...</system-reminder>` を**発火時のみ** 1 ブロック出す。非発火時は**完全無音**（token 節約）。それ以外の文字は書かない。
+- **stdout**: `<system-reminder>[caveat] ...</system-reminder>` を**発火時のみ**最大 1 ブロック出す。複数 pending reminder は 1 block 内で compact / dedupe して結合する。非発火時は**完全無音**（token 節約）。それ以外の文字は書かない。
 - **stderr**: 診断情報のみ。
 - 既存の `throughline` hook（UserPromptSubmit / Stop）と並走する前提。
 
 ### Claude Code Hook の実装（Phase 6 / Phase 12 / v0.8 / v0.12 / v0.13）
 
-- **現行ロジック**: [packages/core/src/claudeHooks.ts](packages/core/src/claudeHooks.ts) に `extractPromptCandidates` / `findCaveatsForPrompt` / `defaultSelfIdentityTokens` / `userPromptSubmitReminderText(hits)` / `stopReminderText` を集約。CLI サブコマンド `caveat hook <name>` ([apps/cli/src/commands/hookCmd.ts](apps/cli/src/commands/hookCmd.ts)) が stdin + caveatHome を組み合わせて DB を開き、結果を埋め込んだリマインダを stdout に出す
+- **現行ロジック**: [packages/core/src/claudeHooks.ts](packages/core/src/claudeHooks.ts) に `extractPromptCandidates` / `findCaveatsForPrompt` / `defaultSelfIdentityTokens` / `userPromptSubmitReminderText(hits)` / `stopReminderText` を集約。CLI サブコマンド `caveat hook <name>` ([apps/cli/src/commands/hookCmd.ts](apps/cli/src/commands/hookCmd.ts)) が stdin + caveatHome を組み合わせて DB を開き、結果を埋め込んだリマインダを stdout に出す。stdout は host contract に合わせ、Claude では最大 1 `<system-reminder>` block、Codex では単一 JSON object
 - **事前発火（UserPromptSubmit）の判定**: プロンプトを token 列に分解 → 各 token を個別に FTS5 phrase 検索 → **3 段の構造的ゲートを全て通過した entry のみ** を hit とみなす:
   1. **共起ゲート**: 1 entry あたり ≥ 2 個の distinct prompt **グループ** (= 空白区切り source token、CJK 連続 run も 1 グループ) が一致
   2. **症状特異語ゲート (v0.12)**: マッチした prompt token のうち最低 1 つが entry の `symptom_text` に出現
@@ -230,14 +230,14 @@ MCP stdio サーバは stdout に JSON-RPC 以外を書いてはいけない。`
   - `durationMinutes`: first / last timestamp から算出（発火ゲートには使わない、表示のみ）
   - `errorSnippets` / `searchQueries`: リマインダ本文 & FTS 用の raw text
 - **発火ゲート**: `hasAnyStruggleSignal(s)` = 上記 count のいずれか > 0 or fileEditCounts.length > 0。**閾値チューニング無し**の構造的 or 判定（「0 か 1 以上か」のみ）。tool failure 無・編集 1 回だけ・web 検索無しなら完全無音 → 単純編集セッションでリマインダ洪水を起こさない
-- **stop リマインダ本文**: シグナル具体数値を列挙（Y）+ `errorSnippets` と `searchQueries` を結合した text を `findCaveatsForPrompt` に食わせて共起 FTS し、既存罠に類似があれば `caveat_update` を、なければ `caveat_record` を促す（Z）。事前発火と同じ `findCaveatsForPrompt` を text 入力として再利用（hookCmd.ts の `searchCaveatsFromTextSafely`）
-- **Codex sidecar advisory (v0.13)**: `Stop` hook が発火した場合、`CAVEAT_HOOK_CODEX_SIDECAR` が `auto` / `require` なら `caveat codex-sidecar run explore` を同期的に呼び、既存 `stopReminderText` の後ろへ Codex の助言を追記する。`auto` は project root に `.codex-sidecar.yml` がある時だけ試す。`off` は pre-v0.13 と同じ本文のみ。失敗時は hidden fallback せず unavailable 行を出す
+- **stop リマインダ本文**: シグナル具体数値を列挙（Y）+ `errorSnippets` と `searchQueries` を結合した text を `findCaveatsForPrompt` に食わせて共起 FTS し、既存罠に類似があれば `caveat_update` を、なければ `caveat_record` を促す（Z）。事前発火と同じ `findCaveatsForPrompt` を text 入力として再利用（hookCmd.ts の `searchCaveatsFromTextSafely`）。Stop hook 自体は stdout に出さず、session pending queue に積んで次の `UserPromptSubmit` / `PostToolUse` で表示する。同一 session / 同一 signal digest は再 enqueue しない
+- **Codex sidecar advisory (v0.13)**: `Stop` hook が発火した場合、`CAVEAT_HOOK_CODEX_SIDECAR` が `auto` / `require` なら `caveat codex-sidecar run explore` を同期的に呼び、既存 `stopReminderText` の後ろへ Codex の助言を追記して pending に積む。`auto` は project root に `.codex-sidecar.yml` がある時だけ試す。`off` は pre-v0.13 と同じ本文のみ。失敗時は hidden fallback せず unavailable 行を出す
 - **再帰防止**: `payload.stop_hook_active === true` の場合は stdout 空で即 exit（不変）
 - **実行中発火（PostToolUse / PostToolUseFailure hook、v0.10 / v0.14）— 非同期パイプライン**:
   - Claude Code は tool 呼び出し後に PostToolUse 系 hook を同期的に呼び出し、その stdout を次ターンのコンテキストに挿入する。現行 Claude Code の失敗 tool は `PostToolUseFailure` として発火し、payload の `error` field に失敗内容を入れる。成功/通常系互換のため `PostToolUse` も維持する。同期的に FTS を走らせると tool ごとに 150-300ms のレイテンシが乗るので、**前景 hook は drain + worker spawn で ~20ms 返す**。
-  - 前景フロー: (1) `drainPendingReminders(caveatHome, sessionId)` で過去 worker が書いた reminder ファイルを読み → stdout に emit → unlink / (2) `tool_response.is_error === true` または `hook_event_name === 'PostToolUseFailure'` / `error` field があるときのみ失敗テキストを work file に書き出し、`spawn(node, [cli, 'hook', 'worker', workFile], {detached:true,stdio:'ignore'}).unref()` で detached worker を起動し即 exit
+  - 前景フロー: (1) `drainPendingReminders(caveatHome, sessionId)` で過去 worker / Stop が書いた reminder ファイルを読み、dedupe + 上限で compact して最大 1 `<system-reminder>` として stdout に emit → unlink / (2) `tool_response.is_error === true` または `hook_event_name === 'PostToolUseFailure'` / `error` field があるときのみ失敗テキストを work file に書き出し、`spawn(node, [cli, 'hook', 'worker', workFile], {detached:true,stdio:'ignore'}).unref()` で detached worker を起動し即 exit
   - 非同期 worker (`caveat hook worker <workFile>`): work file を読んで unlink → `findCaveatsForPrompt(db, errorText)` を走らせ → hit > 0 なら `toolErrorReminderText(hits)` を `<caveatHome>/pending/<sessionId>/<ts>-<uuid>.txt` に appendPendingReminder。v0.13 以降は sidecar が使える時だけ Codex advisory を同じ pending reminder の末尾へ追記
-  - drain は **全 hook(UserPromptSubmit / PostToolUse / Stop)の最初で実行**。どの hook が次に発火しても pending が回収される
+  - drain は **UserPromptSubmit / PostToolUse の最初で実行**。Stop hook は final answer 直後の stdout 表示を避けるため drain せず、Stop reminder を pending に積むだけにする
   - pending ファイルはセッション id でディレクトリ分離 ([packages/core/src/pendingReminders.ts](packages/core/src/pendingReminders.ts))。`session_id` は `[^A-Za-z0-9_-]` を strip してサニタイズ、traversal 攻撃を防ぐ
   - 結果として reminder は **エラー発生の次の hook tick で Claude のコンテキストに載る**（最短で次の tool 呼び出し、最悪でも user prompt 直前）。Claude は新しいエラーを見る前後のタイミングで「このエラーは既知罠 XYZ」を認識できる
   - セッション跨ぎの pending 蓄積: `caveat init` で pending dir を cleanup する処理は未実装（TODO）。現状は session 別ディレクトリが貯まるだけで実害なし
