@@ -212,14 +212,13 @@ function toSearchResult(row: EntryRow): SearchResult {
  *      environment ("topical") mean the prompt named the topic but did not
  *      describe the failure state — that is just a proper-noun coincidence.
  *
- *   3. **Rare-anchor gate**: the matched-in-symptom token must be in the
- *      lower half (by document frequency) of the prompt's tokens. A common
- *      tool-name like `cuda` matches every CUDA-related symptom because
- *      every such symptom mentions CUDA — so a `cuda`-only symptom match is
- *      really just naming the topic again. The discriminating signal is a
- *      rare prompt token (`cudaGetDeviceCount`, `SQLITE_READONLY`,
- *      `LoadLibrary 1114`) landing in the symptom — that is the user
- *      describing the specific failure, not naming the topic.
+ *   3. **Rare topical-anchor gate**: at least one prompt token must appear in
+ *      the entry's `topical_text` (title + tags + environment values), and
+ *      that topical token must be on the rarest document-frequency tier among
+ *      prompt tokens. This keeps "what broke" (Symptom) and "what the caveat is
+ *      about" (topical_text) as independent evidence. Adverbial or state
+ *      fragments in long Symptom prose (`正常に動く`, `誤発火`, etc.) can satisfy
+ *      the situational gate, but they cannot also masquerade as the topic.
  *
  * Without these gates, mentioning `RTX 5090 CUDA` alone surfaces every
  * RTX-tagged or CUDA-tagged entry; with them, the prompt has to use
@@ -248,7 +247,11 @@ export function findCaveatsForPrompt(
     // Lowercased prompt tokens that landed in the entry's `## Symptom` section
     // (failure-state vocabulary, not just topical mention).
     symptomTokens: Set<string>;
+    // Lowercased prompt tokens that landed in the entry's curated topical
+    // bucket (title + tags + environment values).
+    topicalTokens: Set<string>;
     symptomLower: string | null;
+    topicalLower: string | null;
     row: EntryRow;
   }
   const perEntry = new Map<number, PerEntry>();
@@ -279,9 +282,14 @@ export function findCaveatsForPrompt(
         entry = {
           groups: new Set<number>(),
           symptomTokens: new Set<string>(),
+          topicalTokens: new Set<string>(),
           symptomLower:
             typeof row.symptom_text === 'string' && row.symptom_text.length > 0
               ? row.symptom_text.toLowerCase()
+              : null,
+          topicalLower:
+            typeof row.topical_text === 'string' && row.topical_text.length > 0
+              ? row.topical_text.toLowerCase()
               : null,
           row,
         };
@@ -291,20 +299,21 @@ export function findCaveatsForPrompt(
       if (entry.symptomLower !== null && tokenAppearsIn(tokLower, entry.symptomLower)) {
         entry.symptomTokens.add(tokLower);
       }
+      if (entry.topicalLower !== null && tokenAppearsIn(tokLower, entry.topicalLower)) {
+        entry.topicalTokens.add(tokLower);
+      }
     }
   }
 
-  // Rare anchors: the prompt tokens with the lowest document frequency in
-  // this corpus. A token like `cuda` that appears in many entries is a
-  // topic mention, not a specific symptom signal — its match in any one
-  // entry's symptom is just because every CUDA-related symptom mentions
-  // CUDA. We require the matched-in-symptom token to be on the rarest tier
-  // so the prompt actually discriminates between entries instead of name-
-  // matching everything. "Rarest" is defined structurally as "tokens whose
-  // DF equals the minimum over all valid prompt tokens" — corpus-derived,
-  // no magic threshold or top-N rank. Tokens with DF=0 (do not appear
-  // anywhere) are excluded; they are vacuously rare but cannot match any
-  // entry's symptom anyway and would distort the min if included.
+  // Rare topical anchors: the prompt tokens with the lowest document frequency
+  // in this corpus. "Rarest" is defined structurally as "tokens whose DF equals
+  // the minimum over all valid prompt tokens" — corpus-derived, no magic
+  // threshold or top-N rank. Tokens with DF=0 (do not appear anywhere) are
+  // excluded; they are vacuously rare and would distort the min if included.
+  //
+  // The rare token must land in topical_text, not symptom_text. The symptom
+  // gate proves the prompt describes a failure state; the topical rare-anchor
+  // proves that the described failure belongs to this caveat's curated topic.
   const validDfs = [...tokenDf.entries()].filter(([, df]) => df > 0);
   if (validDfs.length === 0) return [];
   let minDf = Infinity;
@@ -313,9 +322,10 @@ export function findCaveatsForPrompt(
 
   const limit = opts.limit ?? DEFAULT_REMINDER_HIT_LIMIT;
   return [...perEntry.values()]
-    .filter(({ groups, symptomTokens }) => {
+    .filter(({ groups, symptomTokens, topicalTokens }) => {
       if (groups.size < minMatches) return false;
-      for (const t of symptomTokens) if (rareTokens.has(t)) return true;
+      if (symptomTokens.size === 0) return false;
+      for (const t of topicalTokens) if (rareTokens.has(t)) return true;
       return false;
     })
     .sort((a, b) => b.groups.size - a.groups.size)

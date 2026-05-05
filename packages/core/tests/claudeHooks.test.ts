@@ -209,14 +209,14 @@ describe('findCaveatsForPrompt (co-occurrence based)', () => {
   it('still hits when a single entry genuinely co-occurs with common words', () => {
     // One entry has "make" AND "new" together; others have only one or none.
     const { db, cleanup } = seededDb([
-      { title: 'rare-co-occurrence', symptom: 'how to make a new pipeline' },
+      { title: 'make new pipeline', symptom: 'how to make a new pipeline' },
       { title: 'other-1', symptom: 'mentions only make' },
       { title: 'other-2', symptom: 'only new here' },
     ]);
     try {
       const hits = findCaveatsForPrompt(db, 'make a new item');
       expect(hits.length).toBe(1);
-      expect(hits[0]!.title).toBe('rare-co-occurrence');
+      expect(hits[0]!.title).toBe('make new pipeline');
     } finally {
       cleanup();
     }
@@ -231,14 +231,20 @@ describe('findCaveatsForPrompt (co-occurrence based)', () => {
       symptom: `cuda driver nvenc ${i}`,
     }));
     const { db, cleanup } = seededDb([
-      { title: 'triple-hit', symptom: 'NICHE_A cuda driver nvenc together' },
-      { title: 'double-hit', symptom: 'NICHE_A cuda driver only' },
+      {
+        title: 'NICHE_A cuda driver nvenc triple-hit',
+        symptom: 'NICHE_A cuda driver nvenc together',
+      },
+      {
+        title: 'NICHE_A cuda driver double-hit',
+        symptom: 'NICHE_A cuda driver only',
+      },
       ...filler,
     ]);
     try {
       const hits = findCaveatsForPrompt(db, 'CUDA driver nvenc NICHE_A');
-      expect(hits[0]!.title).toBe('triple-hit');
-      expect(hits[1]!.title).toBe('double-hit');
+      expect(hits[0]!.title).toBe('NICHE_A cuda driver nvenc triple-hit');
+      expect(hits[1]!.title).toBe('NICHE_A cuda driver double-hit');
     } finally {
       cleanup();
     }
@@ -283,10 +289,62 @@ describe('findCaveatsForPrompt (co-occurrence based)', () => {
     try {
       // "docker bind mount" overlaps with title only — symptom + rare-anchor gate fails
       expect(findCaveatsForPrompt(db, 'docker bind mount').length).toBe(0);
-      // Same prompt + symptom-language word → SQLITE_READONLY is rare and lands in symptom
+      // Same prompt + symptom-language word + a rare topical word (`UID`) → hit.
       expect(
-        findCaveatsForPrompt(db, 'docker bind mount で SQLITE_READONLY').length,
+        findCaveatsForPrompt(db, 'docker bind mount UID で SQLITE_READONLY').length,
       ).toBe(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('does not let adverbial symptom fragments masquerade as the topic', () => {
+    // This reproduces the false-positive class where a generic prompt like
+    // "Caveat hook worked normally?" overlapped with long Symptom prose in an
+    // unrelated CMake/venv entry. Symptom overlap is not enough; the prompt also
+    // needs a rare anchor in topical_text.
+    const { db, cleanup } = seededDb([
+      {
+        title: 'Windows venv CMake reparse bundle',
+        symptom: 'hook が Release では正常に動くが debug では reparse point で失敗する',
+      },
+    ]);
+    try {
+      expect(findCaveatsForPrompt(db, 'Caveat の hook ちゃんと正常に動いた？')).toEqual(
+        [],
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('does not surface an unrelated entry from symptom-only mistrigger wording', () => {
+    // "誤発火" is a failure-state word and belongs in symptom_text. If the prompt
+    // has no Discord/i18n topical anchor, a Discord entry must stay silent.
+    const { db, cleanup } = seededDb([
+      {
+        title: 'Discord bot multilingual slash command i18n',
+        symptom: 'Hook の翻訳漏れにより slash command が誤発火する',
+      },
+    ]);
+    try {
+      expect(findCaveatsForPrompt(db, '誤発火はどの Hook で？')).toEqual([]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('still hits when symptom evidence and rare topical anchor are independent', () => {
+    const { db, cleanup } = seededDb([
+      {
+        title: 'X API OAuth2 refresh token',
+        symptom: 'refresh request returns 401 after token rotation',
+      },
+    ]);
+    try {
+      const hits = findCaveatsForPrompt(db, 'X API の OAuth2 refresh が 401');
+      expect(hits.length).toBe(1);
+      expect(hits[0]!.title).toBe('X API OAuth2 refresh token');
     } finally {
       cleanup();
     }
@@ -301,12 +359,12 @@ describe('findCaveatsForPrompt (co-occurrence based)', () => {
       // Only shares `発生する` with the prompt — no other technical token.
       { title: 'noise candidate', symptom: 'これは何か特殊な事象が発生する条件下' },
       // Shares both `kotlin` (ASCII group) and `発生する` (CJK group).
-      { title: 'real hit', symptom: 'kotlin の coroutine で発生する競合状態' },
+      { title: 'kotlin coroutine real hit', symptom: 'kotlin の coroutine で発生する競合状態' },
     ]);
     try {
       const hits = findCaveatsForPrompt(db, 'kotlin で発生する');
       expect(hits.length).toBe(1);
-      expect(hits[0]!.title).toBe('real hit');
+      expect(hits[0]!.title).toBe('kotlin coroutine real hit');
     } finally {
       cleanup();
     }
@@ -323,13 +381,13 @@ describe('findCaveatsForPrompt (co-occurrence based)', () => {
 
   it('honors limit option', () => {
     const entries = Array.from({ length: 10 }, (_, i) => ({
-      title: `topic ${i}`,
+      title: `cuda driver topic ${i}`,
       symptom: `cuda driver crash ${i}`,
     }));
     const { db, cleanup } = seededDb(entries);
     try {
-      // All 10 entries have both "cuda" and "driver" in the symptom → all
-      // pass situational + rare-anchor gates, capped by limit.
+      // All 10 entries have both "cuda" and "driver" in symptom and topical
+      // text → all pass, capped by limit.
       expect(findCaveatsForPrompt(db, 'cuda driver', { limit: 3 }).length).toBe(3);
     } finally {
       cleanup();
@@ -363,7 +421,7 @@ describe('findCaveatsForPrompt + selfIdentity filter', () => {
     // With filter {kite, home}: prompt collapses to 1 group (note); entry
     // does not contain `note` → 0 groups < 1 → no hit.
     const { db, cleanup } = seededDb([
-      { title: 'path-shaped noise', symptom: 'mentions kite and home in body' },
+      { title: 'path-shaped noise kite home', symptom: 'mentions kite and home in body' },
     ]);
     try {
       expect(findCaveatsForPrompt(db, 'kite home note').length).toBe(1);
@@ -389,13 +447,16 @@ describe('findCaveatsForPrompt + selfIdentity filter', () => {
       symptom: `common situation observed for noise ${i}`,
     }));
     const { db, cleanup } = seededDb([
-      { title: 'target', symptom: 'common situation plus RARE_ID_42 specifically' },
+      {
+        title: 'target RARE_ID_42',
+        symptom: 'common situation plus RARE_ID_42 specifically',
+      },
       ...baseline,
     ]);
     try {
       const hits = findCaveatsForPrompt(db, 'common RARE_ID_42 situation observed');
       expect(hits.length).toBe(1);
-      expect(hits[0]!.title).toBe('target');
+      expect(hits[0]!.title).toBe('target RARE_ID_42');
     } finally {
       cleanup();
     }

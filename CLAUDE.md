@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクトの状態
 
-**v0.14.1**（2026-05-06、全 workspace test/typecheck passing）。**Codex primary hooks を追加し、Claude hook 実運用の失敗イベントも補正済み**。Codex 側は `caveat codex-hook install|diagnostics|user-prompt-submit|post-tool-use|stop` で Codex runtime から Caveat CLI を直接呼ぶ。Claude 側は従来の `caveat hook post-tool-use` を `PostToolUse` と `PostToolUseFailure` の両方に登録する。現行 Claude Code は失敗 tool で `PostToolUseFailure` を出し、payload の `error` field に失敗内容を入れるため、Caveat はこの field も既存の非同期 worker / pending reminder 経路へ流す。
+**v0.14.2**（2026-05-06、全 workspace test/typecheck passing）。**Codex primary hooks を追加し、Claude hook 実運用の失敗イベントも補正済み。さらに事前発火 rare-anchor を `symptom_text` 依存から `topical_text` 依存へ修正**。Codex 側は `caveat codex-hook install|diagnostics|user-prompt-submit|post-tool-use|stop` で Codex runtime から Caveat CLI を直接呼ぶ。Claude 側は従来の `caveat hook post-tool-use` を `PostToolUse` と `PostToolUseFailure` の両方に登録する。現行 Claude Code は失敗 tool で `PostToolUseFailure` を出し、payload の `error` field に失敗内容を入れるため、Caveat はこの field も既存の非同期 worker / pending reminder 経路へ流す。prompt surface は `symptom_text` が失敗状態を述べる根拠、`topical_text` が罠の主題と重なる根拠として独立に要求する。
 
 **v0.13.0**（2026-05-05、217 tests passing）。**Codex sidecar advisory を Claude hook の補助経路として追加**。Caveat の思想は変更しない: 既存の UserPromptSubmit / PostToolUse / Stop が「いつCaveatを出すか」を決め、本文先頭の `[caveat]` リマインダーも従来通り維持する。その後ろに、現在の project で `.codex-sidecar.yml` があり `codex-sidecar` が operational な場合だけ `[caveat:codex-sidecar] Codex advisory:` を追記する。
 
@@ -19,7 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 主な追加ゲート (全て構造由来、リスト一切なし):
 - **schema v3**: `entries.topical_text` (title + tags + environment 値) と `entries.symptom_text` (`## Symptom` 本文) を indexer で派生。`migrations/003_section_roles.sql` で v2 → v3 自動 migration、JS 側 (`db.ts::backfillRoleTexts`) で既存行を backfill
 - **症状特異語ゲート**: マッチしたトークンのうち最低 1 つが entry の `symptom_text` に出現すること。title-only マッチ (例: `RTX 5090` だけ) は silent
-- **rare-anchor ゲート (min-DF)**: 症状一致したトークンが、prompt 内で corpus DF が最小タイのものであること。corpus 全域に蔓延する一般語 (`cuda`, `発生する` 等) は自動的に除外。閾値の magic number なし、corpus 自動算出
+- **rare topical-anchor ゲート (min-DF、v0.14.2 修正)**: `topical_text` に出現した prompt token のうち最低 1 つが、prompt 内で corpus DF 最小タイのものであること。`symptom_text` は失敗状態、`topical_text` は罠の主題として独立に要求する。corpus 全域に蔓延する一般語 (`cuda`, `発生する` 等) は自動的に除外。閾値の magic number なし、corpus 自動算出
 - **パス除去**: `\\wsl...`, `C:\...`, `/home/...` 等の path-shape 部分文字列を tokenize 前に剥がす (URL は preserve)
 - **自己同名除去**: `os.userInfo().username` と `os.homedir()` の path 成分を `defaultSelfIdentityTokens()` として除外。**ハードコードリストは禁止** — `caveat` のツールブランド名も意図的に追加しない (rare-anchor が高 DF として構造的に弾く)
 - **純ひらがなトリグラム除外**: `してる` `のまま` `になっ` 等の純ひらがな 3-gram は conjugational glue として捨てる (Unicode 範囲ベース、リストなし)
@@ -208,7 +208,7 @@ MCP stdio サーバは stdout に JSON-RPC 以外を書いてはいけない。`
 - **事前発火（UserPromptSubmit）の判定**: プロンプトを token 列に分解 → 各 token を個別に FTS5 phrase 検索 → **3 段の構造的ゲートを全て通過した entry のみ** を hit とみなす:
   1. **共起ゲート**: 1 entry あたり ≥ 2 個の distinct prompt **グループ** (= 空白区切り source token、CJK 連続 run も 1 グループ) が一致
   2. **症状特異語ゲート (v0.12)**: マッチした prompt token のうち最低 1 つが entry の `symptom_text` に出現
-  3. **rare-anchor ゲート (v0.12)**: 上記の症状一致 token のうち最低 1 つが「prompt 内で corpus DF が最小タイ」のもの
+  3. **rare topical-anchor ゲート (v0.14.2)**: `topical_text` に出現した prompt token のうち最低 1 つが「prompt 内で corpus DF が最小タイ」のもの
   
   hit ≥ 1 のときのみ発火、DB ヒットをそのままリマインダ本文に埋めるので、Claude が改めて `caveat_search` を呼ばずともコンテキストに関連罠が入る
 - **Tokenize 規則** (`extractPromptCandidates` / `buildPromptCandidates` 内、v0.12 拡張):
@@ -218,8 +218,8 @@ MCP stdio サーバは stdout に JSON-RPC 以外を書いてはいけない。`
   - CJK run は 3-char sliding window に展開（`初期化失敗` → `初期化`, `期化失`, `化失敗`）+ **純ひらがな trigram は drop** (`してる`, `のまま` 等は conjugational glue)
   - 同一 source token から派生した複数 trigram は **同じ group id を共有** (CJK 句単位 dedup)
   - Case-insensitive dedup → 先頭 50 token 上限
-- **症状特異語 / rare-anchor の構造的根拠 (v0.12)**: 共起だけでは「固有名詞の偶然一致」を捕まえる (`RTX 5090` がたまたま 2 entry の title に出る → 2-of-N 成立)。これは「話題に触れただけ」であって「困っているか」「何が起きているか」までは何も言っていない。`## Symptom` セクションは entry 構造で「何がどう壊れるか」と定義されているので、**prompt と Symptom の重なりは「ユーザーがその失敗状態を述べている」ことの構造的根拠**。さらに `cuda` のように corpus 全体に蔓延する語が Symptom にも出るのは「全 entry がそれを言っているから」で discrimination ゼロ → DF 最小タイ (= 最もコーパス特異な語) が Symptom に来た時だけ発火、で wide-net が完全に絞れる
-- **共起ルールが `allowlist` / `stopword list` を代替する理由**: 旧設計は (a) keyword allowlist（Phase 6、罠ドメインを regex で列挙）→ recall 低い／メンテ永遠、(b) v0.8 初案の stopword list（`make` / `new` を hand-curate） → リスト化自体が構造欠陥、と辿った。2-of-N co-occurrence + 症状特異語 + rare-anchor は **全てリスト不要、閾値チューニング不要** (唯一の数値定数は 2-of-N の `2`)、Unicode 範囲・FTS5 仕様・`os.userInfo()`/`homedir()` runtime 値・corpus DF だけで判定。**「list で除外する」のではなく「構造で要求する」** が設計の肝
+- **症状特異語 / rare topical-anchor の構造的根拠 (v0.12 / v0.14.2)**: 共起だけでは「固有名詞の偶然一致」を捕まえる (`RTX 5090` がたまたま 2 entry の title に出る → 2-of-N 成立)。これは「話題に触れただけ」であって「困っているか」「何が起きているか」までは何も言っていない。`## Symptom` セクションは entry 構造で「何がどう壊れるか」と定義されているので、**prompt と Symptom の重なりは「ユーザーがその失敗状態を述べている」ことの構造的根拠**。ただし長い症状文には「正常に動く」「誤発火」など会話断片も混ざるため、それだけで主題判定まで兼ねてはいけない。`topical_text` (title + tags + environment 値) は著者が能動的にキュレートした主題語なので、**rare anchor は topical_text 側で要求する**。これにより「何が壊れたか」と「何についての罠か」を両側独立に満たした時だけ発火する
+- **共起ルールが `allowlist` / `stopword list` を代替する理由**: 旧設計は (a) keyword allowlist（Phase 6、罠ドメインを regex で列挙）→ recall 低い／メンテ永遠、(b) v0.8 初案の stopword list（`make` / `new` を hand-curate） → リスト化自体が構造欠陥、と辿った。2-of-N co-occurrence + 症状特異語 + rare topical-anchor は **全てリスト不要、閾値チューニング不要** (唯一の数値定数は 2-of-N の `2`)、Unicode 範囲・FTS5 仕様・`os.userInfo()`/`homedir()` runtime 値・corpus DF だけで判定。**「list で除外する」のではなく「構造で要求する」** が設計の肝
 - **`defaultSelfIdentityTokens()` (v0.12)**: `os.userInfo().username` と `os.homedir()` の path 成分 (≥ 3 文字) を Set で返す runtime-derived 関数。CLI hook 呼び出し側 (`hookCmd.ts::searchCaveatsFromTextSafely`) が `findCaveatsForPrompt(db, text, { selfIdentity: defaultSelfIdentityTokens() })` で渡す。**ツールブランド `caveat` は意図的に含めない** — ハードコードリスト化を避け、rare-anchor gate が「caveat は corpus 全域で高 DF」として構造的に弾くのに任せる
 - **hookCmd の DB 接続**: `buildContext(silentLogger)` で caveatHome 解決 → `existsSync(ctx.paths.dbPath)` で DB 未作成時は即 silent（false-block 回避）→ `openDb` → `findCaveatsForPrompt` → 必ず `db.close()`
 - **事後発火（Stop hook）の判定** (v0.9): `payload.transcript_path` の JSONL を `readSessionSignals` ([packages/core/src/transcriptSignals.ts](packages/core/src/transcriptSignals.ts)) で解析し、以下のシグナルを抽出:
