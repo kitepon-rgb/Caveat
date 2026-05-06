@@ -2,6 +2,16 @@
 
 All notable changes are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.5] — 2026-05-06
+
+### Changed
+- **Refresh dependency baseline.** Updated published CLI runtime dependency `commander` to 14.0.3, web runtime dependencies `hono` to 4.12.17 and `@hono/node-server` to 2.0.1, MCP/core `zod` to 4.4.3, and workspace `vitest` to 4.1.5. `@types/node` remains on the Node 22 line to match Caveat's Node 22.5+ runtime support.
+- **Modernize CI runners and actions.** GitHub Actions now uses `actions/checkout@v6` and `actions/setup-node@v6`, pins Ubuntu to `ubuntu-24.04`, and explicitly tests Windows on both `windows-2022` and `windows-2025-vs2026`.
+
+### Verification
+- Full workspace `typecheck`, `test`, and `build` pass locally.
+- GitHub Actions is green across Ubuntu 24.04, Windows 2022, and Windows 2025 with VS 2026 for Node 22 and Node 24.
+
 ## [0.14.4] — 2026-05-06
 
 ### Changed
