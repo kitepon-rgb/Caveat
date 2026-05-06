@@ -160,6 +160,12 @@ requires `operational` or `work-capable`.
 
 ## Smoke Commands
 
+Release-grade Claude/Codex hook smoke is tracked in
+[`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md). That checklist is the required
+post-publish path for proving the published npm package can install hooks and
+start fresh Claude/Codex sessions. The commands below are sidecar-specific
+diagnostics and do not replace release smoke.
+
 Preferred installed-path diagnostics:
 
 ```bash

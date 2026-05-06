@@ -200,6 +200,10 @@ npm install -g ./caveat-cli-<ver>.tgz    # now `caveat` is on PATH
 For npm releases, publish from `apps/cli` with `corepack pnpm publish`.
 Do not use `npm publish` directly; pnpm normalizes workspace dev dependencies
 in the packed manifest, while npm leaves `workspace:*` strings intact.
+Release work is not done at publish time: follow
+[`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) through fresh npm
+install, Claude Haiku new-session smoke, Codex new-session smoke, CI, and npm
+registry verification.
 
 For iterative dev, `npm link` inside `apps/cli/` keeps the global shim tracking your local build.
 

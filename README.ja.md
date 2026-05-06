@@ -148,6 +148,10 @@ npm install -g ./caveat-cli-<ver>.tgz    # PATH に caveat が入る
 
 npm release は `apps/cli` で `corepack pnpm publish` を使います。
 `npm publish` を直接使うと packed manifest に `workspace:*` が残るため禁止です。
+publish だけでは release 完了ではありません。
+[`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) に従い、fresh npm
+install、Claude Haiku の新規 session smoke、Codex の新規 session smoke、CI、npm
+registry 確認まで完了させます。
 
 iterative 開発時は `apps/cli/` 内で `npm link` するとグローバル shim がローカルビルドを追従します。
 
