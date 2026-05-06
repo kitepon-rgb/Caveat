@@ -47,7 +47,7 @@ The knowledge repo is plain markdown-in-git. Open it as an Obsidian vault. Share
 | Catches struggle the AI didn't self-report | ✅ transcript signal mining | ❌ | ❌ | ❌ |
 | Mixes external-spec gotchas with repo-specific context | ✅ public / private tiers | ⚠️ no separation | ⚠️ | ⚠️ |
 
-**Status**: v0.14.6, 245 tests passing. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install.
+**Status**: v0.14.7, CI green across Ubuntu/Windows and Node 22/24. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install. Current handoff notes live in [docs/NEXT_SESSION.md](docs/NEXT_SESSION.md).
 
 <details>
 <summary><strong>Why no central shared DB?</strong> (v0.7 pivot)</summary>
@@ -133,6 +133,11 @@ hooks/                pre-commit-visibility-gate.mjs (run by .husky/pre-commit) 
 docs/plan.md          Design source of truth (audited through Round 5, then extended
                       Phase 2 → 12 with implementation findings)
 docs/audit.md         Audit history (rejected proposals preserved so they don't reappear)
+docs/NEXT_SESSION.md  Current handoff: release state, remaining smoke, closeout checks
+docs/DUAL_AGENT_SUPPORT.md
+                      Claude/Codex contract, sidecar policy, and smoke notes
+docs/RELEASE_CHECKLIST.md
+                      Required publish and post-publish verification checklist
 docs/archive/         Superseded drafts (legacy brainstorms, etc.)
 ```
 

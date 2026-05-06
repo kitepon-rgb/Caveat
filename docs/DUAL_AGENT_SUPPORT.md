@@ -166,6 +166,12 @@ post-publish path for proving the published npm package can install hooks and
 start fresh Claude/Codex sessions. The commands below are sidecar-specific
 diagnostics and do not replace release smoke.
 
+Current release status and the only outstanding post-release retry are tracked
+in [`NEXT_SESSION.md`](NEXT_SESSION.md). As of `caveat-cli@0.14.7` and
+`codex-sidecar-cli@0.3.0`, the Codex path is fully verified from published
+packages. The only pending smoke is the Claude generated-response check after
+the Claude account rate limit resets.
+
 CI runs `corepack pnpm check:release-smoke` to keep release-smoke scripts
 syntactically valid, verify the packed npm manifest has no `workspace:`
 protocol leaks, prove the packed tarball installs with npm, and confirm the
