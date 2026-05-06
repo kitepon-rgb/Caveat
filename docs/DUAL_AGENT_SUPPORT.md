@@ -169,7 +169,7 @@ diagnostics and do not replace release smoke.
 Preferred installed-path diagnostics:
 
 ```bash
-caveat codex-sidecar diagnostics --project /path/to/repo --preset review
+caveat codex-sidecar diagnostics --project /path/to/repo --preset advisory
 ```
 
 Development-path diagnostics:
@@ -177,9 +177,14 @@ Development-path diagnostics:
 ```bash
 caveat codex-sidecar diagnostics \
   --project /path/to/repo \
-  --preset review \
+  --preset advisory \
   --node-cli /home/kite/projects/codex-sidecar/packages/cli/dist/index.js
 ```
+
+The `advisory` preset is the hook path and should resolve to
+`gpt-5.4-mini` with low reasoning effort. Manual presets use stronger policy:
+`explore` uses `gpt-5.4-mini` medium; `review` and `opinion` use `gpt-5.5`
+medium; `risk` and `work` use `gpt-5.5` high.
 
 Read-only operational smoke:
 
@@ -320,7 +325,7 @@ The hook path uses:
 ```text
 caveat hook post-tool-use / stop
   -> existing Caveat DB search and reminder construction
-  -> caveat codex-sidecar run explore --host-agent claude --availability operational
+  -> caveat codex-sidecar run explore --preset advisory --host-agent claude --availability operational
   -> optional [caveat:codex-sidecar] Codex advisory appended to the reminder
 ```
 

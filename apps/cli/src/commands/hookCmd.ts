@@ -450,12 +450,15 @@ function runCodexSidecarAdvisory(input: {
   }
 
   const args = [
+    ...process.execArgv,
     '--disable-warning=ExperimentalWarning',
     cliScript,
     'codex-sidecar',
     'run',
     'explore',
     input.prompt,
+    '--preset',
+    'advisory',
     '--query',
     input.searchText,
     '--limit',

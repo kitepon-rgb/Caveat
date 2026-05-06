@@ -193,6 +193,27 @@ describe('codex-sidecar command plans', () => {
     });
   });
 
+  it('builds a hook advisory run command with the advisory preset', () => {
+    expect(
+      buildCodexSidecarRunCommand({
+        workflow: 'explore',
+        projectRoot: '/repo',
+        preset: 'advisory',
+        prompt: 'Give concise hook advice.',
+      }),
+    ).toEqual({
+      command: 'codex-sidecar',
+      args: [
+        'explore',
+        '--project',
+        '/repo',
+        '--preset',
+        'advisory',
+        'Give concise hook advice.',
+      ],
+    });
+  });
+
   it('builds a work command that can remove the isolated worktree', () => {
     expect(
       buildCodexSidecarRunCommand({

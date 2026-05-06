@@ -40,21 +40,35 @@ deny_paths:
   - ".templates/**"
 
 presets:
+  advisory:
+    workflow: explore
+    readonly: true
+    model: gpt-5.4-mini
+    model_reasoning_effort: low
+    prompt: "Return concise Caveat hook advisory with concrete next steps."
   review:
     workflow: review
     readonly: true
+    model: gpt-5.5
+    model_reasoning_effort: medium
     prompt: "Review Caveat changes for Claude workflow regressions, schema drift, and missing tests."
   explore:
     workflow: explore
     readonly: true
+    model: gpt-5.4-mini
+    model_reasoning_effort: medium
     prompt: "Answer with Caveat codebase evidence and file references."
   opinion:
     workflow: opinion
     readonly: true
+    model: gpt-5.5
+    model_reasoning_effort: medium
     prompt: "Challenge this Caveat design and identify hidden assumptions."
   risk:
     workflow: risk-check
     readonly: true
+    model: gpt-5.5
+    model_reasoning_effort: high
     focus:
       - mcp
       - claude-hooks
@@ -65,4 +79,6 @@ presets:
     workflow: work
     readonly: false
     require_worktree: true
+    model: gpt-5.5
+    model_reasoning_effort: high
     prompt: "Implement a small scoped Caveat change inside allowed_paths."
