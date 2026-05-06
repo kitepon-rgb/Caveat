@@ -2,6 +2,19 @@
 
 All notable changes are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.7] — 2026-05-06
+
+### Added
+- **Codex sidecar advisory now uses explicit model policy.** Caveat's repository-local `.codex-sidecar.yml` defines an `advisory` preset with `gpt-5.4-mini` and low reasoning effort, and Claude hook advisory calls route through `--preset advisory`.
+- **Release smoke automation.** Added reusable release smoke scripts for Codex sidecar advisory and packed npm artifact verification. CI now checks the release-smoke entrypoint, verifies the packed `caveat-cli` tarball has no `workspace:` protocol leak, installs the tarball with npm, and confirms `caveat --version`.
+
+### Fixed
+- **Windows release-pack check execution.** The npm pack smoke now runs `.cmd` shims through the Windows shell so `corepack.cmd` and `npm.cmd` work in GitHub Actions Windows jobs.
+
+### Verification
+- Published `codex-sidecar` 0.3.0 and verified Caveat advisory smoke against the published `codex-sidecar-cli@0.3.0`.
+- GitHub Actions is green across Ubuntu 24.04, Windows 2022, and Windows 2025 with VS 2026 for Node 22 and Node 24.
+
 ## [0.14.6] — 2026-05-06
 
 ### Changed
