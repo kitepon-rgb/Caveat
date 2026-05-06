@@ -167,9 +167,11 @@ start fresh Claude/Codex sessions. The commands below are sidecar-specific
 diagnostics and do not replace release smoke.
 
 CI runs `corepack pnpm check:release-smoke` to keep release-smoke scripts
-syntactically valid and to verify the documented pnpm entrypoint accepts `--`
-argument forwarding. It intentionally does not run authenticated Codex App
-Server smoke, which remains a release gate in the checklist.
+syntactically valid, verify the packed npm manifest has no `workspace:`
+protocol leaks, prove the packed tarball installs with npm, and confirm the
+documented pnpm entrypoint accepts `--` argument forwarding. It intentionally
+does not run authenticated Codex App Server smoke, which remains a release gate
+in the checklist.
 
 Preferred installed-path diagnostics:
 

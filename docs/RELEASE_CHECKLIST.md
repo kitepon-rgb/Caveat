@@ -18,14 +18,16 @@ rtk proxy corepack pnpm -r test
 rtk git diff --check
 ```
 
-Update the version and release notes, then verify the packed manifest before
-publishing. Publish from `apps/cli` with pnpm; direct `npm publish` is forbidden
-because it can leave `workspace:*` strings in the packed manifest.
+Update the version and release notes, then verify the packed manifest again
+before publishing. `check:npm-pack` packs `apps/cli` with pnpm, fails if
+`workspace:` protocols, missing bin files, or non-executable `dist/caveat.js`
+leak into the tarball, then installs the tarball with npm and verifies
+`caveat --version`. Publish from `apps/cli` with pnpm; direct `npm publish` is
+forbidden because it can leave `workspace:*` strings in the packed manifest.
 
 ```bash
+rtk proxy corepack pnpm check:npm-pack
 cd apps/cli
-tmpdir=$(mktemp -d)
-rtk proxy corepack pnpm pack --pack-destination "$tmpdir" --json
 rtk proxy corepack pnpm publish --dry-run --no-git-checks
 ```
 

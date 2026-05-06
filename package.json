@@ -12,7 +12,8 @@
     "build": "corepack pnpm -r build",
     "test": "corepack pnpm -r test",
     "typecheck": "corepack pnpm -r typecheck",
-    "check:release-smoke": "node --check scripts/codex-sidecar-advisory-smoke.mjs && corepack pnpm smoke:codex-sidecar-advisory -- --help",
+    "check:npm-pack": "node scripts/check-npm-pack.mjs",
+    "check:release-smoke": "node --check scripts/check-npm-pack.mjs && node --check scripts/codex-sidecar-advisory-smoke.mjs && corepack pnpm check:npm-pack && corepack pnpm smoke:codex-sidecar-advisory -- --help",
     "smoke:codex-sidecar-advisory": "node scripts/codex-sidecar-advisory-smoke.mjs",
     "prepare": "husky"
   },
