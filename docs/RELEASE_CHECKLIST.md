@@ -122,6 +122,91 @@ Expected:
 - `$last` contains `caveat-new-session-ok`.
 - No hook invalid/failure lines are present.
 
+## Codex Sidecar Advisory Smoke
+
+Run this after the new Codex session smoke, using the same temporary `HOME`,
+`PATH`, and authenticated `CODEX_HOME`. This proves the Caveat hook advisory
+path reaches `codex-sidecar`, starts Codex App Server with the `advisory`
+preset, and records the intended model policy in the raw App Server log.
+
+`codex-sidecar` must be installed on `PATH`, or `CAVEAT_CODEX_SIDECAR_COMMAND`
+must point at the command to use.
+
+```bash
+repo=$(rtk git rev-parse --show-toplevel)
+export CAVEAT_CODEX_SIDECAR_COMMAND="${CAVEAT_CODEX_SIDECAR_COMMAND:-codex-sidecar}"
+
+diag="$root/caveat-sidecar-advisory-diagnostics.json"
+rtk caveat codex-sidecar diagnostics \
+  --project "$repo" \
+  --preset advisory \
+  --save-result "$diag"
+
+rtk node -e '
+const fs = require("node:fs");
+const result = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+if (result.modelPolicy?.source !== "explicit") throw new Error("modelPolicy.source is not explicit");
+if (result.normalizedRequest?.model !== "gpt-5.4-mini") throw new Error("unexpected advisory model");
+if (result.normalizedRequest?.modelReasoningEffort !== "low") throw new Error("unexpected advisory effort");
+' "$diag"
+
+export CAVEAT_HOME="$root/caveat-home-sidecar"
+mkdir -p "$CAVEAT_HOME"
+
+transcript="$root/caveat-sidecar-stop.jsonl"
+cat >"$transcript" <<'JSONL'
+{"timestamp":"2026-05-06T00:00:00.000Z","type":"assistant","message":{"content":[{"type":"tool_result","is_error":true,"content":"release smoke failure for Caveat Codex sidecar advisory"}]}}
+JSONL
+
+CAVEAT_HOOK_CODEX_SIDECAR=require \
+CAVEAT_HOOK_CODEX_SIDECAR_TIMEOUT_MS=240000 \
+rtk caveat hook stop <<EOF
+{"session_id":"sidecar-smoke","transcript_path":"$transcript","hook_event_name":"Stop","stop_hook_active":false}
+EOF
+
+pending=$(find "$CAVEAT_HOME/pending/sidecar-smoke" -type f -name '*.txt' | head -1)
+rtk test -f "$pending"
+rtk rg '\[caveat:codex-sidecar\] Codex advisory:' "$pending"
+if rtk rg 'advisory unavailable' "$pending"; then
+  exit 1
+fi
+
+raw_log=$(sed -n 's/^rawEventLogRef: //p' "$pending" | tail -1)
+rtk test -f "$raw_log"
+rtk node -e '
+const fs = require("node:fs");
+let startupOk = false;
+let threadOk = false;
+for (const line of fs.readFileSync(process.argv[1], "utf8").trim().split(/\n/)) {
+  const entry = JSON.parse(line);
+  if (entry.event === "process/start") {
+    const args = entry.data?.args ?? [];
+    startupOk =
+      args.includes("model=\"gpt-5.4-mini\"") &&
+      args.includes("model_reasoning_effort=\"low\"");
+  }
+  if (entry.event === "message/receive" && typeof entry.data?.line === "string") {
+    threadOk ||= entry.data.line.includes("\"model\":\"gpt-5.4-mini\"") &&
+      entry.data.line.includes("\"reasoningEffort\":\"low\"");
+  }
+}
+if (!startupOk) throw new Error("raw log does not contain advisory startup model policy");
+if (!threadOk) throw new Error("raw log does not contain advisory thread model policy");
+' "$raw_log"
+```
+
+Expected:
+
+- Diagnostics report `modelPolicy.source: "explicit"`.
+- `normalizedRequest.model` is `gpt-5.4-mini`.
+- `normalizedRequest.modelReasoningEffort` is `low`.
+- The hook pending reminder contains `[caveat:codex-sidecar] Codex advisory:`.
+- The hook pending reminder does not contain `advisory unavailable`.
+- The raw App Server log contains startup args for `model="gpt-5.4-mini"` and
+  `model_reasoning_effort="low"`.
+- The raw App Server `thread/start` response reports `model: "gpt-5.4-mini"`
+  and `reasoningEffort: "low"`.
+
 ## New Claude Session Smoke
 
 Use Haiku for cost control. Avoid project-local hooks contaminating the result:
