@@ -12,6 +12,7 @@
     "build": "corepack pnpm -r build",
     "test": "corepack pnpm -r test",
     "typecheck": "corepack pnpm -r typecheck",
+    "smoke:codex-sidecar-advisory": "node scripts/codex-sidecar-advisory-smoke.mjs",
     "prepare": "husky"
   },
   "devDependencies": {
