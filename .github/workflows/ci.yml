@@ -34,5 +34,8 @@ jobs:
       - name: Typecheck
         run: corepack pnpm -r typecheck
 
+      - name: Release smoke script check
+        run: corepack pnpm check:release-smoke
+
       - name: Test
         run: corepack pnpm -r test

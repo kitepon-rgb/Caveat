@@ -13,6 +13,7 @@ resolving generated declarations.
 ```bash
 rtk proxy corepack pnpm -r build
 rtk proxy corepack pnpm -r typecheck
+rtk proxy corepack pnpm check:release-smoke
 rtk proxy corepack pnpm -r test
 rtk git diff --check
 ```

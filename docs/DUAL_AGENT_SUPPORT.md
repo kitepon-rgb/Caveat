@@ -166,6 +166,11 @@ post-publish path for proving the published npm package can install hooks and
 start fresh Claude/Codex sessions. The commands below are sidecar-specific
 diagnostics and do not replace release smoke.
 
+CI runs `corepack pnpm check:release-smoke` to keep release-smoke scripts
+syntactically valid and to verify the documented pnpm entrypoint accepts `--`
+argument forwarding. It intentionally does not run authenticated Codex App
+Server smoke, which remains a release gate in the checklist.
+
 Preferred installed-path diagnostics:
 
 ```bash
