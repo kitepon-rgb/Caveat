@@ -71,6 +71,7 @@ function packCli(packDestination) {
     cwd: packageDir,
     encoding: 'utf8',
     maxBuffer: 10 * 1024 * 1024,
+    shell: process.platform === 'win32',
   });
   if (result.stderr) process.stderr.write(result.stderr);
   if (result.error) throw result.error;
@@ -99,6 +100,7 @@ function installAndReadVersion(tarball, expectedVersion) {
     {
       encoding: 'utf8',
       maxBuffer: 10 * 1024 * 1024,
+      shell: process.platform === 'win32',
     },
   );
   if (install.stderr) process.stderr.write(install.stderr);
