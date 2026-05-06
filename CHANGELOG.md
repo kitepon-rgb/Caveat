@@ -2,6 +2,15 @@
 
 All notable changes are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.6] — 2026-05-06
+
+### Changed
+- **Complete the dev-tool major refresh.** Updated workspace TypeScript to 6.0.3 and Vite to 8.0.10. The shared tsconfig now explicitly includes Node types and opts into `ignoreDeprecations: "6.0"` for the TypeScript 6 `baseUrl` deprecation path used by the current tsup dts build.
+- **Keep Node runtime typing aligned with support policy.** Dependabot now ignores semver-major `@types/node` bumps so Caveat's Node 22.5+ support is not masked by Node 25-only type definitions.
+
+### Verification
+- Full workspace `build`, `typecheck`, and `test` pass locally with TypeScript 6 and Vite 8.
+
 ## [0.14.5] — 2026-05-06
 
 ### Changed

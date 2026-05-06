@@ -1,6 +1,6 @@
 {
   "name": "caveat-cli",
-  "version": "0.14.5",
+  "version": "0.14.6",
   "description": "Long-term memory CLI for Claude Code and Codex (markdown + SQLite FTS5 + MCP + hooks)",
   "keywords": [
     "caveat",
@@ -54,8 +54,8 @@
     "@types/node": "^22.19.17",
     "tsup": "^8.3.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0",
-    "vite": "^7",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.10",
     "vitest": "^4.1.5"
   }
 }

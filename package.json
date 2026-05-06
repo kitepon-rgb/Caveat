@@ -16,9 +16,12 @@
   },
   "devDependencies": {
     "husky": "^9.1.6",
-    "typescript": "^5.7.0"
+    "typescript": "^6.0.3"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["better-sqlite3", "esbuild"]
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild"
+    ]
   }
 }
