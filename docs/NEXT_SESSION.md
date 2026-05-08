@@ -1,8 +1,38 @@
 # Next Session Handoff
 
-Last updated: 2026-05-06.
+Last updated: 2026-05-08.
 
-## Current State
+## Status
+
+All release work for `caveat-cli@0.14.7` and `codex-sidecar@0.3.0` is closed
+out. No outstanding tasks at this time.
+
+## 2026-05-08 Claude Smoke Rerun Result
+
+The Claude generated-response smoke that was blocked by the 2026-05-06 rate
+limit was rerun on 2026-05-08 18:27 JST and passed.
+
+- Fresh global install of `caveat-cli@0.14.7` into a temporary `npm prefix`.
+- `caveat init` wrote MCP + 4 hooks (`UserPromptSubmit`, `PostToolUse`,
+  `PostToolUseFailure`, `Stop`) into the temp `$home/.claude/`.
+- `claude -p` was run with the real `HOME` (so account auth resolved) but
+  with `--settings` and `--mcp-config` pointing at the temp files. The temp
+  HOME isolation in the original recipe broke auth (`Not logged in`); using
+  real HOME plus explicit `--settings` / `--mcp-config` overrides keeps the
+  isolation intent (no writes into real `~/.claude/`) while letting Claude
+  read its credentials. This is the procedure to use for future reruns.
+- `claude` exit code: `0`. Final stream `result.subtype: success`,
+  `is_error: false`, `result: "caveat-claude-session-ok"`.
+- Stream contained `caveat-claude-session-ok` (5 token occurrences across
+  partial-message and final result frames).
+- MCP `caveat` reported `status: "connected"` in the `system/init` frame
+  with all 6 caveat tools listed.
+- No `caveat.*(error|invalid|failed)` or `invalid.*caveat` lines in the
+  stream.
+- Closeout: `caveat-cli` latest tag = `0.14.7`, `codex-sidecar-cli` latest
+  tag = `0.3.0`, latest two CI runs green, worktree clean.
+
+## Original Current State (pre-smoke, retained for history)
 
 Codex support is complete and released.
 
@@ -25,10 +55,11 @@ The Codex path was verified from published packages:
 - Raw Codex App Server log verified `model="gpt-5.4-mini"` and
   `model_reasoning_effort="low"`.
 
-## Only Remaining Task
+## Only Remaining Task (resolved 2026-05-08)
 
 Rerun the Claude generated-response smoke after the Claude account rate limit
-resets. This is not a Caveat failure.
+resets. This is not a Caveat failure. **Resolved on 2026-05-08 — see "2026-05-08
+Claude Smoke Rerun Result" above.**
 
 Observed blocker on 2026-05-06:
 
