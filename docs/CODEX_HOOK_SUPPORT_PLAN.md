@@ -1,5 +1,19 @@
 # Codex Hook 対応 試験・実装計画
 
+> **Status (2026-05-08)**: 本計画はリリース済み。Codex primary hooks
+> (`caveat codex-hook install|diagnostics|user-prompt-submit|post-tool-use|stop`)
+> と sidecar advisory (`caveat codex-sidecar diagnostics|smoke|run|work-smoke`)
+> が **v0.14.2** で投入され、`advisory` preset 化が **v0.14.7** で完了。
+> Claude / Codex 両ホストの実運用検証済 (詳細は
+> [docs/NEXT_SESSION.md](NEXT_SESSION.md)、`CHANGELOG.md`、
+> [docs/DUAL_AGENT_SUPPORT.md](DUAL_AGENT_SUPPORT.md))。
+>
+> 本文中の `- [ ]` チェックボックスは**投入時の作業単位の記録**として
+> 残してあるが、計画段階の整理項目で実体は実装で解消済み。
+> 仕様の真実は `CLAUDE.md` の「Claude Code Hook の実装」節と
+> `docs/DUAL_AGENT_SUPPORT.md` を参照。新規修正をする時はチェックボックスを
+> 増やさず、それぞれのコード箇所に直接 PR を投げる。
+
 この文書は、Caveat に Codex hook 対応を追加するための TODO 兼
 実装計画書です。`CLAUDE.md` と `docs/DUAL_AGENT_SUPPORT.md` に対する
 追加文書として扱います。

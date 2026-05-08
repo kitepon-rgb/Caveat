@@ -2,6 +2,17 @@
 
 All notable changes are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.8] — 2026-05-08
+
+### Added
+- **Self-cleaning `pending/` directory.** Per-session reminder folders left behind by drained or abandoned sessions are now collected automatically. `cleanupStalePendingDirs(caveatHome, { staleDays })` removes any `<caveatHome>/pending/<sessionId>/` whose newest entry (directory + leftover `.txt`) is older than the threshold (default 7 days). Active sessions are protected because their `mtime` keeps refreshing as the queue is appended/drained.
+- **Hook-driven debounced sweep.** `caveat hook stop` now invokes `maybeSweepPendingDirs(caveatHome)` at the top of the Stop branch. A `<caveatHome>/pending/.last-sweep` marker enforces a 1-day debounce so the housekeeping runs at most once per day even though Stop fires many times per session. Failures are swallowed so the sweep never affects the hook contract. Set `CAVEAT_PENDING_SWEEP=off` to disable entirely.
+- **`caveat init` belt-and-suspenders sweep.** `caveat init` runs the same cleanup so a fresh global install on a long-lived `~/.caveat/` does not need to wait for the next Stop hook to clear the backlog. New `--pending-stale-days <n>` flag overrides the threshold (rejects negative values); `--dry-run` prints the planned action without touching the filesystem.
+
+### Verification
+- Workspace tests grew from 247 to 259, all passing on Linux. New coverage in `packages/core/tests/pendingReminders.test.ts` exercises stale subtree removal, active-session protection, debounce, env override, and bad input rejection.
+- End-to-end with a packed CLI binary against an isolated `CAVEAT_HOME` confirmed: real run removes stale subtrees, dry-run does not, `--pending-stale-days -1` is rejected, hot-path `caveat hook stop` honors the marker debounce, and `CAVEAT_PENDING_SWEEP=off` leaves both directories and marker untouched.
+
 ## [0.14.7] — 2026-05-06
 
 ### Added

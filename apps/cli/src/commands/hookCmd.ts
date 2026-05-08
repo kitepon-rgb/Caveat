@@ -19,6 +19,7 @@ import {
   findCaveatsForPrompt,
   hasAnyStruggleSignal,
   markHit,
+  maybeSweepPendingDirs,
   openDb,
   readSessionSignals,
   stopReminderText,
@@ -576,6 +577,15 @@ export async function runHook(name: HookName, arg?: string): Promise<void> {
   }
 
   if (name === 'stop') {
+    // Periodic, debounced housekeeping: sweep stale per-session pending
+    // dirs at most once per debounce window. Best-effort — never block the
+    // hook contract on cleanup failures.
+    try {
+      const ctx = buildContextSafely();
+      if (ctx) maybeSweepPendingDirs(ctx.caveatHome);
+    } catch {
+      // Swallow: cleanup must not affect the hook's behavior.
+    }
     if (payload.stop_hook_active === true) process.exit(0);
     const transcriptPath =
       typeof payload.transcript_path === 'string' ? payload.transcript_path : '';

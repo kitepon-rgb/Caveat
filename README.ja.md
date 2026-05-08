@@ -47,7 +47,7 @@ review、risk-check、isolated work 用に残します。
 | AI が自覚しないもがきも検出 | ✅ transcript シグナル抽出 | ❌ | ❌ | ❌ |
 | 外部仕様の罠と repo 固有メモを混在管理 | ✅ public / private 2 tier | ⚠️ 分離なし | ⚠️ | ⚠️ |
 
-**ステータス**: v0.14.6、245 tests passing。個人および小規模チームが主な想定ユースケースです。中央 DB なし、インストール時の自動購読なし。
+**ステータス**: v0.14.8、259 tests passing、CI は Ubuntu / Windows × Node 22/24 で緑。個人および小規模チームが主な想定ユースケースです。中央 DB なし、インストール時の自動購読なし。最新の引き継ぎノートは [docs/NEXT_SESSION.md](docs/NEXT_SESSION.md) を参照。
 
 <details>
 <summary><strong>なぜ中央 DB を持たない？</strong>（v0.7 での方針転換）</summary>

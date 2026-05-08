@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { ensureUserConfig, openDb } from '@caveat/core';
+import { cleanupStalePendingDirs, ensureUserConfig, openDb } from '@caveat/core';
 
 const KNOWLEDGE_GITIGNORE = [
   '# Never commit entries flagged private (visibility: private is enforced by the',
@@ -21,6 +21,13 @@ import {
 export interface InitOptions {
   skipClaude: boolean;
   dryRun: boolean;
+  /**
+   * Stale-age threshold (days) for sweeping abandoned pending reminder
+   * directories under `<caveatHome>/pending/`. Directories whose newest
+   * entry's mtime is older than this are removed. Default 7. 0 collects
+   * any dir whose mtime is strictly in the past.
+   */
+  pendingStaleDays?: number;
 }
 
 export async function runInit(
@@ -55,6 +62,19 @@ export async function runInit(
   } else {
     ctx.logger.info(`[dry-run] db path: ${ctx.paths.dbPath}`);
   }
+
+  const staleDays = opts.pendingStaleDays ?? 7;
+  if (opts.dryRun) {
+    ctx.logger.info(`[dry-run] would sweep pending dirs older than ${staleDays}d`);
+  } else {
+    const swept = cleanupStalePendingDirs(ctx.caveatHome, { staleDays });
+    if (swept.removed.length > 0) {
+      ctx.logger.info(
+        `pending dirs swept: removed ${swept.removed.length} (kept ${swept.kept}, threshold ${staleDays}d)`,
+      );
+    }
+  }
+
   ctx.logger.info(
     'tip: subscribe to a group repo with `caveat community add <github-url>`, then `caveat pull`.',
   );

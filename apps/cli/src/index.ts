@@ -42,13 +42,27 @@ program
   )
   .option('--skip-claude', 'skip Claude Code MCP + hook registration', false)
   .option('--dry-run', 'show planned changes without writing', false)
-  .action(async (opts: { skipClaude: boolean; dryRun: boolean }) => {
-    const ctx = buildContext(stdoutLogger);
-    await runInit(ctx, {
-      skipClaude: opts.skipClaude,
-      dryRun: opts.dryRun,
-    });
-  });
+  .option(
+    '--pending-stale-days <days>',
+    'sweep `<caveatHome>/pending/<sessionId>/` whose newest entry is older than this (default 7)',
+    (raw) => {
+      const n = Number.parseInt(raw, 10);
+      if (!Number.isFinite(n) || n < 0) {
+        throw new Error(`--pending-stale-days expects a non-negative integer (got "${raw}")`);
+      }
+      return n;
+    },
+  )
+  .action(
+    async (opts: { skipClaude: boolean; dryRun: boolean; pendingStaleDays?: number }) => {
+      const ctx = buildContext(stdoutLogger);
+      await runInit(ctx, {
+        skipClaude: opts.skipClaude,
+        dryRun: opts.dryRun,
+        pendingStaleDays: opts.pendingStaleDays,
+      });
+    },
+  );
 
 program
   .command('uninstall')

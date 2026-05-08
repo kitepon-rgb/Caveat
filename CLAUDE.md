@@ -4,6 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクトの状態
 
+**v0.14.8**（2026-05-08 公開、259 tests passing、全 workspace typecheck passing）。**`<caveatHome>/pending/<sessionId>/` の自動掃除を追加**。Stop hook 冒頭で `maybeSweepPendingDirs` を 1 日デバウンスで呼び、最新 mtime が 7 日以上前のサブツリーを丸ごと削除する。マーカー `<caveatHome>/pending/.last-sweep` で同日中の連続発火をスキップ、`CAVEAT_PENDING_SWEEP=off` で完全停止。`caveat init` も belt-and-suspenders で同じ sweep を呼ぶ（`--pending-stale-days <n>` で閾値上書き、dry-run は予告ログのみ）。アクティブセッションは append/drain で mtime が更新されるため回収されない。
+
+**v0.14.7**（2026-05-06 公開、247 tests passing、全 workspace typecheck passing）。Codex sidecar advisory が明示モデルポリシ (`gpt-5.4-mini` low reasoning) で動作する `advisory` preset を採用し、Claude hook の advisory 呼び出しは `--preset advisory` 経由になった。リリース smoke スクリプトを再利用可能化、CI で `caveat-cli` packed tarball の `workspace:` リーク検査と install + `--version` 確認を追加。Windows release-pack ジョブは `corepack.cmd` / `npm.cmd` のためにシェル経由実行。2026-05-08 に Claude 生成応答 smoke を再実行して全項目クリア（[docs/NEXT_SESSION.md](docs/NEXT_SESSION.md)）。
+
 **v0.14.6**（2026-05-06、245 tests passing、全 workspace typecheck passing）。**Claude / Codex とも Stop reminder はその場で最終回答に混ぜず pending 化し、次の context-capable hook で compact して出す**。Codex 側は `caveat codex-hook install|diagnostics|user-prompt-submit|post-tool-use|stop` で Codex runtime から Caveat CLI を直接呼ぶ。Claude 側は従来の `caveat hook post-tool-use` を `PostToolUse` と `PostToolUseFailure` の両方に登録する。現行 Claude Code は失敗 tool で `PostToolUseFailure` を出し、payload の `error` field に失敗内容を入れるため、Caveat はこの field も既存の非同期 worker / pending reminder 経路へ流す。prompt surface は `symptom_text` が失敗状態を述べる根拠、`topical_text` が罠の主題と重なる根拠として独立に要求する。
 
 **v0.14.2**（2026-05-06、238 tests passing、全 workspace test/typecheck passing）。**Codex primary hooks を追加し、Claude hook 実運用の失敗イベントも補正済み。さらに事前発火 rare-anchor を `symptom_text` 依存から `topical_text` 依存へ修正**。Codex 側は `caveat codex-hook install|diagnostics|user-prompt-submit|post-tool-use|stop` で Codex runtime から Caveat CLI を直接呼ぶ。Claude 側は従来の `caveat hook post-tool-use` を `PostToolUse` と `PostToolUseFailure` の両方に登録する。現行 Claude Code は失敗 tool で `PostToolUseFailure` を出し、payload の `error` field に失敗内容を入れるため、Caveat はこの field も既存の非同期 worker / pending reminder 経路へ流す。prompt surface は `symptom_text` が失敗状態を述べる根拠、`topical_text` が罠の主題と重なる根拠として独立に要求する。
@@ -63,9 +67,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```sh
 corepack pnpm install                              # workspace 依存をインストール
-corepack pnpm --filter @caveat/core test           # core tests（171 tests）
+corepack pnpm --filter @caveat/core test           # core tests（181 tests）
 corepack pnpm --filter @caveat/core build          # tsup + schema.sql / migrations を dist へコピー
-corepack pnpm --filter caveat-cli test             # CLI smoke + installer tests（12 tests）
+corepack pnpm --filter caveat-cli test             # CLI smoke + installer tests（32 tests）
 corepack pnpm --filter caveat-cli build            # CLI ビルド（bundle + workspace deps noExternal + dist/caveat.js 生成）
 corepack pnpm --filter @caveat/mcp test            # MCP tool-handler tests（8 tests）
 corepack pnpm --filter @caveat/web test            # Web tests（17 tests）
@@ -234,6 +238,7 @@ MCP stdio サーバは stdout に JSON-RPC 以外を書いてはいけない。`
 - **発火ゲート**: `hasAnyStruggleSignal(s)` = 上記 count のいずれか > 0 or fileEditCounts.length > 0。**閾値チューニング無し**の構造的 or 判定（「0 か 1 以上か」のみ）。tool failure 無・編集 1 回だけ・web 検索無しなら完全無音 → 単純編集セッションでリマインダ洪水を起こさない
 - **stop リマインダ本文**: シグナル具体数値を列挙（Y）+ `errorSnippets` と `searchQueries` を結合した text を `findCaveatsForPrompt` に食わせて共起 FTS し、既存罠に類似があれば `caveat_update` を、なければ `caveat_record` を促す（Z）。事前発火と同じ `findCaveatsForPrompt` を text 入力として再利用（hookCmd.ts の `searchCaveatsFromTextSafely`）。Stop hook 自体は stdout に出さず、session pending queue に積んで次の `UserPromptSubmit` / `PostToolUse` で表示する。同一 session / 同一 signal digest は再 enqueue しない
 - **Codex sidecar advisory (v0.13)**: `Stop` hook が発火した場合、`CAVEAT_HOOK_CODEX_SIDECAR` が `auto` / `require` なら `caveat codex-sidecar run explore` を同期的に呼び、既存 `stopReminderText` の後ろへ Codex の助言を追記して pending に積む。`auto` は project root に `.codex-sidecar.yml` がある時だけ試す。`off` は pre-v0.13 と同じ本文のみ。失敗時は hidden fallback せず unavailable 行を出す
+- **Codex CLI の解決順 (codex-sidecar 側設計)**: codex-sidecar は実行時に `process.env.CODEX_BINARY ?? "codex"` で Codex CLI を解決する。`CODEX_BINARY` が立っていればそのパスを、無ければ PATH 上の `codex` を `spawn` する。**Caveat 側は `caveat init` でこの env を一切書き込まない** — 一般ユーザは `npm install -g @openai/codex` で `codex` を PATH に乗せていれば追加設定不要。VS Code 拡張内のバイナリしか手元に無い等で PATH に乗らない環境のみ、ユーザが自力で `~/.claude/settings.json` のフック行に env プレフィックスを足す必要がある。VS Code 拡張のディレクトリ名はバージョン番号入りで更新ごとに変わるため、絶対パスを書くと拡張更新で advisory が ENOENT で死ぬ。基本は PATH 解決に倒す
 - **再帰防止**: `payload.stop_hook_active === true` の場合は stdout 空で即 exit（不変）
 - **実行中発火（PostToolUse / PostToolUseFailure hook、v0.10 / v0.14）— 非同期パイプライン**:
   - Claude Code は tool 呼び出し後に PostToolUse 系 hook を同期的に呼び出し、その stdout を次ターンのコンテキストに挿入する。現行 Claude Code の失敗 tool は `PostToolUseFailure` として発火し、payload の `error` field に失敗内容を入れる。成功/通常系互換のため `PostToolUse` も維持する。同期的に FTS を走らせると tool ごとに 150-300ms のレイテンシが乗るので、**前景 hook は drain + worker spawn で ~20ms 返す**。
@@ -242,7 +247,7 @@ MCP stdio サーバは stdout に JSON-RPC 以外を書いてはいけない。`
   - drain は **UserPromptSubmit / PostToolUse の最初で実行**。Stop hook は final answer 直後の stdout 表示を避けるため drain せず、Stop reminder を pending に積むだけにする
   - pending ファイルはセッション id でディレクトリ分離 ([packages/core/src/pendingReminders.ts](packages/core/src/pendingReminders.ts))。`session_id` は `[^A-Za-z0-9_-]` を strip してサニタイズ、traversal 攻撃を防ぐ
   - 結果として reminder は **エラー発生の次の hook tick で Claude のコンテキストに載る**（最短で次の tool 呼び出し、最悪でも user prompt 直前）。Claude は新しいエラーを見る前後のタイミングで「このエラーは既知罠 XYZ」を認識できる
-  - セッション跨ぎの pending 蓄積: `caveat init` で pending dir を cleanup する処理は未実装（TODO）。現状は session 別ディレクトリが貯まるだけで実害なし
+  - セッション跨ぎの pending 蓄積掃除: [packages/core/src/pendingReminders.ts](packages/core/src/pendingReminders.ts) に 2 段の API を持つ。`cleanupStalePendingDirs(caveatHome, { staleDays })` は `<caveatHome>/pending/<sessionId>/` のうち**そのサブツリー内 (ディレクトリ自身 + 残存 .txt) の最新 mtime が `staleDays` 日以上前**のものを丸ごと削除する純粋関数 (default 7 日、`staleDays=0` は「現在より過去のもの全部」)。drain で空になった殻も、放棄されてファイルが残った墓も同条件で扱う。アクティブセッションは append/drain で mtime が更新され続けるので回収されない。`maybeSweepPendingDirs(caveatHome, { staleDays, debounceDays })` はホットパスから呼ぶデバウンス付きラッパで、`<caveatHome>/pending/.last-sweep` マーカーの mtime を見て `debounceDays` (default 1) 以内なら即 return、初回または期限切れなら `cleanupStalePendingDirs` を呼んでマーカーを更新する。`CAVEAT_PENDING_SWEEP=off` で完全無効化可 (マーカーも触らない)。発火点は 2 つ: (a) `caveat hook stop` 冒頭で `maybeSweepPendingDirs(ctx.caveatHome)` を try/catch で呼ぶ — グローバル install 後ほぼ走らない `caveat init` に依存せず、Stop hook が定期掃除を担う。(b) `caveat init` が belt-and-suspenders で `cleanupStalePendingDirs` を呼ぶ (CLI フラグ `--pending-stale-days <n>` で `staleDays` 上書き可、dry-run 時は予告ログのみ)
 - **Phase 6 の legacy `.mjs` ファイル**（`hooks/user-prompt-submit.mjs` と `hooks/stop.mjs`）は v0.11.2 で削除済。NPM 配布した `caveat` コマンド経由では `caveat hook <name>` の新経路だけが使われるため、旧キーワード allowlist 実装の dev-mode 参照は不要になった。`hooks/pre-commit-visibility-gate.mjs` は `.husky/pre-commit` から exec される現役のため残置
 
 ### Git pre-commit visibility gate（Phase 7）

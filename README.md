@@ -47,7 +47,7 @@ The knowledge repo is plain markdown-in-git. Open it as an Obsidian vault. Share
 | Catches struggle the AI didn't self-report | ✅ transcript signal mining | ❌ | ❌ | ❌ |
 | Mixes external-spec gotchas with repo-specific context | ✅ public / private tiers | ⚠️ no separation | ⚠️ | ⚠️ |
 
-**Status**: v0.14.7, CI green across Ubuntu/Windows and Node 22/24. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install. Current handoff notes live in [docs/NEXT_SESSION.md](docs/NEXT_SESSION.md).
+**Status**: v0.14.8, CI green across Ubuntu/Windows and Node 22/24. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install. Current handoff notes live in [docs/NEXT_SESSION.md](docs/NEXT_SESSION.md).
 
 <details>
 <summary><strong>Why no central shared DB?</strong> (v0.7 pivot)</summary>
@@ -289,7 +289,7 @@ See [docs/plan.md](docs/plan.md) for the full schema, semver matching rules, and
 ## Development
 
 ```sh
-corepack pnpm -r test            # 203 tests across 5 packages
+corepack pnpm -r test            # 259 tests across 5 packages
 corepack pnpm -r typecheck
 corepack pnpm -r build
 ```
