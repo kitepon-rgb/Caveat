@@ -65,10 +65,22 @@ function upsertHook(
 ): 'added' | 'unchanged' {
   settings.hooks ??= {};
   const list = (settings.hooks[event] ??= []);
-  const alreadyPresent = list.some((entry) =>
-    entry.hooks?.some((h) => isSameHookCommand(h.command, command)),
-  );
-  if (alreadyPresent) return 'unchanged';
+  const subcommand = command.includes('hook user-prompt-submit')
+    ? 'user-prompt-submit'
+    : command.includes('hook post-tool-use')
+      ? 'post-tool-use'
+      : command.includes('hook stop')
+        ? 'stop'
+        : null;
+  for (const entry of list) {
+    for (const hook of entry.hooks ?? []) {
+      if (isSameHookCommand(hook.command, command)) return 'unchanged';
+      if (subcommand && isCaveatClaudeHookCommand(hook.command, subcommand)) {
+        hook.command = command;
+        return 'added';
+      }
+    }
+  }
   list.push({ hooks: [{ type: 'command', command }] });
   return 'added';
 }
@@ -101,6 +113,18 @@ function findExistingHookCommand(
 
 function isSameHookCommand(actual: string, expected: string): boolean {
   return actual === expected || actual.endsWith(` ${expected}`);
+}
+
+function isEnvPrefixedCommand(command: string): boolean {
+  return /^[A-Z_][A-Z0-9_]*=/.test(command.trim());
+}
+
+function isCaveatClaudeHookCommand(
+  actual: string,
+  event: 'user-prompt-submit' | 'post-tool-use' | 'stop',
+): boolean {
+  const lower = actual.toLowerCase();
+  return !isEnvPrefixedCommand(actual) && lower.includes('caveat') && actual.includes(`hook ${event}`);
 }
 
 function readSettings(path: string): Settings {

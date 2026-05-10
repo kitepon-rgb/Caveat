@@ -135,6 +135,52 @@ describe('installCodexHooks', () => {
     expect(findBackup(fx.codexHome, 'config.toml.caveat-backup-')).toBeDefined();
   });
 
+  it('updates existing Caveat hooks when the installed node path changes', () => {
+    writeFileSync(
+      fx.hooksPath,
+      JSON.stringify(
+        {
+          hooks: {
+            UserPromptSubmit: [
+              {
+                hooks: [
+                  {
+                    type: 'command',
+                    command: '/opt/homebrew/Cellar/node/26.0.0/bin/node /opt/homebrew/bin/caveat codex-hook user-prompt-submit',
+                  },
+                ],
+              },
+              { hooks: [{ type: 'command', command: 'node spotter.mjs codex-hook user-prompt-submit' }] },
+            ],
+          },
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    );
+
+    const result = installCodexHooks({
+      codexHome: fx.codexHome,
+      cliScriptPath: '/opt/homebrew/bin/caveat',
+      nodePath: '/opt/homebrew/bin/node',
+      dryRun: false,
+      logger: silentLogger,
+    });
+    expect(result.hooks.userPromptSubmit).toBe('added');
+
+    const hooks = JSON.parse(readFileSync(fx.hooksPath, 'utf-8')) as {
+      hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>>;
+    };
+    expect(hooks.hooks.UserPromptSubmit).toHaveLength(2);
+    expect(hooks.hooks.UserPromptSubmit[0]?.hooks[0]?.command).toBe(
+      '/opt/homebrew/bin/node /opt/homebrew/bin/caveat codex-hook user-prompt-submit',
+    );
+    expect(hooks.hooks.UserPromptSubmit[1]?.hooks[0]?.command).toBe(
+      'node spotter.mjs codex-hook user-prompt-submit',
+    );
+  });
+
   it('uninstall removes only Caveat-owned hooks', () => {
     writeFileSync(
       fx.hooksPath,

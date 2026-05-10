@@ -28,6 +28,7 @@ import {
   runCommunityPull,
   runCommunityRemove,
 } from './commands/community.js';
+import { resolveHookNodePath } from './nodePath.js';
 
 const program = new Command();
 program
@@ -202,7 +203,7 @@ codexHook
     const result = installCodexHooks({
       codexHome: opts.codexHome,
       cliScriptPath,
-      nodePath: process.execPath,
+      nodePath: resolveHookNodePath(),
       dryRun: opts.dryRun,
       logger: stdoutLogger,
     });
@@ -230,7 +231,7 @@ codexHook
     const result = uninstallCodexHooks({
       codexHome: opts.codexHome,
       cliScriptPath,
-      nodePath: process.execPath,
+      nodePath: resolveHookNodePath(),
       dryRun: opts.dryRun,
       logger: stdoutLogger,
     });

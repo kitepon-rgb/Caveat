@@ -17,6 +17,7 @@ import {
   uninstallClaudeIntegration,
   type ClaudeInstallResult,
 } from '../claudeInstall.js';
+import { resolveHookNodePath } from '../nodePath.js';
 
 export interface InitOptions {
   skipClaude: boolean;
@@ -93,7 +94,7 @@ export async function runInit(
   const result = installClaudeIntegration({
     claudeDir: join(ctx.userHome, '.claude'),
     cliScriptPath,
-    nodePath: process.execPath,
+    nodePath: resolveHookNodePath(),
     dryRun: opts.dryRun,
     logger: ctx.logger,
   });
@@ -143,7 +144,7 @@ export function runUninstall(ctx: CliContext, opts: UninstallOptions): void {
   const result = uninstallClaudeIntegration({
     claudeDir: join(ctx.userHome, '.claude'),
     cliScriptPath,
-    nodePath: process.execPath,
+    nodePath: resolveHookNodePath(),
     dryRun: opts.dryRun,
     logger: ctx.logger,
   });

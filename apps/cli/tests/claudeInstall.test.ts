@@ -157,6 +157,53 @@ describe('installClaudeIntegration (hooks only — MCP spawn tolerated)', () => 
     expect(settings.hooks.Stop).toHaveLength(1);
   });
 
+  it('updates existing Caveat hooks when the installed node path changes', () => {
+    writeFileSync(
+      fx.settingsPath,
+      JSON.stringify(
+        {
+          hooks: {
+            Stop: [
+              {
+                hooks: [
+                  {
+                    type: 'command',
+                    command: '/opt/homebrew/Cellar/node/26.0.0/bin/node /opt/homebrew/bin/caveat hook stop',
+                  },
+                ],
+              },
+              { hooks: [{ type: 'command', command: 'node "/pkg/bin/spotter.mjs" hook stop' }] },
+            ],
+          },
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    );
+
+    const result = installClaudeIntegration({
+      claudeDir: fx.claudeDir,
+      cliScriptPath: '/opt/homebrew/bin/caveat',
+      nodePath: '/opt/homebrew/bin/node',
+      dryRun: false,
+      logger: silentLogger,
+      skipMcpRegistration: true,
+    });
+    expect(result.hooks.stop).toBe('added');
+
+    const settings = JSON.parse(readFileSync(fx.settingsPath, 'utf-8')) as {
+      hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>>;
+    };
+    expect(settings.hooks.Stop).toHaveLength(2);
+    expect(settings.hooks.Stop[0]?.hooks[0]?.command).toBe(
+      '/opt/homebrew/bin/node /opt/homebrew/bin/caveat hook stop',
+    );
+    expect(settings.hooks.Stop[1]?.hooks[0]?.command).toBe(
+      'node "/pkg/bin/spotter.mjs" hook stop',
+    );
+  });
+
   it('treats env-prefixed caveat hooks as already installed', () => {
     const stopCmd = 'C:/fake/node.exe C:/fake/dist/index.js hook stop';
     const postToolUseCmd = 'C:/fake/node.exe C:/fake/dist/index.js hook post-tool-use';

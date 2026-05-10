@@ -9,11 +9,11 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "corepack pnpm -r build",
-    "test": "corepack pnpm -r test",
-    "typecheck": "corepack pnpm -r typecheck",
+    "build": "node scripts/pnpm.mjs -r build",
+    "test": "node scripts/pnpm.mjs -r test",
+    "typecheck": "node scripts/pnpm.mjs -r typecheck",
     "check:npm-pack": "node scripts/check-npm-pack.mjs",
-    "check:release-smoke": "node --check scripts/check-npm-pack.mjs && node --check scripts/codex-sidecar-advisory-smoke.mjs && corepack pnpm check:npm-pack && corepack pnpm smoke:codex-sidecar-advisory -- --help",
+    "check:release-smoke": "node --check scripts/check-npm-pack.mjs && node --check scripts/codex-sidecar-advisory-smoke.mjs && node scripts/pnpm.mjs check:npm-pack && node scripts/pnpm.mjs smoke:codex-sidecar-advisory -- --help",
     "smoke:codex-sidecar-advisory": "node scripts/codex-sidecar-advisory-smoke.mjs",
     "prepare": "husky"
   },

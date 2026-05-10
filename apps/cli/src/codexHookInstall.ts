@@ -67,6 +67,14 @@ function isSameHookCommand(actual: string, expected: string): boolean {
   return actual === expected || actual.endsWith(` ${expected}`);
 }
 
+function isCaveatCodexHookCommand(
+  actual: string,
+  event: 'user-prompt-submit' | 'post-tool-use' | 'stop',
+): boolean {
+  const lower = actual.toLowerCase();
+  return lower.includes('caveat') && actual.includes(eventCommandFragment(event));
+}
+
 function hasCaveatHook(hooksJson: HooksJson, event: HookEvent, fragment: string): boolean {
   return (
     hooksJson.hooks?.[event]?.some((entry) =>
@@ -92,13 +100,26 @@ function writeJsonWithBackup(path: string, value: unknown): string {
   return backupPath;
 }
 
-function upsertHook(hooksJson: HooksJson, event: HookEvent, command: string): 'added' | 'unchanged' {
+function upsertHook(
+  hooksJson: HooksJson,
+  event: HookEvent,
+  command: string,
+  subcommand: 'user-prompt-submit' | 'post-tool-use' | 'stop',
+): 'added' | 'unchanged' {
   hooksJson.hooks ??= {};
   const list = (hooksJson.hooks[event] ??= []);
-  const alreadyPresent = list.some((entry) =>
-    entry.hooks?.some((h) => isSameHookCommand(h.command, command)),
-  );
-  if (alreadyPresent) return 'unchanged';
+  for (const entry of list) {
+    for (const hook of entry.hooks ?? []) {
+      if (isSameHookCommand(hook.command, command)) return 'unchanged';
+      if (isCaveatCodexHookCommand(hook.command, subcommand)) {
+        hook.command = command;
+        hook.timeoutSec = 5;
+        hook.async = false;
+        hook.statusMessage = null;
+        return 'added';
+      }
+    }
+  }
   list.push({
     hooks: [
       {
@@ -113,12 +134,19 @@ function upsertHook(hooksJson: HooksJson, event: HookEvent, command: string): 'a
   return 'added';
 }
 
-function removeHook(hooksJson: HooksJson, event: HookEvent, command: string): boolean {
+function removeHook(
+  hooksJson: HooksJson,
+  event: HookEvent,
+  command: string,
+  subcommand: 'user-prompt-submit' | 'post-tool-use' | 'stop',
+): boolean {
   const list = hooksJson.hooks?.[event];
   if (!list) return false;
   const before = list.length;
   const filtered = list.filter(
-    (entry) => !entry.hooks?.some((h) => isSameHookCommand(h.command, command)),
+    (entry) => !entry.hooks?.some((h) =>
+      isSameHookCommand(h.command, command) || isCaveatCodexHookCommand(h.command, subcommand),
+    ),
   );
   if (filtered.length === before) return false;
   hooksJson.hooks![event] = filtered;
@@ -170,16 +198,19 @@ export function installCodexHooks(opts: CodexHookInstallOptions): CodexHookInsta
     hooksJson,
     'UserPromptSubmit',
     hookCommand(opts.nodePath, opts.cliScriptPath, 'user-prompt-submit'),
+    'user-prompt-submit',
   );
   const postToolUse = upsertHook(
     hooksJson,
     'PostToolUse',
     hookCommand(opts.nodePath, opts.cliScriptPath, 'post-tool-use'),
+    'post-tool-use',
   );
   const stop = upsertHook(
     hooksJson,
     'Stop',
     hookCommand(opts.nodePath, opts.cliScriptPath, 'stop'),
+    'stop',
   );
 
   const rawConfig = existsSync(configPath) ? readFileSync(configPath, 'utf-8') : '';
@@ -218,16 +249,19 @@ export function uninstallCodexHooks(opts: CodexHookInstallOptions): CodexHookIns
     hooksJson,
     'UserPromptSubmit',
     hookCommand(opts.nodePath, opts.cliScriptPath, 'user-prompt-submit'),
+    'user-prompt-submit',
   );
   const postToolUseRemoved = removeHook(
     hooksJson,
     'PostToolUse',
     hookCommand(opts.nodePath, opts.cliScriptPath, 'post-tool-use'),
+    'post-tool-use',
   );
   const stopRemoved = removeHook(
     hooksJson,
     'Stop',
     hookCommand(opts.nodePath, opts.cliScriptPath, 'stop'),
+    'stop',
   );
 
   let backupPath: string | undefined;
