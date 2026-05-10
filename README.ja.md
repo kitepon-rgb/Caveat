@@ -22,6 +22,11 @@ caveat init                          # Claude Code MCP + hooks を登録
 caveat codex-hook install            # 任意: Codex native hooks を登録
 ```
 
+macOS の Homebrew Node 環境では、hook command の Node パスに現在の実体と一致する安定 symlink
+(`/opt/homebrew/bin/node`) を使います。`/opt/homebrew/Cellar/node/<version>/...` のような
+version 固定パスを書かないため、Homebrew で Node が更新されても Claude Code / Codex hook が
+古い Node パスに取り残されません。
+
 Claude Code または Codex の hook を有効にすると:
 
 1. **プロンプト送信時** → `UserPromptSubmit` hook が **3 段の構造的ゲート**でマッチエントリを surface: 共起 + 症状セクション一致 + rare topical anchor。キーワード allowlist も stopword リストもなし。固有名詞だけの言及 (`RTX 5090 CUDA で何かやってる`) は silent、症状語彙と curated topic anchor (`cudaGetDeviceCount が 0 を返す`) が揃うと正解エントリだけ発火する。([詳細](CHANGELOG.md#0142--2026-05-06))
@@ -47,7 +52,7 @@ review、risk-check、isolated work 用に残します。
 | AI が自覚しないもがきも検出 | ✅ transcript シグナル抽出 | ❌ | ❌ | ❌ |
 | 外部仕様の罠と repo 固有メモを混在管理 | ✅ public / private 2 tier | ⚠️ 分離なし | ⚠️ | ⚠️ |
 
-**ステータス**: v0.14.8、259 tests passing、CI は Ubuntu / Windows × Node 22/24 で緑。個人および小規模チームが主な想定ユースケースです。中央 DB なし、インストール時の自動購読なし。最新の引き継ぎノートは [docs/NEXT_SESSION.md](docs/NEXT_SESSION.md) を参照。
+**ステータス**: v0.14.10、CI は Ubuntu / Windows × Node 22/24 で緑。個人および小規模チームが主な想定ユースケースです。中央 DB なし、インストール時の自動購読なし。最新の引き継ぎノートは [docs/NEXT_SESSION.md](docs/NEXT_SESSION.md) を参照。
 
 <details>
 <summary><strong>なぜ中央 DB を持たない？</strong>（v0.7 での方針転換）</summary>

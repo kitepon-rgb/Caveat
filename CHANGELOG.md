@@ -2,6 +2,25 @@
 
 All notable changes are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.10] — 2026-05-10
+
+### Changed
+- Documented the macOS/Homebrew install smoke path in the published CLI README so npm users can verify `npm install -g caveat-cli`, `caveat init`, and `caveat codex-hook install` from a clean global install.
+
+### Verification
+- Published npm install path re-verified on macOS: `npm uninstall -g caveat-cli`, `npm install -g caveat-cli`, `caveat --version`, `caveat init`, and `caveat codex-hook install` all exit 0.
+
+## [0.14.9] — 2026-05-10
+
+### Fixed
+- **macOS Homebrew Node hook path stability.** Claude Code and Codex hook installers now prefer the stable `node` found on `PATH` when it resolves to the same executable as the current process. On Homebrew macOS this writes `/opt/homebrew/bin/node` instead of versioned Cellar paths such as `/opt/homebrew/Cellar/node/26.0.0/bin/node`, so hooks survive Node upgrades.
+- Existing Caveat-owned Claude Code and Codex hook entries are rewritten in place when their command still points at an older Caveat install or a Homebrew Cellar Node path. Non-Caveat hooks are preserved.
+- Root npm scripts no longer require a globally available `corepack pnpm`; they use a local wrapper that tries `pnpm`, `corepack pnpm`, then `npx pnpm@10.0.0`.
+
+### Verification
+- `node scripts/pnpm.mjs -r build`, targeted CLI hook tests, `node scripts/pnpm.mjs --filter caveat-cli typecheck`, and full `npm test` passed.
+- Published package smoke passed on macOS: `npm uninstall -g caveat-cli`, `npm install -g caveat-cli`, `caveat --version`, `caveat init`, and `caveat codex-hook install`.
+
 ## [0.14.8] — 2026-05-08
 
 ### Added

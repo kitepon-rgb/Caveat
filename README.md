@@ -22,6 +22,11 @@ caveat init                          # registers Claude Code MCP + hooks
 caveat codex-hook install            # optional: register native Codex hooks
 ```
 
+On macOS with Homebrew Node, generated hook commands use the stable
+`/opt/homebrew/bin/node` symlink when it resolves to the current Node binary,
+instead of a versioned `/opt/homebrew/Cellar/node/<version>/...` path. That keeps
+Claude Code and Codex hooks alive across Homebrew Node upgrades.
+
 With Claude Code or Codex hooks enabled:
 
 1. **You type a prompt** → `UserPromptSubmit` hook surfaces matching entries via three structural gates: **co-occurrence + symptom-section match + rare topical anchor**. No keyword lists. Bare proper-noun mentions (`RTX 5090 CUDA で何かやってる`) stay silent; specific failure vocabulary plus a curated topic anchor (`cudaGetDeviceCount が 0 を返す`) fires the right entry. ([details](CHANGELOG.md#0142--2026-05-06))
@@ -47,7 +52,7 @@ The knowledge repo is plain markdown-in-git. Open it as an Obsidian vault. Share
 | Catches struggle the AI didn't self-report | ✅ transcript signal mining | ❌ | ❌ | ❌ |
 | Mixes external-spec gotchas with repo-specific context | ✅ public / private tiers | ⚠️ no separation | ⚠️ | ⚠️ |
 
-**Status**: v0.14.8, CI green across Ubuntu/Windows and Node 22/24. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install. Current handoff notes live in [docs/NEXT_SESSION.md](docs/NEXT_SESSION.md).
+**Status**: v0.14.10, CI green across Ubuntu/Windows and Node 22/24. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install. Current handoff notes live in [docs/NEXT_SESSION.md](docs/NEXT_SESSION.md).
 
 <details>
 <summary><strong>Why no central shared DB?</strong> (v0.7 pivot)</summary>

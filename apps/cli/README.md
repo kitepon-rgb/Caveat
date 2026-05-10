@@ -12,6 +12,11 @@ caveat init                          # Claude Code MCP + hooks
 caveat codex-hook install            # optional: native Codex hooks
 ```
 
+On macOS with Homebrew Node, Caveat installs hook commands through the stable
+`/opt/homebrew/bin/node` symlink when it points at the current Node binary. This
+keeps Claude Code and Codex hooks working after Homebrew moves Node between
+`/opt/homebrew/Cellar/node/<version>/...` directories.
+
 `caveat init` (idempotent, `--dry-run` supported) does the Claude Code setup:
 
 1. Scaffolds `~/.caveat/own/` (your personal knowledge repo) + `~/.caveat/index/caveat.db`
@@ -81,6 +86,16 @@ If you want `~/.caveat/own/` to live elsewhere (e.g. a git-tracked directory you
 - `git` for `caveat community add` / `caveat community pull`
 - Claude Code installed if you want Claude MCP / hooks integration. Without it, `caveat init --skip-claude` still provisions local state.
 - Codex installed if you want native Codex hooks via `caveat codex-hook install`.
+
+Release install smoke:
+
+```sh
+npm uninstall -g caveat-cli
+npm install -g caveat-cli
+caveat --version
+caveat init
+caveat codex-hook install
+```
 
 ## License
 
