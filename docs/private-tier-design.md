@@ -1,6 +1,6 @@
 # Private tier 設計 — 対象範囲の拡張
 
-> **状態**: 検討中の設計メモ（まだ [plan.md](plan.md) には取り込んでいない）。
+> **状態**: 検討中の設計メモ（まだ [01_plan.md](01_plan.md) には取り込んでいない）。
 > **日付**: 2026-04-23
 
 ## 背景 — Caveat の狙いの転換
@@ -211,7 +211,7 @@ private が育たないリスクがある。2 方向で対策:
 
 **b. 初期シードとして private を数本手書き**
 
-plan.md マージと同時の作業として、quo が自分の典型的な「コードを読んでも復元できない文脈」を
+01_plan.md マージと同時の作業として、quo が自分の典型的な「コードを読んでも復元できない文脈」を
 3〜5 件、手で `caveat_record` する。例の候補:
 
 - Caveat プロジェクト固有の作業手順 / 設計判断
@@ -222,7 +222,7 @@ plan.md マージと同時の作業として、quo が自分の典型的な「�
 
 ### CLAUDE.md への波及
 
-plan.md にマージするとき、[CLAUDE.md](../CLAUDE.md) にも以下を反映:
+01_plan.md にマージするとき、[CLAUDE.md](../CLAUDE.md) にも以下を反映:
 - 二項基準と「迷ったら private」の方針
 - 明示依頼パターンの存在（「private で記録して」と言われたら即従う）
 - `caveat list --stale` の月次点検の運用
@@ -235,10 +235,10 @@ plan.md にマージするとき、[CLAUDE.md](../CLAUDE.md) にも以下を反�
 4. エントリのデータ欄に「最後浮上時刻」を追加 + 既存 DB の移行 + 時刻更新関数 + hook/ツールとの統合
 5. `caveat list --stale` CLI サブコマンド追加
 6. 初期シード private を 3〜5 件手書き
-7. plan.md / CLAUDE.md に反映してマージ
+7. 01_plan.md / CLAUDE.md に反映してマージ
 
 ## 関連
 
-- [plan.md](plan.md) — 設計の真実の源（本メモがマージされるべき先）
+- [01_plan.md](01_plan.md) — 設計の真実の源（本メモがマージされるべき先）
 - [CLAUDE.md](../CLAUDE.md) — hook 実装の現行仕様
 - [archive/auto-merge-design.md](archive/auto-merge-design.md) — v0.7 転換の背景（自動マージの却下理由）

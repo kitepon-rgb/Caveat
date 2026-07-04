@@ -6,9 +6,9 @@
 
 **既存設計から来る制約**:
 - `caveat push` が作る PR はスコープが極めて狭い (`entries/<category>/<slug>.md` 単一ファイル、固定 branch、固定 PR テンプレ)。攻撃面が小さい。
-- [CONTRIBUTING.md](../CONTRIBUTING.md) は CLI を使わない手動 PR (fork で md を直接置いて PR) も受け付けると明記している。ゲートは両方を扱える必要がある。
-- frontmatter 検証は実質ゼロ。[packages/core/src/frontmatter.ts](../packages/core/src/frontmatter.ts) (14-21 行) は parse のみ、YAML は `JSON_SCHEMA` で unsafe タグだけ拒否されているが必須フィールドや型チェックは存在しない。
-- merge 自動化はまだ無く、CI は [.github/workflows/ci.yml](../.github/workflows/ci.yml) の build/typecheck/test のみ。
+- [CONTRIBUTING.md](../../CONTRIBUTING.md) は CLI を使わない手動 PR (fork で md を直接置いて PR) も受け付けると明記している。ゲートは両方を扱える必要がある。
+- frontmatter 検証は実質ゼロ。[packages/core/src/frontmatter.ts](../../packages/core/src/frontmatter.ts) (14-21 行) は parse のみ、YAML は `JSON_SCHEMA` で unsafe タグだけ拒否されているが必須フィールドや型チェックは存在しない。
+- merge 自動化はまだ無く、CI は [.github/workflows/ci.yml](../../.github/workflows/ci.yml) の build/typecheck/test のみ。
 
 **達成したい結果**: `caveat push` の pre-flight (ローカルで早期失敗) と、新規 GH Actions ワークフロー (PR 後の gate) の **両方で同じ validator を共有**。フル pass で workflow が PR を auto-approve する。**Phase A ではマージは依然メンテナーが押す**。Phase A を運用して false-negative 率が許容範囲だと確認できてから、別 PR で full auto-merge へ昇格する。
 
@@ -48,7 +48,7 @@
 
 validator は `packages/core/src/prValidator.ts` に **純関数として** 配置し、**2 つの呼び出し元から共有**する:
 
-1. **`caveat push` CLI** ([packages/core/src/push.ts](../packages/core/src/push.ts) 80-86 行) — `gh pr create` 直前に呼ぶ。FAIL があれば abort し修正案を出力。これでローカル段階で 90% の問題を弾き、PR ラウンドトリップを節約する。
+1. **`caveat push` CLI** (`packages/core/src/push.ts` 80-86 行) — `gh pr create` 直前に呼ぶ。FAIL があれば abort し修正案を出力。これでローカル段階で 90% の問題を弾き、PR ラウンドトリップを節約する。
 2. **GH Actions ワークフロー** — `.github/scripts/run-validator.mjs` が `GITHUB_EVENT_PATH` から PR の diff を読み、同じ validator を呼び、構造化された report を出力。
 
 関数シグネチャ案:
@@ -94,26 +94,26 @@ function validateEntryFiles(opts: {
 
 ### 新規
 
-- [.github/workflows/auto-merge.yml](../.github/workflows/auto-merge.yml) — ワークフロー
-- [.github/scripts/run-validator.mjs](../.github/scripts/run-validator.mjs) — ワークフロー entry。`gh pr diff` または filesystem から PR diff を読み、validator を呼び、sticky comment 用 markdown を整形
-- [packages/core/src/prValidator.ts](../packages/core/src/prValidator.ts) — 純 validator (10 ゲート)
-- [packages/core/tests/prValidator.test.ts](../packages/core/tests/prValidator.test.ts) — 単体テスト (各ゲートの pass/fail、加えて実体に近い fixture 群での統合テスト)
+- `.github/workflows/auto-merge.yml` — ワークフロー
+- `.github/scripts/run-validator.mjs` — ワークフロー entry。`gh pr diff` または filesystem から PR diff を読み、validator を呼び、sticky comment 用 markdown を整形
+- `packages/core/src/prValidator.ts` — 純 validator (10 ゲート)
+- `packages/core/tests/prValidator.test.ts` — 単体テスト (各ゲートの pass/fail、加えて実体に近い fixture 群での統合テスト)
 
 ### 既存変更
 
-- [packages/core/src/push.ts](../packages/core/src/push.ts) — 86 行付近 (`visibility-private` チェックの後、`gh pr create` の前) で `validateEntryFiles` を呼ぶ。新規 return status `validator-failed` を追加
-- [packages/core/src/index.ts](../packages/core/src/index.ts) — `export * from './prValidator.js';`
-- [apps/cli/src/commands/push.ts](../apps/cli/src/commands/push.ts) — `validator-failed` status を扱い、各 gate 失敗を fix hint 付きで表示
-- [packages/core/src/types.ts](../packages/core/src/types.ts) — `Frontmatter` の zod スキーマを抽出するか検討 (prValidator.ts に置く案も可。後者は types.ts にランタイム依存を持ち込まない利点)
-- [CONTRIBUTING.md](../CONTRIBUTING.md) — "Maintainer merges PRs that pass the visibility gate" の記述を更新、10 ゲートを列挙して貢献者に何が検査されるか提示、`caveat push` が同 validator をローカル実行する旨を追記
-- [docs/plan.md](plan.md) — 「Phase 15: PR auto-validation」節を新設し、設計と v1/v2 分割を記録
+- `packages/core/src/push.ts` — 86 行付近 (`visibility-private` チェックの後、`gh pr create` の前) で `validateEntryFiles` を呼ぶ。新規 return status `validator-failed` を追加
+- [packages/core/src/index.ts](../../packages/core/src/index.ts) — `export * from './prValidator.js';`
+- `apps/cli/src/commands/push.ts` — `validator-failed` status を扱い、各 gate 失敗を fix hint 付きで表示
+- [packages/core/src/types.ts](../../packages/core/src/types.ts) — `Frontmatter` の zod スキーマを抽出するか検討 (prValidator.ts に置く案も可。後者は types.ts にランタイム依存を持ち込まない利点)
+- [CONTRIBUTING.md](../../CONTRIBUTING.md) — "Maintainer merges PRs that pass the visibility gate" の記述を更新、10 ゲートを列挙して貢献者に何が検査されるか提示、`caveat push` が同 validator をローカル実行する旨を追記
+- [docs/01_plan.md](../01_plan.md) — 「Phase 15: PR auto-validation」節を新設し、設計と v1/v2 分割を記録
 
 ### 再利用 (変更なし)
 
-- [packages/core/src/frontmatter.ts](../packages/core/src/frontmatter.ts) — `parseMarkdown` (YAML parse + section split)
-- [packages/core/src/community.ts](../packages/core/src/community.ts) (7 行) — `GITHUB_URL_RE` と slug 規則 (ファイル名パターン参照)
+- [packages/core/src/frontmatter.ts](../../packages/core/src/frontmatter.ts) — `parseMarkdown` (YAML parse + section split)
+- [packages/core/src/community.ts](../../packages/core/src/community.ts) (7 行) — `GITHUB_URL_RE` と slug 規則 (ファイル名パターン参照)
 - `gray-matter` + `js-yaml` (既存依存。`JSON_SCHEMA` engine を再利用)
-- `zod` (MCP ツールで既に使用、例: [apps/mcp/src/tools/search.ts](../apps/mcp/src/tools/search.ts))
+- `zod` (MCP ツールで既に使用、例: [apps/mcp/src/tools/search.ts](../../apps/mcp/src/tools/search.ts))
 
 ---
 
@@ -128,7 +128,7 @@ function validateEntryFiles(opts: {
 5. **branch protection**: `main` に対して GitHub Web UI から設定し、PR が `validate` ステータス green なしには merge できないことを確認。
 6. **回帰テスト**: `corepack pnpm -r test` の合計が現状 (152 件) 通りグリーン。新規テスト追加で 170+ 件になる想定。
 
-merge コミットおよび `docs/plan.md` の Phase 15 entry に、Phase B (full auto-merge) を意図的に保留した旨を記載する。
+merge コミットおよび `docs/01_plan.md` の Phase 15 entry に、Phase B (full auto-merge) を意図的に保留した旨を記載する。
 
 ---
 

@@ -5,17 +5,17 @@
 > と sidecar advisory (`caveat codex-sidecar diagnostics|smoke|run|work-smoke`)
 > が **v0.14.2** で投入され、`advisory` preset 化が **v0.14.7** で完了。
 > Claude / Codex 両ホストの実運用検証済 (詳細は
-> [docs/NEXT_SESSION.md](NEXT_SESSION.md)、`CHANGELOG.md`、
-> [docs/DUAL_AGENT_SUPPORT.md](DUAL_AGENT_SUPPORT.md))。
+> [docs/05_next_session.md](05_next_session.md)、`CHANGELOG.md`、
+> [docs/03_dual_agent_support.md](03_dual_agent_support.md))。
 >
 > 本文中の `- [ ]` チェックボックスは**投入時の作業単位の記録**として
 > 残してあるが、計画段階の整理項目で実体は実装で解消済み。
 > 仕様の真実は `CLAUDE.md` の「Claude Code Hook の実装」節と
-> `docs/DUAL_AGENT_SUPPORT.md` を参照。新規修正をする時はチェックボックスを
+> `docs/03_dual_agent_support.md` を参照。新規修正をする時はチェックボックスを
 > 増やさず、それぞれのコード箇所に直接 PR を投げる。
 
 この文書は、Caveat に Codex hook 対応を追加するための TODO 兼
-実装計画書です。`CLAUDE.md` と `docs/DUAL_AGENT_SUPPORT.md` に対する
+実装計画書です。`CLAUDE.md` と `docs/03_dual_agent_support.md` に対する
 追加文書として扱います。
 
 `CLAUDE.md` は、既存の Claude Code 統合に関する正本です。Codex 対応の
@@ -402,7 +402,7 @@ Installation:
 
 目的: この対応を理解・保守・release できる状態にする。
 
-- [x] `docs/DUAL_AGENT_SUPPORT.md` に Codex hook adapter note を追加する。
+- [x] `docs/03_dual_agent_support.md` に Codex hook adapter note を追加する。
 - [ ] user-facing install behavior が変わる場合のみ、`README.md` /
       `README.ja.md` を更新する。
 - [ ] Claude contract 自体が変わる場合のみ `CLAUDE.md` を更新する。

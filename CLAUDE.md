@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **v0.14.8**（2026-05-08 公開、259 tests passing、全 workspace typecheck passing）。**`<caveatHome>/pending/<sessionId>/` の自動掃除を追加**。Stop hook 冒頭で `maybeSweepPendingDirs` を 1 日デバウンスで呼び、最新 mtime が 7 日以上前のサブツリーを丸ごと削除する。マーカー `<caveatHome>/pending/.last-sweep` で同日中の連続発火をスキップ、`CAVEAT_PENDING_SWEEP=off` で完全停止。`caveat init` も belt-and-suspenders で同じ sweep を呼ぶ（`--pending-stale-days <n>` で閾値上書き、dry-run は予告ログのみ）。アクティブセッションは append/drain で mtime が更新されるため回収されない。
 
-**v0.14.7**（2026-05-06 公開、247 tests passing、全 workspace typecheck passing）。Codex sidecar advisory が明示モデルポリシ (`gpt-5.4-mini` low reasoning) で動作する `advisory` preset を採用し、Claude hook の advisory 呼び出しは `--preset advisory` 経由になった。リリース smoke スクリプトを再利用可能化、CI で `caveat-cli` packed tarball の `workspace:` リーク検査と install + `--version` 確認を追加。Windows release-pack ジョブは `corepack.cmd` / `npm.cmd` のためにシェル経由実行。2026-05-08 に Claude 生成応答 smoke を再実行して全項目クリア（[docs/NEXT_SESSION.md](docs/NEXT_SESSION.md)）。
+**v0.14.7**（2026-05-06 公開、247 tests passing、全 workspace typecheck passing）。Codex sidecar advisory が明示モデルポリシ (`gpt-5.4-mini` low reasoning) で動作する `advisory` preset を採用し、Claude hook の advisory 呼び出しは `--preset advisory` 経由になった。リリース smoke スクリプトを再利用可能化、CI で `caveat-cli` packed tarball の `workspace:` リーク検査と install + `--version` 確認を追加。Windows release-pack ジョブは `corepack.cmd` / `npm.cmd` のためにシェル経由実行。2026-05-08 に Claude 生成応答 smoke を再実行して全項目クリア（[docs/05_next_session.md](docs/05_next_session.md)）。
 
 **v0.14.6**（2026-05-06、245 tests passing、全 workspace typecheck passing）。**Claude / Codex とも Stop reminder はその場で最終回答に混ぜず pending 化し、次の context-capable hook で compact して出す**。Codex 側は `caveat codex-hook install|diagnostics|user-prompt-submit|post-tool-use|stop` で Codex runtime から Caveat CLI を直接呼ぶ。Claude 側は従来の `caveat hook post-tool-use` を `PostToolUse` と `PostToolUseFailure` の両方に登録する。現行 Claude Code は失敗 tool で `PostToolUseFailure` を出し、payload の `error` field に失敗内容を入れるため、Caveat はこの field も既存の非同期 worker / pending reminder 経路へ流す。prompt surface は `symptom_text` が失敗状態を述べる根拠、`topical_text` が罠の主題と重なる根拠として独立に要求する。
 
@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `caveat codex-sidecar diagnostics|smoke|run|work-smoke` を CLI に追加。Caveat DB 検索 → `caveat_entry` context block → `codex-sidecar --context-file` → structured `SidecarResult` の経路を持つ
 - Hook advisory は `CAVEAT_HOOK_CODEX_SIDECAR=off|auto|require` で制御。default `auto` は `.codex-sidecar.yml` がある project だけ試す。失敗時は hidden fallback せず `[caveat:codex-sidecar] advisory unavailable: ...` を明示
 - `AGENTS.md` は Codex 向けの薄い入口で、`CLAUDE.md` を正本として扱う。Claude 固有の契約を Codex 風に書き換えない
-- `docs/DUAL_AGENT_SUPPORT.md` に Claude contract / Codex adapter / hook advisory / execution policy を記録
+- `docs/03_dual_agent_support.md` に Claude contract / Codex adapter / hook advisory / execution policy を記録
 
 **v0.12.0**（2026-05-04、202 tests passing、schema v3）。**事前発火の精度改善 — 「固有名詞だけでHIT してはいけない」を構造的ゲートで実装**。語の偶然一致 (wide-net) では「関連性」が表現できないという根本反省から、**症状特異語ゲート + rare-anchor (min-DF) ゲート**を既存の 2-of-N 共起の上に追加。プロンプトが「話題に触れただけ」(`RTX 5090 CUDA で何かやってる`) の段階では silent、症状語彙が来た瞬間 (`RTX 5090 で cudaGetDeviceCount が 0 を返す`) に該当 entry を 1 件返す。
 
@@ -57,7 +57,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Tool (public): https://github.com/kitepon-rgb/Caveat
 - 旧 `kitepon-rgb/caveats-quo` は削除済。kitepon-rgb/Caveat 自体の `entries/` は公開 dogfood reference として残す（tool は自動 subscribe しない、他人が手動 `community add` 可）
 
-**`docs/plan.md` が設計の真実の源**。アーキテクチャ判断の前に必ず読む。`docs/audit.md` には過去に議論・却下した論点が残っているので蒸し返さない。`docs/archive/` には没案や別セッション由来の設計メモが置いてある（現役資料ではない）。
+**`docs/00_overview.md` が文書の入口、`docs/01_plan.md` が設計の真実の源**。アーキテクチャ判断の前に必ず読む。`docs/02_audit.md` には過去に議論・却下した論点が残っているので蒸し返さない。`docs/archive/` には没案や別セッション由来の設計メモが置いてある（現役資料ではない）。
 
 ## コマンド
 
@@ -89,6 +89,8 @@ node apps/cli/dist/caveat.js mcp-server            # MCP stdio（手動テスト
 
 単一テストファイル: `corepack pnpm --filter @caveat/core test -- tests/env.test.ts`
 単一 describe/it: `corepack pnpm --filter @caveat/core test -- -t "envMatch"`
+
+Project-local `.claude/settings.json` は端末固有の permission allowlist なので repo には作らない。必要な場合は Claude Code の fewer-permission-prompts 生成手順でローカル作成し、既存の `**/.claude/` ignore のまま管理する。
 
 ## アーキテクチャ
 
@@ -154,7 +156,7 @@ MCP stdio サーバは stdout に JSON-RPC 以外を書いてはいけない。`
 - `caveat community add <url>` → `simpleGit().clone(url, target, ['--depth', '1'])` で shallow clone
 - `caveat community pull` → `community/<handle>/` 各ディレクトリで `simpleGit(path).pull()`。失敗は `{ status: 'failed', message }` で収集（途中で落とさない）
 - `caveat community list` → DB の `source = 'community/<handle>'` カウントと合わせて表示
-- **community 取り込みと index は別コマンド**: add/pull した後は明示的に `caveat index` を呼んで FTS 同期する（plan.md の一方向フロー原則）
+- **community 取り込みと index は別コマンド**: add/pull した後は明示的に `caveat index` を呼んで FTS 同期する（01_plan.md の一方向フロー原則）
 
 ## Web の構造（Phase 5）
 

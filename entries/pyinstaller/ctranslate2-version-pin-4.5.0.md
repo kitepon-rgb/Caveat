@@ -30,8 +30,8 @@ ctranslate2 は C++ 実装 + CUDA バインディング。PyInstaller は共有�
 
 ## Resolution
 - `requirements.txt` で `ctranslate2==4.5.0` と厳密ピン
-- `setuptools>=82.0.1` が `pkg_resources` を別 distribution に移した影響で ctranslate2 4.4.0 が import 失敗するため、併せて `setuptools<=75.x` もピン（別 caveat: [setuptools-82-breaks-ctranslate2](setuptools-82-breaks-ctranslate2.md)）
-- exe build 後は **必ず全パイプライン（音声入力→翻訳出力）をテスト**。起動確認だけでは不足（[pyinstaller-exe-test-full-pipeline](pyinstaller-exe-test-full-pipeline.md)）
+- `setuptools>=82.0.1` が `pkg_resources` を別 distribution に移した影響で ctranslate2 4.4.0 が import 失敗するため、併せて `setuptools<=75.x` もピン（別 caveat: [setuptools-82-breaks-ctranslate2](../python/setuptools-82-breaks-ctranslate2.md)）
+- exe build 後は **必ず全パイプライン（音声入力→翻訳出力）をテスト**。起動確認だけでは不足（[pyinstaller-exe-test-full-pipeline](test-full-pipeline-not-startup.md)）
 
 ## Evidence
 - LiveTR/CLAUDE.md に version pin 決定の履歴

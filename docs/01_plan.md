@@ -366,10 +366,10 @@ caveat nlm-brief <topic>              # ターミナルから brief 生成
      - `.gitignore` を `**/.vscode/` / `**/.idea/` / `**/.claude/` の深い階層対応に拡張（`packages/core/.vscode/` の個人絶対パス漏れを未然にブロック）
      - `env.test.ts` の fixture を `kite_` → `alice` に置換
      - CLAUDE.md の絶対パス例を `<you>` プレースホルダ化
-     - `docs/plan.md` の `C:\Users\kite_\...` 例は「Windows 開発環境の具体例」として意図的に残存。機微情報なし
+     - `docs/01_plan.md` の `C:\Users\kite_\...` 例は「Windows 開発環境の具体例」として意図的に残存。機微情報なし
    - **9b. GitHub push**（2026-04-18）: tool repo は **public** で [kitepon-rgb/Caveat](https://github.com/kitepon-rgb/Caveat)、knowledge repo は **private** で [kitepon-rgb/caveats-quo](https://github.com/kitepon-rgb/caveats-quo)。knowledge 側は初期は保守的に private、公開して問題ないエントリが貯まったら public 化を検討
 10. **Claude Code 統合** — MCP 登録 + hooks 追記 ✅ 完了（2026-04-18）。**注意**: MCP サーバは `~/.claude/settings.json` では定義できない（schema validation で reject される、`mcpServers` は有効フィールドではない）。正しくは `claude mcp add --scope user caveat node -- "--disable-warning=ExperimentalWarning" "<absolute-path>/apps/mcp/dist/server.js"` で `~/.claude.json` に書き込む。hooks は settings.json 側で OK。実機で `claude mcp list` → `caveat: ... ✓ Connected` を確認済。hooks は既存 throughline と並列に追加、`[caveat]` prefix 付き `<system-reminder>` 出力を実機 spawn テストで確認済。事前に `~/.claude/settings.backup-20260418.json` を取得
-11. **README 拡充 + CONTRIBUTING** — セットアップ、他人の caveat repo を繋ぐ手順、OSS 公開時の CONTRIBUTING ✅ 完了（2026-04-18、README.md を v0 完成版に書き直し: Full setup の 5 ステップ（knowledge repo 作成 / `~/.caveatrc.json` 配線 / Claude Code MCP 登録 + hooks / pre-commit gate 有効化 / Obsidian セットアップ）、community インポート、frontmatter 仕様、development コマンド、ライセンス。CONTRIBUTING.md 新規: PR 基準、テスト要求、audit.md 参照、歓迎領域／却下領域の明示、security reporting）
+11. **README 拡充 + CONTRIBUTING** — セットアップ、他人の caveat repo を繋ぐ手順、OSS 公開時の CONTRIBUTING ✅ 完了（2026-04-18、README.md を v0 完成版に書き直し: Full setup の 5 ステップ（knowledge repo 作成 / `~/.caveatrc.json` 配線 / Claude Code MCP 登録 + hooks / pre-commit gate 有効化 / Obsidian セットアップ）、community インポート、frontmatter 仕様、development コマンド、ライセンス。CONTRIBUTING.md 新規: PR 基準、テスト要求、02_audit.md 参照、歓迎領域／却下領域の明示、security reporting）
 12. **NPM 配布形態への再構成** ✅ 完了（2026-04-19、6 installer tests + 141 合計 tests passing）。Phase 11 終了時点の v0 は「git clone → `pnpm link --global`」が前提で、NPM エンドユーザーが `npm i -g <pkg>` で即使える形ではなかった。Phase 12 で以下を再構成:
     - **単一 NPM パッケージ `caveat-cli`**: `apps/cli/package.json` を `private: false` / name `caveat-cli` / `publishConfig: { access: public }` に変更。workspace deps (`@caveat/core` / `@caveat/mcp` / `@caveat/web`) は `tsup.config.ts` の `noExternal` で CLI バンドルに吸収され、公開後の `dependencies` は commander のみ
     - **MCP / hooks を CLI のサブコマンド化**: `caveat mcp-server` が `@caveat/mcp` の `startMcpStdioServer()` を呼ぶ。`caveat hook <user-prompt-submit|stop>` が `@caveat/core/claudeHooks.ts` を使う。Claude Code 連携は常に `caveat ...` コマンド経由になり、インストールパスに非依存
@@ -449,7 +449,7 @@ caveat nlm-brief <topic>              # ターミナルから brief 生成
     - **制御変数**: `CAVEAT_HOOK_CODEX_SIDECAR=off|auto|require`。default `auto` は `.codex-sidecar.yml` がある project だけ試す。失敗時は hidden fallback せず unavailable 行を表示
     - **Codex adapter**: `caveatEntryToSidecarContextBlock` が Caveat entry を `caveat_entry` JSON context block に変換。CLI は Caveat DB search → full entry fetch → context file → `codex-sidecar --context-file` の順に渡す
     - **Codex-on-Codex 抑制**: `decideCodexSidecarExecution` は host agent と availability / isolation / structured result の境界を見て、無意味な Codex 再帰委譲を避ける
-    - **docs**: `docs/DUAL_AGENT_SUPPORT.md` に Claude contract、Codex adapter、execution policy、hook advisory、smoke command を集約。`AGENTS.md` は `CLAUDE.md` を正本とするリンクだけを持ち、Claude 固有記載を Codex 風に上書きしない
+    - **docs**: `docs/03_dual_agent_support.md` に Claude contract、Codex adapter、execution policy、hook advisory、smoke command を集約。`AGENTS.md` は `CLAUDE.md` を正本とするリンクだけを持ち、Claude 固有記載を Codex 風に上書きしない
 
 ## 検証
 

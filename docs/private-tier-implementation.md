@@ -13,7 +13,7 @@ v0.6.2 の「visibility は必ずユーザに聞け、自動分類するな」�
 
 - [apps/mcp/src/tools/record.ts:18-20](../apps/mcp/src/tools/record.ts#L18-L20) の現行説明（「Ask the user... never auto-classify」）は本計画ステップ 1 で書き換え
 - メモリ `feedback_visibility_user_decides.md` は新方針に更新済（2026-04-23）
-- plan.md / CLAUDE.md への反映はステップ 7 で実施
+- 01_plan.md / CLAUDE.md への反映はステップ 7 で実施
 
 ## 変更対象ファイル一覧
 
@@ -91,11 +91,11 @@ v0.6.2 の「visibility は必ずユーザに聞け、自動分類するな」�
 
 この時点で `caveat list --stale` が動く前提のはずなので、ステップ 5 完了後に実施。
 
-### ステップ 7: plan.md / CLAUDE.md への反映
+### ステップ 7: 01_plan.md / CLAUDE.md への反映
 
 | ファイル | 変更内容 |
 |---|---|
-| [docs/plan.md](plan.md) | 本設計メモを取り込み。private tier / 二項基準 / `caveat list --stale` / 明示依頼パターンの記載 |
+| [docs/01_plan.md](01_plan.md) | 本設計メモを取り込み。private tier / 二項基準 / `caveat list --stale` / 明示依頼パターンの記載 |
 | [CLAUDE.md](../CLAUDE.md) | 二項基準、明示依頼パターン、月次点検運用の要約を追記 |
 | メモリ `feedback_visibility_user_decides.md` | 2026-04-23 に更新済（新方針への反転） |
 
@@ -105,7 +105,7 @@ v0.6.2 の「visibility は必ずユーザに聞け、自動分類するな」�
 ステップ1 (ツール説明) ──┐
 ステップ2 (Stop文言) ────┼─→ 動作確認 ─→ ステップ6 (手書きシード)
 ステップ3 (search絞込) ──┘                ↓
-                                          ステップ7 (plan.md/CLAUDE.md)
+                                          ステップ7 (01_plan.md/CLAUDE.md)
 ステップ4 (last_hit_at) ──→ ステップ5 (list --stale)
 ```
 
@@ -124,7 +124,7 @@ v0.6.2 の「visibility は必ずユーザに聞け、自動分類するな」�
 | 4 | 2 時間（schema 変更 + migration + markHit + hook/tool 統合 + テスト） |
 | 5 | 1 時間（CLI 新サブコマンド + テスト） |
 | 6 | 30 分〜1 時間（手書きシード 3〜5 件） |
-| 7 | 45 分（plan.md / CLAUDE.md 反映） |
+| 7 | 45 分（01_plan.md / CLAUDE.md 反映） |
 | **合計** | **約 6 時間** |
 
 ## リスクと注意点
@@ -158,5 +158,5 @@ v0.6.2 の「visibility は必ずユーザに聞け、自動分類するな」�
 ## 関連
 
 - [private-tier-design.md](private-tier-design.md) — 設計思想と論拠
-- [plan.md](plan.md) — 設計の真実の源（本計画完了後にマージ）
+- [01_plan.md](01_plan.md) — 設計の真実の源（本計画完了後にマージ）
 - [CLAUDE.md](../CLAUDE.md) — 現行仕様（本計画完了後に反映）

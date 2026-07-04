@@ -52,12 +52,12 @@ review、risk-check、isolated work 用に残します。
 | AI が自覚しないもがきも検出 | ✅ transcript シグナル抽出 | ❌ | ❌ | ❌ |
 | 外部仕様の罠と repo 固有メモを混在管理 | ✅ public / private 2 tier | ⚠️ 分離なし | ⚠️ | ⚠️ |
 
-**ステータス**: v0.14.10、CI は Ubuntu / Windows × Node 22/24 で緑。個人および小規模チームが主な想定ユースケースです。中央 DB なし、インストール時の自動購読なし。最新の引き継ぎノートは [docs/NEXT_SESSION.md](docs/NEXT_SESSION.md) を参照。
+**ステータス**: v0.14.10、CI は Ubuntu / Windows × Node 22/24 で緑。個人および小規模チームが主な想定ユースケースです。中央 DB なし、インストール時の自動購読なし。最新の引き継ぎノートは [docs/05_next_session.md](docs/05_next_session.md) を参照。
 
 <details>
 <summary><strong>なぜ中央 DB を持たない？</strong>（v0.7 での方針転換）</summary>
 
-以前のバージョンは中央の shared community DB を持ち、`caveat push`（fork + PR）と `caveat init` の自動購読で運用していました。これは廃止しました — **赤の他人の貢献を auto-validate するモデルが原理的に脆弱** だからです。LLM oracle を gate に置いても adversarial-gradient 攻撃で破られ、xz-utils 型の long-game は静的検査で検知不能。よって信頼は「自動検査」ではなく「社会的文脈」で引く方針に転換しました。詳細は [docs/plan.md](docs/plan.md) と [廃案になった自動マージ設計](docs/archive/auto-merge-design.md) 参照。
+以前のバージョンは中央の shared community DB を持ち、`caveat push`（fork + PR）と `caveat init` の自動購読で運用していました。これは廃止しました — **赤の他人の貢献を auto-validate するモデルが原理的に脆弱** だからです。LLM oracle を gate に置いても adversarial-gradient 攻撃で破られ、xz-utils 型の long-game は静的検査で検知不能。よって信頼は「自動検査」ではなく「社会的文脈」で引く方針に転換しました。詳細は [docs/01_plan.md](docs/01_plan.md) と [廃案になった自動マージ設計](docs/archive/auto-merge-design.md) 参照。
 </details>
 
 <details>
@@ -154,7 +154,7 @@ npm install -g ./caveat-cli-<ver>.tgz    # PATH に caveat が入る
 npm release は `apps/cli` で `corepack pnpm publish` を使います。
 `npm publish` を直接使うと packed manifest に `workspace:*` が残るため禁止です。
 publish だけでは release 完了ではありません。
-[`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) に従い、fresh npm
+[`docs/04_release_checklist.md`](docs/04_release_checklist.md) に従い、fresh npm
 install、Claude Haiku の新規 session smoke、Codex の新規 session smoke、CI、npm
 registry 確認まで完了させます。
 

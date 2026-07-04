@@ -208,7 +208,7 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 ## [0.8.0] — 2026-04-22
 
 ### Changed
-- **UserPromptSubmit hook (事前発火) rewritten from keyword-allowlist to co-occurrence FTS.** Tokenizes the prompt, runs a per-token FTS5 query, and counts how many distinct tokens co-occur in each entry. Only entries matching ≥ 2 distinct tokens are surfaced. No hardcoded keyword/stopword lists — a new gotcha category just needs a new `entries/*.md` file and the trigger self-extends. Rule design: a single common word like `make` / `new` can't fire a match on its own, but two+ technical tokens co-occurring in the same entry will. See [docs/plan.md#phase-15](docs/plan.md) and `feedback_no_hardcoded_lists` memory.
+- **UserPromptSubmit hook (事前発火) rewritten from keyword-allowlist to co-occurrence FTS.** Tokenizes the prompt, runs a per-token FTS5 query, and counts how many distinct tokens co-occur in each entry. Only entries matching ≥ 2 distinct tokens are surfaced. No hardcoded keyword/stopword lists — a new gotcha category just needs a new `entries/*.md` file and the trigger self-extends. Rule design: a single common word like `make` / `new` can't fire a match on its own, but two+ technical tokens co-occurring in the same entry will. See [docs/01_plan.md#phase-15](docs/01_plan.md) and `feedback_no_hardcoded_lists` memory.
 
 ## [0.7.0] — 2026-04-19
 
@@ -227,7 +227,7 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 - **MCP tool count is now 6** (was 7): `caveat_search`, `caveat_get`, `caveat_record`, `caveat_update`, `caveat_list_recent`, `caveat_pull`.
 - **`caveat init`** scaffolds local state and registers Claude Code integration; no network operations during init unless `--skip-claude` is also off.
 - **Stop hook reminder** no longer nudges `caveat_push` (the tool no longer exists).
-- **README / CONTRIBUTING / SECURITY / CLAUDE.md / docs/plan.md** rewritten to reflect the new "personal / group" model.
+- **README / CONTRIBUTING / SECURITY / CLAUDE.md / docs/01_plan.md** rewritten to reflect the new "personal / group" model.
 
 ## [0.6.2] — 2026-04-19
 
@@ -305,4 +305,4 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ## v0 implementation phases (pre-NPM)
 
-For the design history of the v0 feature set (Phase 0 through 11), see `docs/plan.md`. Those phases predate the NPM release and are captured in commit history on the `main` branch of `kitepon-rgb/Caveat`.
+For the design history of the v0 feature set (Phase 0 through 11), see `docs/01_plan.md`. Those phases predate the NPM release and are captured in commit history on the `main` branch of `kitepon-rgb/Caveat`.

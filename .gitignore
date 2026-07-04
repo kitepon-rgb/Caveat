@@ -26,6 +26,19 @@ community/
 # Env
 .env
 .env.local
+.env.*
+!.env.example
+
+# Secrets / local credentials
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+id_rsa
+id_ed25519
 
 # OS
 .DS_Store
@@ -33,6 +46,12 @@ Thumbs.db
 
 # Editor caches
 *.swp
+
+# Build and test outputs
+build/
+coverage/
+.next/
+.turbo/
 
 # IDE / Editor per-user config (personal absolute paths, auto-generated) — any depth
 **/.vscode/

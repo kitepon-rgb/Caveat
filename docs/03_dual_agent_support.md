@@ -161,13 +161,13 @@ requires `operational` or `work-capable`.
 ## Smoke Commands
 
 Release-grade Claude/Codex hook smoke is tracked in
-[`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md). That checklist is the required
+[`04_release_checklist.md`](04_release_checklist.md). That checklist is the required
 post-publish path for proving the published npm package can install hooks and
 start fresh Claude/Codex sessions. The commands below are sidecar-specific
 diagnostics and do not replace release smoke.
 
 Current release status and the only outstanding post-release retry are tracked
-in [`NEXT_SESSION.md`](NEXT_SESSION.md). As of `caveat-cli@0.14.7` and
+in [`05_next_session.md`](05_next_session.md). As of `caveat-cli@0.14.7` and
 `codex-sidecar-cli@0.3.0`, the Codex path is fully verified from published
 packages. The only pending smoke is the Claude generated-response check after
 the Claude account rate limit resets.

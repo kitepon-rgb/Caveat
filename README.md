@@ -52,12 +52,12 @@ The knowledge repo is plain markdown-in-git. Open it as an Obsidian vault. Share
 | Catches struggle the AI didn't self-report | ✅ transcript signal mining | ❌ | ❌ | ❌ |
 | Mixes external-spec gotchas with repo-specific context | ✅ public / private tiers | ⚠️ no separation | ⚠️ | ⚠️ |
 
-**Status**: v0.14.10, CI green across Ubuntu/Windows and Node 22/24. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install. Current handoff notes live in [docs/NEXT_SESSION.md](docs/NEXT_SESSION.md).
+**Status**: v0.14.10, CI green across Ubuntu/Windows and Node 22/24. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install. Current handoff notes live in [docs/05_next_session.md](docs/05_next_session.md).
 
 <details>
 <summary><strong>Why no central shared DB?</strong> (v0.7 pivot)</summary>
 
-Earlier versions ran a central shared community DB with `caveat push` (fork + PR) and auto-subscribe on `caveat init`. That model was retired because trust over arbitrary stranger contributions cannot be reliably automated — sophisticated malicious payloads survive static gates and adversarial-gradient attacks against any LLM-based oracle. xz-utils-style long games are undetectable by static review. Trust is now defined socially (you, your team, your org). See [docs/plan.md](docs/plan.md) and the [abandoned auto-merge design](docs/archive/auto-merge-design.md).
+Earlier versions ran a central shared community DB with `caveat push` (fork + PR) and auto-subscribe on `caveat init`. That model was retired because trust over arbitrary stranger contributions cannot be reliably automated — sophisticated malicious payloads survive static gates and adversarial-gradient attacks against any LLM-based oracle. xz-utils-style long games are undetectable by static review. Trust is now defined socially (you, your team, your org). See [docs/01_plan.md](docs/01_plan.md) and the [abandoned auto-merge design](docs/archive/auto-merge-design.md).
 </details>
 
 <details>
@@ -135,15 +135,18 @@ apps/web/             @caveat/web — Hono SSR read-only share portal (/, /g/:id
 hooks/                pre-commit-visibility-gate.mjs (run by .husky/pre-commit) — thin
                       re-export wrapper around @caveat/core's findBlockedFiles
 .husky/               git pre-commit wiring (husky 9)
-docs/plan.md          Design source of truth (audited through Round 5, then extended
+docs/00_overview.md      Documentation map and reading order
+docs/01_plan.md          Design source of truth (audited through Round 5, then extended
                       Phase 2 → 12 with implementation findings)
-docs/audit.md         Audit history (rejected proposals preserved so they don't reappear)
-docs/NEXT_SESSION.md  Current handoff: release state, remaining smoke, closeout checks
-docs/DUAL_AGENT_SUPPORT.md
+docs/02_audit.md         Audit history (rejected proposals preserved so they don't reappear)
+docs/03_dual_agent_support.md
                       Claude/Codex contract, sidecar policy, and smoke notes
-docs/RELEASE_CHECKLIST.md
+docs/04_release_checklist.md
                       Required publish and post-publish verification checklist
+docs/05_next_session.md  Current handoff: release state, remaining smoke, closeout checks
+docs/adr/            Architecture decision records
 docs/archive/         Superseded drafts (legacy brainstorms, etc.)
+rag/                  Research asset ledger; currently only INDEX.md
 ```
 
 ## Requirements
@@ -211,7 +214,7 @@ For npm releases, publish from `apps/cli` with `corepack pnpm publish`.
 Do not use `npm publish` directly; pnpm normalizes workspace dev dependencies
 in the packed manifest, while npm leaves `workspace:*` strings intact.
 Release work is not done at publish time: follow
-[`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) through fresh npm
+[`docs/04_release_checklist.md`](docs/04_release_checklist.md) through fresh npm
 install, Claude Haiku new-session smoke, Codex new-session smoke, CI, and npm
 registry verification.
 
@@ -289,7 +292,7 @@ last_verified: 2026-04-18
 ## Evidence
 ```
 
-See [docs/plan.md](docs/plan.md) for the full schema, semver matching rules, and MCP tool specs.
+See [docs/01_plan.md](docs/01_plan.md) for the full schema, semver matching rules, and MCP tool specs.
 
 ## Development
 

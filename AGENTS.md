@@ -15,6 +15,6 @@ When working on dual-agent support:
   convenience.
 - If a Claude-specific section needs clarification, update a separate dual-agent
   note first and only edit `CLAUDE.md` when the Claude contract itself changes.
-- Prefer `docs/DUAL_AGENT_SUPPORT.md` for Codex sidecar policy and execution
+- Prefer `docs/03_dual_agent_support.md` for Codex sidecar policy and execution
   notes.
 
