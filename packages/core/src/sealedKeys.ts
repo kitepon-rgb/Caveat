@@ -49,7 +49,7 @@ export function parseKeyserverKeyId(keyId: string): { bareId: string } {
   return { bareId };
 }
 
-function normalizeKeyserverUrl(keyserverUrl: string): string {
+export function normalizeKeyserverUrl(keyserverUrl: string): string {
   let url: URL;
   try {
     url = new URL(keyserverUrl);
