@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
+  KNOWLEDGE_GITIGNORE,
   cleanupStalePendingDirs,
   computeEntriesDigest,
   ensureUserConfig,
@@ -8,16 +9,6 @@ import {
   reindexAllSources,
   writeDigestMarker,
 } from '@caveat/core';
-
-const KNOWLEDGE_GITIGNORE = [
-  '# Never commit entries flagged private (visibility: private is enforced by the',
-  '# pre-commit gate, but this is a filename-level backup guard).',
-  '*.private.md',
-  '',
-  '# Obsidian per-user config: workspace layout, theme, plugin state, cache.',
-  '.obsidian/',
-  '',
-].join('\n');
 import type { CliContext } from '../context.js';
 import {
   installClaudeIntegration,

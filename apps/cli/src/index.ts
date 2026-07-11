@@ -16,6 +16,7 @@ import { runHook, type HookName } from './commands/hookCmd.js';
 import { runCodexHook } from './commands/codexHookCmd.js';
 import { installCodexHooks, uninstallCodexHooks } from './codexHookInstall.js';
 import { runPull } from './commands/pull.js';
+import { runSync } from './commands/sync.js';
 import {
   runCodexSidecarDiagnostics,
   runCodexSidecarSmoke,
@@ -159,6 +160,25 @@ program
   .action(async () => {
     const ctx = buildContext(stdoutLogger);
     await runPull(ctx);
+  });
+
+program
+  .command('sync')
+  .description('Sync own Caveat entries to a private git remote')
+  .option('--init [url]', 'initialize private remote sync (optionally with its URL)')
+  .option('--repo <url>', 'private remote URL (requires --init)')
+  .option('--dry-run', 'show pending own-repo changes without writing', false)
+  .option('--trust-remote-private', 'continue when anonymous remote visibility cannot be determined', false)
+  .option('--yes', 'approve creating the default GitHub private repository', false)
+  .action(async (opts: {
+    init?: boolean | string;
+    repo?: string;
+    dryRun: boolean;
+    trustRemotePrivate: boolean;
+    yes: boolean;
+  }) => {
+    const ctx = buildContext(stdoutLogger);
+    await runSync(ctx, opts);
   });
 
 program
