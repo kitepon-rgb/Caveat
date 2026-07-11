@@ -13,6 +13,14 @@ import type { CaveatConfig } from '../src/config.js';
 const logger = { info: () => {}, warn: () => {}, error: () => {} };
 const alwaysYes = () => true;
 
+// publishOwn commits inside the mirror clone it creates, which has no local
+// git identity. CI runners have no global identity either — inject one via
+// env so every git child (execFileSync and simple-git) inherits it.
+process.env.GIT_AUTHOR_NAME = 'caveat test';
+process.env.GIT_AUTHOR_EMAIL = 'caveat-test@example.invalid';
+process.env.GIT_COMMITTER_NAME = 'caveat test';
+process.env.GIT_COMMITTER_EMAIL = 'caveat-test@example.invalid';
+
 interface Fixture {
   root: string;
   remote: string;

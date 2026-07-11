@@ -129,8 +129,12 @@ export async function preflightSync(
     throw new SyncError('NOT_A_REPO', 'own knowledge directory is not a git repository; run `caveat sync --init` first');
   }
 
-  const root = realpathSync((await git.revparse(['--show-toplevel'])).trim());
-  const requested = realpathSync(ownDir);
+  // realpathSync.native expands Windows 8.3 short names (RUNNER~1 → runneradmin),
+  // which plain realpathSync does not — git returns the long form for
+  // --show-toplevel, so comparing without expansion false-positives
+  // EXTERNAL_TOPLEVEL whenever the path came in as a short name (CI temp dirs).
+  const root = realpathSync.native((await git.revparse(['--show-toplevel'])).trim());
+  const requested = realpathSync.native(ownDir);
   if (normalizePath(root) !== normalizePath(requested)) {
     throw new SyncError('EXTERNAL_TOPLEVEL', `EXTERNAL_TOPLEVEL: own directory must be the repository root: ${requested} (root: ${root})`);
   }

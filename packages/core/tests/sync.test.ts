@@ -10,6 +10,14 @@ const readable: ProbeImpl = async () => ({ kind: 'anonymous-readable' });
 const indeterminate: ProbeImpl = async () => ({ kind: 'indeterminate', reason: 'offline' });
 const logger = { info: () => {}, warn: () => {}, error: () => {} };
 
+// initOwnSync commits inside a repo it creates itself (no local identity).
+// CI runners have no global git identity — inject one via env so git children
+// spawned by both execFileSync and simple-git inherit it.
+process.env.GIT_AUTHOR_NAME = 'caveat test';
+process.env.GIT_AUTHOR_EMAIL = 'caveat-test@example.invalid';
+process.env.GIT_COMMITTER_NAME = 'caveat test';
+process.env.GIT_COMMITTER_EMAIL = 'caveat-test@example.invalid';
+
 interface Fixture {
   root: string;
   remote: string;
