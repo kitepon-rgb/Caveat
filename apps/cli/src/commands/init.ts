@@ -1,6 +1,13 @@
 import { existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { cleanupStalePendingDirs, ensureUserConfig, openDb } from '@caveat/core';
+import {
+  cleanupStalePendingDirs,
+  computeEntriesDigest,
+  ensureUserConfig,
+  openDb,
+  reindexAllSources,
+  writeDigestMarker,
+} from '@caveat/core';
 
 const KNOWLEDGE_GITIGNORE = [
   '# Never commit entries flagged private (visibility: private is enforced by the',
@@ -58,7 +65,12 @@ export async function runInit(
     const dbDir = dirname(ctx.paths.dbPath);
     if (!existsSync(dbDir)) mkdirSync(dbDir, { recursive: true });
     const db = openDb({ path: ctx.paths.dbPath, logger: ctx.logger });
-    db.close();
+    try {
+      reindexAllSources({ db, paths: ctx.paths, logger: ctx.logger });
+      writeDigestMarker(ctx.caveatHome, computeEntriesDigest(ctx.paths));
+    } finally {
+      db.close();
+    }
     ctx.logger.info(`db initialized: ${ctx.paths.dbPath}`);
   } else {
     ctx.logger.info(`[dry-run] db path: ${ctx.paths.dbPath}`);

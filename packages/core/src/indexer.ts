@@ -133,7 +133,7 @@ export function rebuildAll(db: DatabaseSync): void {
   db.exec('DELETE FROM entries');
 }
 
-function* walkMarkdown(root: string): Generator<string> {
+export function* walkMarkdown(root: string): Generator<string> {
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     const full = join(root, entry.name);
     if (entry.isDirectory()) {

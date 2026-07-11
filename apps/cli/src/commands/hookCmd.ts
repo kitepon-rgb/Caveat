@@ -21,6 +21,11 @@ import {
   markHit,
   maybeSweepPendingDirs,
   openDb,
+  acquireReindexLock,
+  computeEntriesDigest,
+  reindexAllSources,
+  releaseReindexLock,
+  writeDigestMarker,
   readSessionSignals,
   stopReminderText,
   struggleSearchText,
@@ -31,8 +36,9 @@ import {
   type SessionSignals,
 } from '@caveat/core';
 import { buildContext, type CliContext } from '../context.js';
+import { maybeTriggerAutoReindex } from '../autoReindexTrigger.js';
 
-export type HookName = 'user-prompt-submit' | 'post-tool-use' | 'stop' | 'worker';
+export type HookName = 'user-prompt-submit' | 'post-tool-use' | 'stop' | 'worker' | 'reindex';
 
 const silentLogger: Logger = {
   info: () => {},
@@ -333,6 +339,58 @@ async function runWorker(workFile: string): Promise<void> {
   process.exit(0);
 }
 
+function writeLastReindex(caveatHome: string, value: Record<string, unknown>): void {
+  try {
+    writeFileSync(join(caveatHome, 'index', '.last-reindex.json'), JSON.stringify(value), 'utf-8');
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`[caveat:hook] reindex status write error: ${msg}\n`);
+  }
+}
+
+function runReindexWorker(): void {
+  if (process.env.CAVEAT_INDEX_AUTOSYNC === 'off') {
+    process.stderr.write('[caveat:hook] auto reindex disabled by CAVEAT_INDEX_AUTOSYNC=off\n');
+    return;
+  }
+  const ctx = buildContextSafely();
+  if (!ctx || !existsSync(ctx.paths.dbPath)) {
+    process.stderr.write('[caveat:hook] auto reindex skipped: index database does not exist\n');
+    return;
+  }
+  const lock = acquireReindexLock(ctx.caveatHome);
+  if (!lock) return;
+  const startedAt = new Date().toISOString();
+  let db: DatabaseSync | undefined;
+  try {
+    const digest = computeEntriesDigest(ctx.paths);
+    db = openDb({ path: ctx.paths.dbPath, logger: silentLogger });
+    const result = reindexAllSources({ db, paths: ctx.paths, logger: silentLogger });
+    writeDigestMarker(ctx.caveatHome, digest);
+    writeLastReindex(ctx.caveatHome, {
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      perSource: result.perSource,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`[caveat:hook] reindex error: ${msg}\n`);
+    writeLastReindex(ctx.caveatHome, {
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      error: msg,
+    });
+  } finally {
+    db?.close();
+    try {
+      releaseReindexLock(lock);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[caveat:hook] reindex lock release error: ${msg}\n`);
+    }
+  }
+}
+
 function buildToolErrorReminder(job: WorkerJob, hits: SearchResult[]): string {
   const base = toolErrorReminderText(hits);
   const mode = hookCodexSidecarMode();
@@ -528,6 +586,10 @@ function runCodexSidecarAdvisory(input: {
 }
 
 export async function runHook(name: HookName, arg?: string): Promise<void> {
+  if (name === 'reindex') {
+    runReindexWorker();
+    process.exit(0);
+  }
   if (name === 'worker') {
     if (!arg) process.exit(0);
     await runWorker(arg);
@@ -580,11 +642,20 @@ export async function runHook(name: HookName, arg?: string): Promise<void> {
     // Periodic, debounced housekeeping: sweep stale per-session pending
     // dirs at most once per debounce window. Best-effort — never block the
     // hook contract on cleanup failures.
-    try {
-      const ctx = buildContextSafely();
-      if (ctx) maybeSweepPendingDirs(ctx.caveatHome);
-    } catch {
-      // Swallow: cleanup must not affect the hook's behavior.
+    const ctx = buildContextSafely();
+    if (ctx) {
+      try {
+        maybeSweepPendingDirs(ctx.caveatHome);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`[caveat:hook] pending sweep error: ${msg}\n`);
+      }
+      try {
+        maybeTriggerAutoReindex(ctx);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`[caveat:hook] auto reindex trigger error: ${msg}\n`);
+      }
     }
     if (payload.stop_hook_active === true) process.exit(0);
     const transcriptPath =

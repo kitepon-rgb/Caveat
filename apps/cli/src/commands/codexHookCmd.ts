@@ -22,6 +22,7 @@ import {
   type SessionSignals,
 } from '@caveat/core';
 import { buildContext, type CliContext } from '../context.js';
+import { maybeTriggerAutoReindex } from '../autoReindexTrigger.js';
 import { detectCodexHookInstallation } from '../codexHookInstall.js';
 
 export type CodexHookName =
@@ -529,6 +530,13 @@ export async function runCodexHook(name: CodexHookName, arg?: string): Promise<v
   }
 
   if (name === 'stop') {
+    try {
+      const ctx = buildContextSafely();
+      if (ctx) maybeTriggerAutoReindex(ctx);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[caveat:codex-hook] auto reindex trigger error: ${msg}\n`);
+    }
     if (payload.stop_hook_active === true) process.exit(0);
     const transcriptPath =
       typeof payload.transcript_path === 'string' ? payload.transcript_path : '';

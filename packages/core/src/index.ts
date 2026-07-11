@@ -3,6 +3,7 @@ export * from './db.js';
 export * from './frontmatter.js';
 export * from './env.js';
 export * from './indexer.js';
+export * from './autoReindex.js';
 export * from './repository.js';
 export * from './id.js';
 export * from './writer.js';

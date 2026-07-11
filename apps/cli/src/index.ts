@@ -179,7 +179,7 @@ program
 program
   .command('hook <name> [arg]')
   .description(
-    'Run a Claude Code hook. name: user-prompt-submit | post-tool-use | stop | worker',
+    'Run a Claude Code hook. name: user-prompt-submit | post-tool-use | stop | worker | reindex',
   )
   .action(async (name: string, arg?: string) => {
     await runHook(name as HookName, arg);

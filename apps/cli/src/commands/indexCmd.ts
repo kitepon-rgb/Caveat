@@ -1,7 +1,6 @@
-import { existsSync, readdirSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { openDb, scanSource, rebuildAll } from '@caveat/core';
-import type { Source } from '@caveat/core';
+import { existsSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { computeEntriesDigest, openDb, rebuildAll, reindexAllSources, writeDigestMarker } from '@caveat/core';
 import type { CliContext } from '../context.js';
 
 export interface IndexOptions {
@@ -19,23 +18,15 @@ export function runIndex(ctx: CliContext, opts: IndexOptions): void {
       rebuildAll(db);
     }
 
-    if (existsSync(ctx.paths.entriesDir)) {
-      const result = scanSource({ db, source: 'own', entriesRoot: ctx.paths.entriesDir });
-      ctx.logger.info(`own: +${result.added} ~${result.updated} -${result.deleted}`);
-    } else {
-      ctx.logger.warn(`entries dir not found: ${ctx.paths.entriesDir}`);
-    }
-
-    if (existsSync(ctx.paths.communityDir)) {
-      for (const entry of readdirSync(ctx.paths.communityDir, { withFileTypes: true })) {
-        if (!entry.isDirectory()) continue;
-        const source: Source = `community/${entry.name}`;
-        const root = join(ctx.paths.communityDir, entry.name, 'entries');
-        if (!existsSync(root)) continue;
-        const result = scanSource({ db, source, entriesRoot: root });
-        ctx.logger.info(`${source}: +${result.added} ~${result.updated} -${result.deleted}`);
+    const result = reindexAllSources({ db, paths: ctx.paths, logger: ctx.logger });
+    for (const [source, scan] of Object.entries(result.perSource)) {
+      if (source === 'own') {
+        ctx.logger.info(`own: +${scan.added} ~${scan.updated} -${scan.deleted}`);
+      } else {
+        ctx.logger.info(`${source}: +${scan.added} ~${scan.updated} -${scan.deleted}`);
       }
     }
+    writeDigestMarker(ctx.caveatHome, computeEntriesDigest(ctx.paths));
   } finally {
     db.close();
   }
