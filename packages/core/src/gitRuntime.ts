@@ -1,3 +1,4 @@
+import { parseEnv } from '@simple-git/argv-parser';
 import { simpleGit, type SimpleGit, type SimpleGitOptions } from 'simple-git';
 
 // simple-git timeout.block is an inactivity timeout: the git process is killed
@@ -26,16 +27,12 @@ export function createGit(baseDir?: string, opts?: { timeoutMs?: number }): Simp
 
 function unsafeAllowancesForInheritedEnv(env: NodeJS.ProcessEnv): Partial<NonNullable<SimpleGitOptions['unsafe']>> {
   const unsafe: Partial<NonNullable<SimpleGitOptions['unsafe']>> = {};
-  if (env.PAGER || env.GIT_PAGER) unsafe.allowUnsafePager = true;
-  if (env.EDITOR || env.GIT_EDITOR || env.GIT_SEQUENCE_EDITOR) unsafe.allowUnsafeEditor = true;
-  if (env.GIT_ASKPASS || env.SSH_ASKPASS) unsafe.allowUnsafeAskPass = true;
-  if (env.GIT_CONFIG_COUNT) unsafe.allowUnsafeConfigEnvCount = true;
-  if (env.GIT_CONFIG || env.GIT_CONFIG_GLOBAL || env.GIT_CONFIG_SYSTEM || env.GIT_EXEC_PATH || env.PREFIX) {
-    unsafe.allowUnsafeConfigPaths = true;
+  // Derive allowances from the same parser used by simple-git's
+  // blockUnsafeOperationsPlugin when it spawns git. This keeps presence checks,
+  // environment-key normalization, and GIT_CONFIG_KEY_n category detection in
+  // sync with simple-git as @simple-git/argv-parser changes.
+  for (const vulnerability of parseEnv(env).vulnerabilities) {
+    unsafe[vulnerability.category] = true;
   }
-  if (env.GIT_EXTERNAL_DIFF) unsafe.allowUnsafeDiffExternal = true;
-  if (env.GIT_PROXY_COMMAND) unsafe.allowUnsafeGitProxy = true;
-  if (env.GIT_SSH || env.GIT_SSH_COMMAND) unsafe.allowUnsafeSshCommand = true;
-  if (env.GIT_TEMPLATE_DIR) unsafe.allowUnsafeTemplateDir = true;
   return unsafe;
 }

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
@@ -12,6 +12,7 @@ const GIT_RUNTIME_TEST_TIMEOUT_MS = 15_000;
 let tmpDir: string | undefined;
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   if (tmpDir) {
     rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     tmpDir = undefined;
@@ -94,5 +95,17 @@ describe('createGit runtime policy', { timeout: GIT_RUNTIME_TEST_TIMEOUT_MS }, (
     } finally {
       await server.close();
     }
+  });
+
+  it('allows inherited pager environment variables even when their value is empty', async () => {
+    vi.stubEnv('PAGER', '');
+
+    await expect(createGit(makeTmpDir()).init()).resolves.toBeDefined();
+  });
+
+  it('allows inherited ssh command environment variables', async () => {
+    vi.stubEnv('GIT_SSH_COMMAND', 'ssh');
+
+    await expect(createGit(makeTmpDir()).init()).resolves.toBeDefined();
   });
 });
