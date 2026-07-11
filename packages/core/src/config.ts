@@ -5,6 +5,8 @@ export interface CaveatConfig {
   semverKeys: string[];
   communitySources: string[];
   publishTarget: string | null;
+  sealedKeyId: string;
+  sealedKeyserverUrl: string | null;
 }
 
 export const DEFAULT_CONFIG: CaveatConfig = {
@@ -12,6 +14,8 @@ export const DEFAULT_CONFIG: CaveatConfig = {
   semverKeys: ['driver', 'cuda', 'node'],
   communitySources: [],
   publishTarget: null,
+  sealedKeyId: 'v1',
+  sealedKeyserverUrl: null,
 };
 
 export function loadConfig(userConfigPath: string): CaveatConfig {

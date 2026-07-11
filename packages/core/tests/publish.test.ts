@@ -53,6 +53,8 @@ function makeFixture(): Fixture {
       semverKeys: [],
       communitySources: [],
       publishTarget: remote,
+      sealedKeyId: 'v1',
+      sealedKeyserverUrl: null,
     },
   };
 }
