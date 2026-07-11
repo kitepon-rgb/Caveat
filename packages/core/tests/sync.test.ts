@@ -48,10 +48,14 @@ function configureIdentity(dir: string): void {
   git(['config', 'commit.gpgsign', 'false'], dir);
 }
 
-describe('preflightSync', () => {
+// Real git subprocess chains exceed vitest's 5s default on the slowest
+// Windows CI runner; EBUSY retries cover git children releasing handles late.
+const GIT_TEST_TIMEOUT_MS = 60_000;
+
+describe('preflightSync', { timeout: GIT_TEST_TIMEOUT_MS }, () => {
   let fixture: Fixture;
   beforeEach(() => { fixture = makeFixture(); });
-  afterEach(() => { rmSync(fixture.root, { recursive: true, force: true }); });
+  afterEach(() => { rmSync(fixture.root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); });
 
   it('rejects a non-repository with the init guidance', async () => {
     mkdirSync(fixture.own, { recursive: true });
@@ -109,10 +113,10 @@ describe('preflightSync', () => {
   });
 });
 
-describe('initOwnSync / syncOwn (local bare remote)', () => {
+describe('initOwnSync / syncOwn (local bare remote)', { timeout: GIT_TEST_TIMEOUT_MS }, () => {
   let fixture: Fixture;
   beforeEach(() => { fixture = makeFixture(); });
-  afterEach(() => { rmSync(fixture.root, { recursive: true, force: true }); });
+  afterEach(() => { rmSync(fixture.root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); });
 
   it('initializes an empty bare remote, then commits, indexes, and pushes local edits', async () => {
     // Supplying identity through environment is not supported by simple-git, so

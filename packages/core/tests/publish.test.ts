@@ -72,9 +72,16 @@ function walkFiles(dir: string): string[] {
   return out;
 }
 
+// Real git subprocess chains (clone/fetch/reset/clean/commit/push × 2 per
+// test) exceed vitest's 5s default on the slowest Windows CI runner.
+const GIT_TEST_TIMEOUT_MS = 60_000;
+
 let fixture: Fixture;
 beforeEach(() => { fixture = makeFixture(); });
-afterEach(() => { rmSync(fixture.root, { recursive: true, force: true }); });
+afterEach(() => {
+  // maxRetries: Windows can report EBUSY on rmdir while a git child releases handles.
+  rmSync(fixture.root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+});
 
 describe('collectPublishSet', () => {
   it('returns only public entries and lists every invalid one', () => {
@@ -90,9 +97,10 @@ describe('collectPublishSet', () => {
   });
 });
 
-describe('publishOwn (local bare mirror)', () => {
+describe('publishOwn (local bare mirror)', { timeout: GIT_TEST_TIMEOUT_MS }, () => {
   function cloneMirrorBack(): string {
     const check = join(fixture.root, 'verify-clone');
+    rmSync(check, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     git(['clone', fixture.remote, check]);
     return check;
   }
