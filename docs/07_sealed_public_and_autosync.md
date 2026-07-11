@@ -1,7 +1,7 @@
 # 07 — 封緘公開層・自動同期・init 一発化・公開検閲・検索計測（v0.16 設計正典）
 
 > 状態: **実装中 — 刻み(1)(2) 完了**（2026-07-11 承認・同日着手。Explore×2 / Web 事例調査×2 / Plan×2 / refuter 敵対的検証 1 巡を経由。Oracle はオーナー却下により未使用）
-> 消化済み: 刻み(1) gitRuntime = a3c22a2 + 079c4ed / 刻み(2) sealedBundle・sealedKeys = 95ebfab（各刻みとも実装委譲 → refuter/検証 → 統括ゲート再実行の型）。次は刻み(3) publish 封緘化（A3）
+> 消化済み: 刻み(1) gitRuntime = a3c22a2 + 079c4ed / 刻み(2) sealedBundle・sealedKeys = 95ebfab / 刻み(3) publish 封緘化 = 0bf4d42（各刻みとも実装委譲 → refuter/検証 → 統括ゲート再実行の型）。次は刻み(4) community/索引の封緘対応（A4/A5）
 > 前提: Fable 級統括／Codex・sonnet 級実装者（2026-07 時点）
 > 本書がチェックボックス付き TODO を兼ねる（グローバル CLAUDE.md「プランは TODO を兼ねる」）
 
@@ -71,13 +71,15 @@ Caveat-Public には平文 markdown を置かず、**暗号化バンドル（配
 
 ### A3. publish の封緘化
 
-- [ ] `collectPublishSet`（TOCTOU 排除の bytes 持ち回り）は無変更。その出力を seal → ミラーへ `README.md`（平文・購読方法・脅威モデル明記）+ `bundle/entries.caveat` のみ配置
-- [ ] `verifySealedMirror`: ミラー全ツリーが {README, bundle} のみ、bundle を復号して全件 `classifyVisibility === 'public'` を再検証（出口検査の維持）
-- [ ] **no-op / 差分検出の組み替え**〔refuter C-1〕: orphan checkout の**前に** (a) fetch 済みミラーの既存 bundle バイト列 vs 新 bundle の直接比較、(b) **`ls-remote origin <branch>` の SHA と照合**〔refuter C-3: repo 削除→再作成後の stale-ref による「空 remote に永遠に push されない」罠を遮断。内容同一でも remote 側 SHA 不一致なら push〕。差分表示は前回 bundle を復号した relPath→sha256 比較（confused-deputy 対策 C5 の封緘版。復号不能時は全件 added + warn）
-- [ ] commit フロー: `branch -D caveat-publish-tmp`（失敗無視）〔refuter C-2: クラッシュ残骸ブランチ対策〕→ `checkout --orphan` → add -A → commit → `branch -M <branch>` → `push --force` → `gc --prune=now`（ベストエフォート）。**毎回 rev-list count = 1**（履歴に平文も過去バンドルも積まない・repo サイズ一定）
-- [ ] preparePublishMirror の fetch に `--prune` を追加〔refuter C-3 対策の一部〕
-- [ ] 確認プロンプト（差分一覧 + y/N）は現行どおり維持（publish は手動＝オーナー裁定 3）
-- [ ] **見本罠（試食枠・スター獲得の導線）**: README に選りすぐりの public 罠 3〜5 件を平文で全文掲載し、「全 161 件を読むには `npm i -g caveat-cli && caveat community add <user>`」の導線を付ける（封緘は通りすがりへの訴求力を削ぐため、展示品だけ平文でくれてやる折衷。オーナー承認 2026-07-11）。見本の選定は frontmatter `showcase: true`（または config のリスト）で指定し、変更時は publish の差分確認に載せる。**見本も Track E の検閲ゲートを通す**
+> 完了 0bf4d42（2026-07-12、refuter 敵対的検証済み・git 実験で回復性実証）。仕様からの意図的乖離: (1) collectPublishSet に showcase フィールドを追加（見本罠に必要・bytes 持ち回り意味論は不変）、(2) README の Categories 行は**削除**（トップレベル直置きエントリでファイル名全体が漏れる + カテゴリ名自体が主題メタデータ漏洩＝検証基準「識別子 1 バイト無し」と衝突）、(3) rev-list==1 assert は push の**前**（漏れる前に鳴る tripwire）、(4) keyserverUrl は seal 前に正規化（trailing slash 差の端末間 ping-pong 防止）、(5) dangling origin/HEAD（非空 clone 系譜 + remote 再作成）の reset 恒久失敗を rev-parse ガードで追加封鎖。**採用ノート: Track B（刻み5）完了まで caveat publish は fail-closed の明示エラー / 実機 publish は Track E 検閲の実装後に行う（showcase の未検閲平文公開を防ぐ）**。
+
+- [x] `collectPublishSet`（TOCTOU 排除の bytes 持ち回り）は無変更。その出力を seal → ミラーへ `README.md`（平文・購読方法・脅威モデル明記）+ `bundle/entries.caveat` のみ配置
+- [x] `verifySealedMirror`: ミラー全ツリーが {README, bundle} のみ、bundle を復号して全件 `classifyVisibility === 'public'` を再検証（出口検査の維持）
+- [x] **no-op / 差分検出の組み替え**〔refuter C-1〕: orphan checkout の**前に** (a) fetch 済みミラーの既存 bundle バイト列 vs 新 bundle の直接比較、(b) **`ls-remote origin <branch>` の SHA と照合**〔refuter C-3: repo 削除→再作成後の stale-ref による「空 remote に永遠に push されない」罠を遮断。内容同一でも remote 側 SHA 不一致なら push〕。差分表示は前回 bundle を復号した relPath→sha256 比較（confused-deputy 対策 C5 の封緘版。復号不能時は全件 added + warn）
+- [x] commit フロー: `branch -D caveat-publish-tmp`（失敗無視）〔refuter C-2: クラッシュ残骸ブランチ対策〕→ `checkout --orphan` → add -A → commit → `branch -M <branch>` → `push --force` → `gc --prune=now`（ベストエフォート）。**毎回 rev-list count = 1**（履歴に平文も過去バンドルも積まない・repo サイズ一定）
+- [x] preparePublishMirror の fetch に `--prune` を追加〔refuter C-3 対策の一部〕
+- [x] 確認プロンプト（差分一覧 + y/N）は現行どおり維持（publish は手動＝オーナー裁定 3）
+- [x] **見本罠（試食枠・スター獲得の導線）**: README に選りすぐりの public 罠 3〜5 件を平文で全文掲載し、「全 161 件を読むには `npm i -g caveat-cli && caveat community add <user>`」の導線を付ける（封緘は通りすがりへの訴求力を削ぐため、展示品だけ平文でくれてやる折衷。オーナー承認 2026-07-11）。見本の選定は frontmatter `showcase: true`（または config のリスト）で指定し、変更時は publish の差分確認に載せる。**見本も Track E の検閲ゲートを通す**
 
 ### A4. community の封緘対応
 
