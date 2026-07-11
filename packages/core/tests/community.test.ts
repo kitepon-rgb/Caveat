@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -148,6 +148,50 @@ describe('communityAdd / communityPull / communityList (integration)', () => {
     expect(results.length).toBe(1);
     expect(results[0]?.handle).toBe('foo');
     expect(results[0]?.status).toBe('ok');
+  });
+
+  it('pull updates plaintext community repos through fetch reset clean', async () => {
+    const communityDir = join(playground, 'community');
+    const target = join(communityDir, 'foo');
+    execFileSync('git', ['clone', '--depth', '1', remote.bareUrl, target], { stdio: 'pipe' });
+
+    writeFileSync(
+      join(remote.workdir, 'entries', 'gpu', 'sample.md'),
+      `---\nid: sample\ntitle: Updated\nvisibility: public\nconfidence: tentative\n---\n\n## Symptom\nupdated plaintext\n`,
+      'utf-8',
+    );
+    execFileSync('git', ['add', '-A'], { cwd: remote.workdir });
+    execFileSync('git', ['commit', '-m', 'update'], { cwd: remote.workdir });
+    execFileSync('git', ['push', 'origin', 'HEAD'], { cwd: remote.workdir });
+
+    const results = await communityPull({ communityDir });
+    expect(results[0]?.status).toBe('ok');
+    expect(readFileSafe(join(target, 'entries', 'gpu', 'sample.md'))).toContain('updated plaintext');
+  });
+
+  it('pull survives orphan force-push replacement without unrelated histories failure', async () => {
+    const communityDir = join(playground, 'community');
+    const target = join(communityDir, 'foo');
+    execFileSync('git', ['clone', '--depth', '1', remote.bareUrl, target], { stdio: 'pipe' });
+
+    execFileSync('git', ['checkout', '--orphan', 'sealed-replacement'], { cwd: remote.workdir });
+    execFileSync('git', ['rm', '-rf', '.'], { cwd: remote.workdir });
+    mkdirSync(join(remote.workdir, 'bundle'), { recursive: true });
+    writeFileSync(join(remote.workdir, 'README.md'), 'sealed replacement\n', 'utf-8');
+    writeFileSync(join(remote.workdir, 'bundle', 'entries.caveat'), 'encrypted', 'utf-8');
+    execFileSync('git', ['add', '-A'], { cwd: remote.workdir });
+    execFileSync('git', ['commit', '-m', 'orphan replacement'], { cwd: remote.workdir });
+    const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+      cwd: target,
+      encoding: 'utf-8',
+    }).trim();
+    execFileSync('git', ['push', '--force', 'origin', `HEAD:${branch}`], { cwd: remote.workdir });
+
+    const results = await communityPull({ communityDir });
+    expect(results[0]?.status).toBe('ok');
+    expect(existsSync(join(target, 'entries'))).toBe(false);
+    expect(readFileSafe(join(target, 'README.md'))).toContain('sealed replacement');
+    expect(readFileSafe(join(target, 'bundle', 'entries.caveat'))).toBe('encrypted');
   });
 
   it('pull returns failed entry when git fails', async () => {
@@ -350,4 +394,8 @@ function readdirSafe(path: string): string[] {
   } catch {
     return [];
   }
+}
+
+function readFileSafe(path: string): string {
+  return readFileSync(path, 'utf-8');
 }

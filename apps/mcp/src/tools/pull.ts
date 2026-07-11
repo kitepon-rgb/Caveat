@@ -1,6 +1,11 @@
-import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { communityPull, rebuildAll, scanSource, type Source } from '@caveat/core';
+import { existsSync } from 'node:fs';
+import {
+  communityPull,
+  createKeyserverKeyProvider,
+  prewarmSealedKeys,
+  reindexAllSources,
+  type Source,
+} from '@caveat/core';
 import type { McpContext } from '../context.js';
 
 export const pullInputShape = {};
@@ -21,21 +26,25 @@ export async function handlePull(ctx: McpContext, _args: PullArgs = {}) {
     }
   }
 
-  rebuildAll(ctx.db);
-  if (existsSync(ctx.paths.entriesDir)) {
-    const own = scanSource({ db: ctx.db, source: 'own', entriesRoot: ctx.paths.entriesDir });
-    indexed.push({ source: 'own', ...own });
+  const keyProvider = createKeyserverKeyProvider({ caveatHome: ctx.caveatHome });
+  const failures = await prewarmSealedKeys({ paths: ctx.paths, keyProvider });
+  for (const failure of failures) {
+    ctx.logger.warn(`${failure.source}: sealed key prewarm failed: ${errorMessage(failure.error)}`);
   }
-  if (existsSync(ctx.paths.communityDir)) {
-    for (const entry of readdirSync(ctx.paths.communityDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const source: Source = `community/${entry.name}`;
-      const root = join(ctx.paths.communityDir, entry.name, 'entries');
-      if (!existsSync(root)) continue;
-      const scan = scanSource({ db: ctx.db, source, entriesRoot: root });
-      indexed.push({ source, ...scan });
-    }
+
+  const result = reindexAllSources({
+    db: ctx.db,
+    paths: ctx.paths,
+    logger: ctx.logger,
+    keyProvider,
+  });
+  for (const [source, scan] of Object.entries(result.perSource)) {
+    indexed.push({ source: source as Source, ...scan });
   }
 
   return { pulled, indexed };
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

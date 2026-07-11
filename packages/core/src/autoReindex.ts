@@ -12,9 +12,14 @@ import {
 import { join, relative } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { scanSource, walkMarkdown, type ScanResult } from './indexer.js';
+import {
+  detectSealedBundle,
+  scanSealedSource,
+} from './sealedIndex.js';
 import type { Source } from './types.js';
 import type { Logger } from './db.js';
 import type { ResolvedPaths } from './paths.js';
+import type { ContentKeyProvider } from './sealedKeys.js';
 
 export interface EntriesDigest {
   digest: string;
@@ -34,16 +39,23 @@ export interface ReindexResult {
   fileCount: number;
 }
 
-function sourceRoots(paths: Pick<ResolvedPaths, 'entriesDir' | 'communityDir'>): Array<{
-  source: Source;
-  root: string;
-}> {
-  const roots: Array<{ source: Source; root: string }> = [];
-  if (existsSync(paths.entriesDir)) roots.push({ source: 'own', root: paths.entriesDir });
+type SourceRoot =
+  | { kind: 'plaintext'; source: Source; root: string }
+  | { kind: 'sealed'; source: Source; bundlePath: string };
+
+function sourceRoots(paths: Pick<ResolvedPaths, 'entriesDir' | 'communityDir'>): SourceRoot[] {
+  const roots: SourceRoot[] = [];
+  if (existsSync(paths.entriesDir)) roots.push({ kind: 'plaintext', source: 'own', root: paths.entriesDir });
   if (!existsSync(paths.communityDir)) return roots;
   for (const entry of requireDirectories(paths.communityDir)) {
+    const repoDir = join(paths.communityDir, entry);
+    const bundlePath = detectSealedBundle(repoDir);
+    if (bundlePath) {
+      roots.push({ kind: 'sealed', source: `community/${entry}`, bundlePath });
+      continue;
+    }
     const root = join(paths.communityDir, entry, 'entries');
-    if (existsSync(root)) roots.push({ source: `community/${entry}`, root });
+    if (existsSync(root)) roots.push({ kind: 'plaintext', source: `community/${entry}`, root });
   }
   return roots;
 }
@@ -60,11 +72,16 @@ export function computeEntriesDigest(
   paths: Pick<ResolvedPaths, 'entriesDir' | 'communityDir'>,
 ): EntriesDigest {
   const lines: string[] = [];
-  for (const { source, root } of sourceRoots(paths)) {
-    for (const filePath of walkMarkdown(root)) {
+  for (const sourceRoot of sourceRoots(paths)) {
+    if (sourceRoot.kind === 'sealed') {
+      const stat = statSync(sourceRoot.bundlePath);
+      lines.push(`${sourceRoot.source}\tbundle\t${stat.mtimeMs}\t${stat.size}`);
+      continue;
+    }
+    for (const filePath of walkMarkdown(sourceRoot.root)) {
       const stat = statSync(filePath);
-      const rel = relative(root, filePath).replace(/\\/g, '/');
-      lines.push(`${source}\t${rel}\t${stat.mtimeMs}\t${stat.size}`);
+      const rel = relative(sourceRoot.root, filePath).replace(/\\/g, '/');
+      lines.push(`${sourceRoot.source}\t${rel}\t${stat.mtimeMs}\t${stat.size}`);
     }
   }
   lines.sort();
@@ -161,11 +178,18 @@ export function reindexAllSources(opts: {
   db: DatabaseSync;
   paths: Pick<ResolvedPaths, 'entriesDir' | 'communityDir'>;
   logger: Logger;
+  keyProvider?: ContentKeyProvider;
 }): ReindexResult {
-  const { db, paths, logger } = opts;
+  const { db, paths, logger, keyProvider } = opts;
   const perSource: Record<string, ScanResult> = {};
   if (existsSync(paths.entriesDir)) {
-    perSource.own = scanSource({ db, source: 'own', entriesRoot: paths.entriesDir });
+    try {
+      perSource.own = withSourceSavepoint(db, () =>
+        scanSource({ db, source: 'own', entriesRoot: paths.entriesDir }),
+      );
+    } catch (err) {
+      logger.warn(`own: reindex failed; preserving existing rows: ${errorMessage(err)}`);
+    }
   } else {
     logger.warn(`entries dir not found; preserving own index rows: ${paths.entriesDir}`);
   }
@@ -174,10 +198,32 @@ export function reindexAllSources(opts: {
   if (existsSync(paths.communityDir)) {
     for (const handle of requireDirectories(paths.communityDir)) {
       const source: Source = `community/${handle}`;
-      const root = join(paths.communityDir, handle, 'entries');
+      const repoDir = join(paths.communityDir, handle);
       presentCommunitySources.add(source);
+      const bundlePath = detectSealedBundle(repoDir);
+      if (bundlePath) {
+        if (!keyProvider) {
+          logger.warn(`${source}: sealed bundle found but no keyProvider was supplied; preserving existing rows`);
+          continue;
+        }
+        try {
+          perSource[source] = withSourceSavepoint(db, () =>
+            scanSealedSource({ db, source, bundlePath, keyProvider }),
+          );
+        } catch (err) {
+          logger.warn(`${source}: sealed reindex failed; preserving existing rows: ${errorMessage(err)}`);
+        }
+        continue;
+      }
+      const root = join(repoDir, 'entries');
       if (!existsSync(root)) continue;
-      perSource[source] = scanSource({ db, source, entriesRoot: root });
+      try {
+        perSource[source] = withSourceSavepoint(db, () =>
+          scanSource({ db, source, entriesRoot: root }),
+        );
+      } catch (err) {
+        logger.warn(`${source}: reindex failed; preserving existing rows: ${errorMessage(err)}`);
+      }
     }
   }
   const rows = db.prepare("SELECT DISTINCT source FROM entries WHERE source LIKE 'community/%'").all() as Array<{ source: string }>;
@@ -187,4 +233,25 @@ export function reindexAllSources(opts: {
   }
 
   return { perSource, fileCount: computeEntriesDigest(paths).fileCount };
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function withSourceSavepoint<T>(db: DatabaseSync, fn: () => T): T {
+  db.exec('SAVEPOINT reindex_source');
+  try {
+    const result = fn();
+    db.exec('RELEASE SAVEPOINT reindex_source');
+    return result;
+  } catch (err) {
+    try {
+      db.exec('ROLLBACK TO SAVEPOINT reindex_source');
+      db.exec('RELEASE SAVEPOINT reindex_source');
+    } catch {
+      // Preserve the original source-level failure for the warning path.
+    }
+    throw err;
+  }
 }

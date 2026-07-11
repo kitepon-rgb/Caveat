@@ -33,6 +33,9 @@ export interface UpdateResult {
 
 export function updateEntry(id: string, patch: UpdatePatch, opts: UpdateOptions): UpdateResult {
   const source: Source = opts.source ?? 'own';
+  if (source !== 'own') {
+    throw new Error('community エントリは購読物です; 編集は上流で行ってください');
+  }
   const now = opts.now ?? (() => new Date());
   const nowDate = now();
 

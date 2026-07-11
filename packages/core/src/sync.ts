@@ -7,6 +7,8 @@ import { computeEntriesDigest, reindexAllSources, writeDigestMarker } from './au
 import type { ResolvedPaths } from './paths.js';
 import { deriveAnonymousProbeUrl, probeAnonymousRead, type RemoteAccess } from './remoteVisibility.js';
 import { createGit } from './gitRuntime.js';
+import { createKeyserverKeyProvider } from './sealedKeys.js';
+import { prewarmSealedKeys } from './sealedIndex.js';
 
 export type SyncErrorCode =
   | 'NOT_A_REPO'
@@ -154,11 +156,16 @@ export async function preflightSync(
   return { ownDir: requested, branch, pushUrls, probe };
 }
 
-function reindexAndMark(opts: Pick<SyncOwnOptions, 'caveatHome' | 'paths' | 'logger'>): void {
+async function reindexAndMark(opts: Pick<SyncOwnOptions, 'caveatHome' | 'paths' | 'logger'>): Promise<void> {
+  const keyProvider = createKeyserverKeyProvider({ caveatHome: opts.caveatHome });
+  const failures = await prewarmSealedKeys({ paths: opts.paths, keyProvider });
+  for (const failure of failures) {
+    opts.logger.warn(`${failure.source}: sealed key prewarm failed: ${errorMessage(failure.error)}`);
+  }
   mkdirSync(dirname(opts.paths.dbPath), { recursive: true });
   const db = openDb({ path: opts.paths.dbPath, logger: opts.logger });
   try {
-    reindexAllSources({ db, paths: opts.paths, logger: opts.logger });
+    reindexAllSources({ db, paths: opts.paths, logger: opts.logger, keyProvider });
     writeDigestMarker(opts.caveatHome, computeEntriesDigest(opts.paths));
   } finally {
     db.close();
@@ -204,7 +211,7 @@ export async function syncOwn(opts: SyncOwnOptions): Promise<SyncOwnResult> {
     }
   }
 
-  reindexAndMark(opts);
+  await reindexAndMark(opts);
   await git.push('origin', preflight.branch, ['-u']);
   return {
     ...preflight,
@@ -291,14 +298,14 @@ export async function initOwnSync(opts: InitOwnSyncOptions): Promise<InitOwnSync
       await git.commit(`caveat sync: initial import (${entryCount} entries)`);
       const branch = (await git.revparse(['--abbrev-ref', 'HEAD'])).trim();
       await git.push('origin', branch, ['-u']);
-      reindexAndMark(opts);
+      await reindexAndMark(opts);
       return { ownDir, branch, remoteWasEmpty: true };
     }
 
     const branch = await defaultRemoteBranch(git, opts.url);
     await git.fetch('origin', branch);
     await git.checkout(['--track', '-B', branch, `origin/${branch}`]);
-    reindexAndMark(opts);
+    await reindexAndMark(opts);
     return { ownDir, branch, remoteWasEmpty: false };
   } catch (err) {
     // Roll the half-initialized .git back so a re-run isn't permanently blocked
@@ -310,4 +317,8 @@ export async function initOwnSync(opts: InitOwnSyncOptions): Promise<InitOwnSync
     }
     throw err;
   }
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

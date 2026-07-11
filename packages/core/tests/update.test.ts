@@ -137,4 +137,14 @@ describe('updateEntry', () => {
       updateEntry('missing', { frontmatter: { title: 'x' } }, { db: f.db, entriesRoot: f.entriesRoot }),
     ).toThrow(/not found/);
   });
+
+  it('rejects community sources before touching subscribed files', () => {
+    expect(() =>
+      updateEntry(
+        'sample',
+        { frontmatter: { title: 'nope' } },
+        { db: f.db, entriesRoot: f.entriesRoot, source: 'community/team' },
+      ),
+    ).toThrow(/community エントリは購読物/);
+  });
 });

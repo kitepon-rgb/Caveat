@@ -57,8 +57,15 @@ export function normalizeKeyserverUrl(keyserverUrl: string): string {
     throw new SealedKeyError('KEY_INVALID', `invalid keyserverUrl: ${keyserverUrl}`);
   }
   // 刻み(4) で community バンドル header 由来の keyserverUrl（敵対的入力になり得る自己記述設計）が
-  // ここへ入ってくる。https は無条件許可、http はループバック（開発 Worker / テスト用）のみに絞り、
-  // 内部エンドポイントへの GET ping（SSRF 面）を構造的に遮断する。
+  // ここへ入ってくる。実際にやっているのはこれだけ: https は無条件許可、http はループバック
+  // （127.0.0.1 / ::1 / localhost、開発 Worker・テスト用）のみ許可。塞いでいるのは「平文 http で
+  // 内部を叩く」経路だけで、SSRF 面を封鎖してはいない。
+  //
+  // 塞げていない残余: header の keyserverUrl が https://<内部ホスト> であれば無条件で通る。
+  // fetchKey は認証なし・10s timeout・応答は keyId 一致 JSON 以外破棄なので、購読者端末に対する
+  // 完全な blind SSRF（内部ネットワークへの GET ping を撃たせられる）が成立し得る。完全な防御には
+  // 接続時の IP 解決 + private/link-local レンジ遮断が要る（DNS rebinding があるためホスト名文字列
+  // の一致判定だけでは不十分）。それは別トラックの課題であり、本関数はまだ実装していない。
   const isLoopbackHttp =
     url.protocol === 'http:' &&
     (url.hostname === '127.0.0.1' || url.hostname === '::1' || url.hostname === 'localhost');

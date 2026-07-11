@@ -27,3 +27,4 @@ export * from './publish.js';
 export * from './codexSidecar.js';
 export * from './sealedBundle.js';
 export * from './sealedKeys.js';
+export * from './sealedIndex.js';

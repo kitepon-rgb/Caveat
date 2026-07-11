@@ -96,7 +96,9 @@ export async function communityPull(
     const path = join(opts.communityDir, entry.name);
     const git = createGit(path);
     try {
-      await git.pull();
+      await git.raw(['fetch', 'origin', '--force', '--depth', '1']);
+      await git.raw(['reset', '--hard', 'FETCH_HEAD']);
+      await git.raw(['clean', '-ffdx']);
       results.push({ handle: entry.name, path, status: 'ok' });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

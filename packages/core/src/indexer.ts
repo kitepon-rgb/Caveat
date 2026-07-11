@@ -17,6 +17,14 @@ export interface ScanResult {
   deleted: number;
 }
 
+export interface EntryDocument {
+  source: Source;
+  path: string;
+  content: string;
+  file_mtime: string;
+  indexed_at: string;
+}
+
 export function scanSource(opts: ScanSourceOptions): ScanResult {
   const { db, source, entriesRoot } = opts;
   const now = opts.now ?? (() => new Date().toISOString());
@@ -28,55 +36,68 @@ export function scanSource(opts: ScanSourceOptions): ScanResult {
   let added = 0;
   let updated = 0;
 
-  if (existsSync(entriesRoot)) {
-    for (const filePath of walkMarkdown(entriesRoot)) {
-      const stat = statSync(filePath);
-      const mtime = stat.mtime.toISOString();
-      const rel = relative(entriesRoot, filePath).replace(/\\/g, '/');
-      const src = readFileSync(filePath, 'utf-8');
-      const parsed = parseMarkdown(src);
-      const fm = parsed.frontmatter;
+  try {
+    if (existsSync(entriesRoot)) {
+      for (const filePath of walkMarkdown(entriesRoot)) {
+        const stat = statSync(filePath);
+        const mtime = stat.mtime.toISOString();
+        const rel = relative(entriesRoot, filePath).replace(/\\/g, '/');
+        const src = readFileSync(filePath, 'utf-8');
+        const row = buildEntryUpsertRow({
+          source,
+          path: rel,
+          content: src,
+          file_mtime: mtime,
+          indexed_at: now(),
+        });
 
-      const existing = db
-        .prepare('SELECT rowid, file_mtime, path FROM entries WHERE source = ? AND id = ?')
-        .get(source, fm.id) as { rowid: number; file_mtime: string; path: string } | undefined;
+        const existing = db
+          .prepare('SELECT rowid, file_mtime, path FROM entries WHERE source = ? AND id = ?')
+          .get(source, row.id) as { rowid: number; file_mtime: string; path: string } | undefined;
 
-      if (existing && existing.file_mtime === mtime && existing.path === rel) {
-        insertTouched.run(existing.rowid);
-        continue;
+        if (existing && existing.file_mtime === mtime && existing.path === rel) {
+          insertTouched.run(existing.rowid);
+          continue;
+        }
+
+        const rowid = upsertEntry(db, row);
+        insertTouched.run(rowid);
+
+        if (existing) updated++;
+        else added++;
       }
-
-      const rowid = upsertEntry(db, {
-        id: fm.id,
-        source,
-        path: rel,
-        title: fm.title,
-        body: parsed.body,
-        frontmatter_json: JSON.stringify(fm),
-        tags: JSON.stringify(fm.tags ?? []),
-        confidence: fm.confidence,
-        visibility: fm.visibility,
-        file_mtime: mtime,
-        indexed_at: now(),
-      });
-      insertTouched.run(rowid);
-
-      if (existing) updated++;
-      else added++;
     }
+
+    const del = db
+      .prepare('DELETE FROM entries WHERE source = ? AND rowid NOT IN (SELECT rowid FROM touched)')
+      .run(source);
+    const deleted = Number(del.changes);
+
+    return { added, updated, deleted };
+  } finally {
+    db.exec('DROP TABLE IF EXISTS temp.touched');
   }
-
-  const del = db
-    .prepare('DELETE FROM entries WHERE source = ? AND rowid NOT IN (SELECT rowid FROM touched)')
-    .run(source);
-  const deleted = Number(del.changes);
-
-  db.exec('DROP TABLE temp.touched');
-
-  return { added, updated, deleted };
 }
 
-interface UpsertRow {
+export function buildEntryUpsertRow(doc: EntryDocument): UpsertRow {
+  const parsed = parseMarkdown(doc.content);
+  const fm = parsed.frontmatter;
+  return {
+    id: fm.id,
+    source: doc.source,
+    path: doc.path,
+    title: fm.title,
+    body: parsed.body,
+    frontmatter_json: JSON.stringify(fm),
+    tags: JSON.stringify(fm.tags ?? []),
+    confidence: fm.confidence,
+    visibility: fm.visibility,
+    file_mtime: doc.file_mtime,
+    indexed_at: doc.indexed_at,
+  };
+}
+
+export interface UpsertRow {
   id: string;
   source: Source;
   path: string;

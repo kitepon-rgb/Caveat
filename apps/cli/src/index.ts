@@ -80,9 +80,9 @@ program
   .command('index')
   .description('Index knowledge repo entries into SQLite')
   .option('--full', 'full rebuild (DELETE all then rescan)', false)
-  .action((opts: { full: boolean }) => {
+  .action(async (opts: { full: boolean }) => {
     const ctx = buildContext(stdoutLogger);
-    runIndex(ctx, { full: opts.full });
+    await runIndex(ctx, { full: opts.full });
   });
 
 program

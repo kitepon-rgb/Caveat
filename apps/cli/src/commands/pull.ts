@@ -1,5 +1,13 @@
 import { existsSync } from 'node:fs';
-import { communityPull, computeEntriesDigest, openDb, rebuildAll, reindexAllSources, writeDigestMarker } from '@caveat/core';
+import {
+  communityPull,
+  computeEntriesDigest,
+  createKeyserverKeyProvider,
+  openDb,
+  prewarmSealedKeys,
+  reindexAllSources,
+  writeDigestMarker,
+} from '@caveat/core';
 import type { CliContext } from '../context.js';
 
 export async function runPull(ctx: CliContext): Promise<void> {
@@ -23,8 +31,12 @@ export async function runPull(ctx: CliContext): Promise<void> {
 
   const db = openDb({ path: ctx.paths.dbPath, logger: ctx.logger });
   try {
-    rebuildAll(db);
-    const result = reindexAllSources({ db, paths: ctx.paths, logger: ctx.logger });
+    const keyProvider = createKeyserverKeyProvider({ caveatHome: ctx.caveatHome });
+    const failures = await prewarmSealedKeys({ paths: ctx.paths, keyProvider });
+    for (const failure of failures) {
+      ctx.logger.warn(`${failure.source}: sealed key prewarm failed: ${errorMessage(failure.error)}`);
+    }
+    const result = reindexAllSources({ db, paths: ctx.paths, logger: ctx.logger, keyProvider });
     for (const [source, scan] of Object.entries(result.perSource)) {
       ctx.logger.info(`${source}: +${scan.added}`);
     }
@@ -32,4 +44,8 @@ export async function runPull(ctx: CliContext): Promise<void> {
   } finally {
     db.close();
   }
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

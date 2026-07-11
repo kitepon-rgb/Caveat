@@ -23,8 +23,10 @@ import {
   openDb,
   acquireReindexLock,
   computeEntriesDigest,
+  createKeyserverKeyProvider,
   reindexAllSources,
   releaseReindexLock,
+  prewarmSealedKeys,
   writeDigestMarker,
   readSessionSignals,
   stopReminderText,
@@ -348,7 +350,11 @@ function writeLastReindex(caveatHome: string, value: Record<string, unknown>): v
   }
 }
 
-function runReindexWorker(): void {
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+async function runReindexWorker(): Promise<void> {
   if (process.env.CAVEAT_INDEX_AUTOSYNC === 'off') {
     process.stderr.write('[caveat:hook] auto reindex disabled by CAVEAT_INDEX_AUTOSYNC=off\n');
     return;
@@ -364,8 +370,13 @@ function runReindexWorker(): void {
   let db: DatabaseSync | undefined;
   try {
     const digest = computeEntriesDigest(ctx.paths);
+    const keyProvider = createKeyserverKeyProvider({ caveatHome: ctx.caveatHome });
+    const failures = await prewarmSealedKeys({ paths: ctx.paths, keyProvider });
+    for (const failure of failures) {
+      process.stderr.write(`[caveat:hook] ${failure.source}: sealed key prewarm failed: ${errorMessage(failure.error)}\n`);
+    }
     db = openDb({ path: ctx.paths.dbPath, logger: silentLogger });
-    const result = reindexAllSources({ db, paths: ctx.paths, logger: silentLogger });
+    const result = reindexAllSources({ db, paths: ctx.paths, logger: silentLogger, keyProvider });
     writeDigestMarker(ctx.caveatHome, digest);
     writeLastReindex(ctx.caveatHome, {
       startedAt,
@@ -587,7 +598,7 @@ function runCodexSidecarAdvisory(input: {
 
 export async function runHook(name: HookName, arg?: string): Promise<void> {
   if (name === 'reindex') {
-    runReindexWorker();
+    await runReindexWorker();
     process.exit(0);
   }
   if (name === 'worker') {

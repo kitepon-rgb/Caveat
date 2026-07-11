@@ -153,6 +153,16 @@ describe('MCP tool handlers', () => {
         }),
       ).toThrow(/immutable/);
     });
+
+    it('rejects community sources at the tool boundary', () => {
+      expect(() =>
+        handleUpdate(f.ctx, {
+          id: 'sample',
+          source: 'community/team',
+          patch: { frontmatter: { confidence: 'confirmed' } },
+        }),
+      ).toThrow(/community エントリは購読物/);
+    });
   });
 
   describe('caveat_list_recent', () => {

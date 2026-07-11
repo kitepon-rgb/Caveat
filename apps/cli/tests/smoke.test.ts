@@ -124,7 +124,7 @@ describe('index', () => {
 
     const ctx = buildContext(silentLogger, { caveatHome: fx.caveatHome, userHome: fx.userHome });
     await runInit(ctx, { skipClaude: true, dryRun: false });
-    runIndex(ctx, { full: false });
+    await runIndex(ctx, { full: false });
 
     // Read back via opened db
     const db = openDb({ path: ctx.paths.dbPath });
@@ -149,7 +149,7 @@ describe('index', () => {
 
     const ctx = buildContext(silentLogger, { caveatHome: fx.caveatHome, userHome: fx.userHome });
     await runInit(ctx, { skipClaude: true, dryRun: false });
-    runIndex(ctx, { full: false });
+    await runIndex(ctx, { full: false });
 
     // Verify 'a' was inserted
     let db = openDb({ path: ctx.paths.dbPath });
@@ -158,7 +158,7 @@ describe('index', () => {
     expect(count).toBe(1);
 
     // Full rebuild: delete 'a' first, then rescan (which re-inserts 'a' since md still exists)
-    runIndex(ctx, { full: true });
+    await runIndex(ctx, { full: true });
 
     db = openDb({ path: ctx.paths.dbPath });
     count = (db.prepare('SELECT COUNT(*) AS n FROM entries').get() as { n: number }).n;

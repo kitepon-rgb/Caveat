@@ -4,8 +4,10 @@ import {
   KNOWLEDGE_GITIGNORE,
   cleanupStalePendingDirs,
   computeEntriesDigest,
+  createKeyserverKeyProvider,
   ensureUserConfig,
   openDb,
+  prewarmSealedKeys,
   reindexAllSources,
   writeDigestMarker,
 } from '@caveat/core';
@@ -55,9 +57,14 @@ export async function runInit(
   if (!opts.dryRun) {
     const dbDir = dirname(ctx.paths.dbPath);
     if (!existsSync(dbDir)) mkdirSync(dbDir, { recursive: true });
+    const keyProvider = createKeyserverKeyProvider({ caveatHome: ctx.caveatHome });
+    const failures = await prewarmSealedKeys({ paths: ctx.paths, keyProvider });
+    for (const failure of failures) {
+      ctx.logger.warn(`${failure.source}: sealed key prewarm failed: ${errorMessage(failure.error)}`);
+    }
     const db = openDb({ path: ctx.paths.dbPath, logger: ctx.logger });
     try {
-      reindexAllSources({ db, paths: ctx.paths, logger: ctx.logger });
+      reindexAllSources({ db, paths: ctx.paths, logger: ctx.logger, keyProvider });
       writeDigestMarker(ctx.caveatHome, computeEntriesDigest(ctx.paths));
     } finally {
       db.close();
@@ -102,6 +109,10 @@ export async function runInit(
     logger: ctx.logger,
   });
   reportInstallResult(ctx, result, opts.dryRun);
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 /**

@@ -27,7 +27,7 @@ describe('codex-sidecar context adapter', () => {
         source: 'community/team-notes',
         path: 'docker/example.md',
       }),
-    ).toBe('community/team-notes/entries/docker/example.md');
+    ).toBe('community/team-notes (sealed or cloned bundle; no local file reference)');
   });
 
   it('converts multiple entries into context blocks', () => {

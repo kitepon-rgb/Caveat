@@ -26,7 +26,9 @@ const patchFrontmatterSchema = z.object({
 
 export const updateInputShape = {
   id: z.string(),
-  source: z.string().optional(),
+  source: z.string()
+    .optional()
+    .describe('Only own entries may be updated. community entries are subscriptions; edit them upstream.'),
   patch: z.object({
     frontmatter: patchFrontmatterSchema.optional(),
     sections: z.record(z.string(), z.string()).optional(),
@@ -44,6 +46,9 @@ export type UpdateArgs = {
 
 export function handleUpdate(ctx: McpContext, args: UpdateArgs) {
   const source = (args.source ?? 'own') as Source;
+  if (source !== 'own') {
+    throw new Error('community エントリは購読物です; 編集は上流で行ってください');
+  }
   return updateEntry(args.id, args.patch, {
     db: ctx.db,
     entriesRoot: ctx.paths.entriesDir,

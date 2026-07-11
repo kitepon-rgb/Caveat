@@ -1,15 +1,28 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { computeEntriesDigest, openDb, rebuildAll, reindexAllSources, writeDigestMarker } from '@caveat/core';
+import {
+  computeEntriesDigest,
+  createKeyserverKeyProvider,
+  openDb,
+  prewarmSealedKeys,
+  rebuildAll,
+  reindexAllSources,
+  writeDigestMarker,
+} from '@caveat/core';
 import type { CliContext } from '../context.js';
 
 export interface IndexOptions {
   full: boolean;
 }
 
-export function runIndex(ctx: CliContext, opts: IndexOptions): void {
+export async function runIndex(ctx: CliContext, opts: IndexOptions): Promise<void> {
   const dbDir = dirname(ctx.paths.dbPath);
   if (!existsSync(dbDir)) mkdirSync(dbDir, { recursive: true });
+  const keyProvider = createKeyserverKeyProvider({ caveatHome: ctx.caveatHome });
+  const failures = await prewarmSealedKeys({ paths: ctx.paths, keyProvider });
+  for (const failure of failures) {
+    ctx.logger.warn(`${failure.source}: sealed key prewarm failed: ${errorMessage(failure.error)}`);
+  }
 
   const db = openDb({ path: ctx.paths.dbPath, logger: ctx.logger });
   try {
@@ -18,7 +31,7 @@ export function runIndex(ctx: CliContext, opts: IndexOptions): void {
       rebuildAll(db);
     }
 
-    const result = reindexAllSources({ db, paths: ctx.paths, logger: ctx.logger });
+    const result = reindexAllSources({ db, paths: ctx.paths, logger: ctx.logger, keyProvider });
     for (const [source, scan] of Object.entries(result.perSource)) {
       if (source === 'own') {
         ctx.logger.info(`own: +${scan.added} ~${scan.updated} -${scan.deleted}`);
@@ -30,4 +43,8 @@ export function runIndex(ctx: CliContext, opts: IndexOptions): void {
   } finally {
     db.close();
   }
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

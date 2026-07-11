@@ -2,6 +2,11 @@
 
 All notable changes are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Migration Notes
+- v0.15 and older clients can permanently fail `community pull` against sealed public repos after an orphan force-push, often as `unrelated histories`; upgrade `caveat-cli` before subscribing to sealed community bundles.
+
 ## [0.15.0] — 2026-07-11
 
 ### Added

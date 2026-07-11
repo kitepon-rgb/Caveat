@@ -125,7 +125,7 @@ export function caveatEntriesToSidecarContextBlocks(
 export function caveatEntryReferencePath(entry: Pick<GetResult, 'source' | 'path'>): string {
   const path = entry.path.replace(/\\/g, '/').replace(/^\/+/, '');
   if (entry.source === 'own') return prefixPath('entries', path);
-  return prefixPath(entry.source, prefixPath('entries', path));
+  return `${entry.source} (sealed or cloned bundle; no local file reference)`;
 }
 
 export function decideCodexSidecarExecution(
