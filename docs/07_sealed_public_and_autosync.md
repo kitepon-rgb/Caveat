@@ -1,6 +1,7 @@
 # 07 — 封緘公開層・自動同期・init 一発化・公開検閲・検索計測（v0.16 設計正典）
 
-> 状態: **計画確定・実装未着手**（2026-07-11 承認。Explore×2 / Web 事例調査×2 / Plan×2 / refuter 敵対的検証 1 巡を経由。Oracle はオーナー却下により未使用）
+> 状態: **実装中 — 刻み(1)(2) 完了**（2026-07-11 承認・同日着手。Explore×2 / Web 事例調査×2 / Plan×2 / refuter 敵対的検証 1 巡を経由。Oracle はオーナー却下により未使用）
+> 消化済み: 刻み(1) gitRuntime = a3c22a2 + 079c4ed / 刻み(2) sealedBundle・sealedKeys = 95ebfab（各刻みとも実装委譲 → refuter/検証 → 統括ゲート再実行の型）。次は刻み(3) publish 封緘化（A3）
 > 前提: Fable 級統括／Codex・sonnet 級実装者（2026-07 時点）
 > 本書がチェックボックス付き TODO を兼ねる（グローバル CLAUDE.md「プランは TODO を兼ねる」）
 
@@ -49,20 +50,24 @@ Caveat-Public には平文 markdown を置かず、**暗号化バンドル（配
 
 ### A1. バンドルフォーマット（`bundle/entries.caveat` 単一ファイル）
 
-- [ ] バイト配置: magic `CVLT`(4) + formatVersion(1) + headerLen(4, LE) + header JSON + ciphertext + GCM tag(16)
-- [ ] header JSON（手書きシリアライズ・キー順固定）: `{formatVersion, alg:"aes-256-gcm", keyId, keyserverUrl, nonce(base64 12B), entryCount}`。**keyserverUrl を header に含める**＝購読側はバンドルだけで鍵の取得先が分かる（自己記述、他ユーザーの封緘 repo も追加設定なしで購読可能）
-- [ ] ペイロード: relPath 昇順ソート（locale 非依存比較）の JSON Lines（`{"relPath":..., "content":<base64>}`）。**mtime・タイムスタンプ・絶対パスを一切含めない決定的ビルド**。圧縮なし（gzip の MTIME ヘッダは決定性を壊すため。将来必要なら deflateRaw）
-- [ ] 暗号: AES-256-GCM。**HKDF で contentKey → encKey / nonceKey に分離**〔refuter A-3〕。**nonce = HMAC-SHA256(nonceKey, formatVersion ‖ keyId ‖ keyserverUrl ‖ canonicalPayload).subarray(0,12)**〔refuter A-1: header 可変部を束縛し、header だけ変わった時の nonce 再利用（GCM forbidden attack）を遮断〕。header バイト列を AAD に設定（パース元バイトをそのまま渡す）
-- [ ] **ハード不変条件: HMAC に食わせたバイト列と暗号化するバイト列は同一バッファ**〔refuter A-2。1 バイトでもズレたら nonce 再利用の破滅条件〕。テストで直接 assert
-- [ ] 決定性テスト: 同一入力 2 回で `Buffer.compare === 0`、入力順シャッフルでも同一、GCM tag 改ざん・AAD 改ざん・誤鍵で明示エラー（silent 空配列禁止）、未知 formatVersion で「caveat をアップグレードせよ」の明示エラー
+> 完了 95ebfab（2026-07-11、refuter 敵対的検証済み）。不変条件は「独立再計算 nonce 一致テスト + unseal 時のランタイム nonce 再計算検証」で担保。追加で relPath の well-formedness（lone surrogate 拒否）と空/`.`/`..` セグメント拒否を実装（refuter 指摘: lone surrogate が UTF-8 で潰れてソート決定性が破れる反例を実証→封鎖）。
+
+- [x] バイト配置: magic `CVLT`(4) + formatVersion(1) + headerLen(4, LE) + header JSON + ciphertext + GCM tag(16)
+- [x] header JSON（手書きシリアライズ・キー順固定）: `{formatVersion, alg:"aes-256-gcm", keyId, keyserverUrl, nonce(base64 12B), entryCount}`。**keyserverUrl を header に含める**＝購読側はバンドルだけで鍵の取得先が分かる（自己記述、他ユーザーの封緘 repo も追加設定なしで購読可能）
+- [x] ペイロード: relPath 昇順ソート（locale 非依存比較）の JSON Lines（`{"relPath":..., "content":<base64>}`）。**mtime・タイムスタンプ・絶対パスを一切含めない決定的ビルド**。圧縮なし（gzip の MTIME ヘッダは決定性を壊すため。将来必要なら deflateRaw）
+- [x] 暗号: AES-256-GCM。**HKDF で contentKey → encKey / nonceKey に分離**〔refuter A-3〕。**nonce = HMAC-SHA256(nonceKey, formatVersion ‖ keyId ‖ keyserverUrl ‖ canonicalPayload).subarray(0,12)**〔refuter A-1: header 可変部を束縛し、header だけ変わった時の nonce 再利用（GCM forbidden attack）を遮断〕。header バイト列を AAD に設定（パース元バイトをそのまま渡す）
+- [x] **ハード不変条件: HMAC に食わせたバイト列と暗号化するバイト列は同一バッファ**〔refuter A-2。1 バイトでもズレたら nonce 再利用の破滅条件〕。テストで直接 assert
+- [x] 決定性テスト: 同一入力 2 回で `Buffer.compare === 0`、入力順シャッフルでも同一、GCM tag 改ざん・AAD 改ざん・誤鍵で明示エラー（silent 空配列禁止）、未知 formatVersion で「caveat をアップグレードせよ」の明示エラー
 
 ### A2. 鍵ライフサイクル（第一級セクション〔refuter 総合 3 位〕）
 
-- [ ] `sealedKeys.ts`: `ContentKeyProvider` 抽象 = 同期 `resolveContentKey(keyId)`（キャッシュ限定）+ 非同期 `ensureKeyAvailable(keyId)`（keyserver 取得）。**プリウォーム方式**＝索引パイプラインは同期のまま、走査前に必要 keyId を並列取得
-- [ ] keyId は `"keyserver:<id>"` 形式。KeyserverProvider: `GET <keyserverUrl>/v1/keys/<id>` → `{keyId, key(base64 32B)}`、`AbortSignal.timeout(10_000)`（PROBE_TIMEOUT_MS と同型）、キャッシュは `<caveatHome>/keys/`（atomic write、壊れたら削除して再取得）。**ネットワーク不通かつキャッシュ無しは明示エラー**（silent fallback 禁止）— 呼び手（reindex）は当該 source のみ skip + warn、既存行は保持
-- [ ] **端末間同一鍵の保証**: 鍵は Worker 側にのみ存在し全端末が keyId で取得 → 決定的ビルド（no-op 検出・差分算出）が端末を跨いで成立〔refuter C-補: per-machine 鍵だと publish ピンポンが起きる問題を構造的に回避〕
+> コード部分完了 95ebfab。キャッシュは (keyserverUrl, keyId) 複合キー（別 publisher が同じ keyId "v1" を使う衝突を分離）。keyserverUrl は https のみ許可（ループバック http は開発/テスト用例外）＝ A4 で community 由来の敵対的 URL が入る前に SSRF 面を封鎖済み。resolveContentKey は防御コピーを返す。ローテーション手順の docs 化のみ未消化（下の未チェック項目）。
+
+- [x] `sealedKeys.ts`: `ContentKeyProvider` 抽象 = 同期 `resolveContentKey(keyId)`（キャッシュ限定）+ 非同期 `ensureKeyAvailable(keyId)`（keyserver 取得）。**プリウォーム方式**＝索引パイプラインは同期のまま、走査前に必要 keyId を並列取得
+- [x] keyId は `"keyserver:<id>"` 形式。KeyserverProvider: `GET <keyserverUrl>/v1/keys/<id>` → `{keyId, key(base64 32B)}`、`AbortSignal.timeout(10_000)`（PROBE_TIMEOUT_MS と同型）、キャッシュは `<caveatHome>/keys/`（atomic write、壊れたら削除して再取得）。**ネットワーク不通かつキャッシュ無しは明示エラー**（silent fallback 禁止）— 呼び手（reindex）は当該 source のみ skip + warn、既存行は保持
+- [x] **端末間同一鍵の保証**: 鍵は Worker 側にのみ存在し全端末が keyId で取得 → 決定的ビルド（no-op 検出・差分算出）が端末を跨いで成立〔refuter C-補: per-machine 鍵だと publish ピンポンが起きる問題を構造的に回避〕
 - [ ] ローテーション手順を docs 化: 新 keyId の鍵を Worker に追加 → `~/.caveatrc.json` の `sealedKeyId` 更新 → publish（Worker は旧 keyId も返し続ける＝購読者の旧バンドル読み取りを壊さない）
-- [ ] config 追加: `sealedKeyId`（既定 `v1`）/ `sealedKeyserverUrl`。publish 時の実効 keyId = `keyserver:<sealedKeyId>`。embedded モードは**実装しない**（オーナー裁定は keyserver。プロバイダ抽象は残すが実装は 1 つ＝YAGNI）
+- [x] config 追加: `sealedKeyId`（既定 `v1`）/ `sealedKeyserverUrl`。publish 時の実効 keyId = `keyserver:<sealedKeyId>`。embedded モードは**実装しない**（オーナー裁定は keyserver。プロバイダ抽象は残すが実装は 1 つ＝YAGNI）
 
 ### A3. publish の封緘化
 
