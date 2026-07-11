@@ -52,7 +52,7 @@ describe('recordEntry', () => {
     expect(parsed.frontmatter.title).toBe('RTX 5090 で CUDA 12.4 が失敗');
     expect(parsed.frontmatter.confidence).toBe('reproduced');
     expect(parsed.frontmatter.outcome).toBe('resolved');
-    expect(parsed.frontmatter.visibility).toBe('public');
+    expect(parsed.frontmatter.visibility).toBe('private');
     expect(parsed.frontmatter.environment.cuda).toBe('<12.5');
     expect(parsed.frontmatter.source_session).toMatch(/^.+\/[0-9a-f]{12}$/);
     expect(parsed.frontmatter.last_verified).toBe(parsed.frontmatter.created_at);
@@ -98,6 +98,15 @@ describe('recordEntry', () => {
     const parsed = parseMarkdown(readFileSync(result.filePath, 'utf-8'));
     expect(parsed.frontmatter.confidence).toBe('tentative');
     expect(parsed.frontmatter.outcome).toBe('resolved');
+  });
+
+  it('defaults visibility to private in frontmatter', () => {
+    const result = recordEntry(
+      { title: 'private default', symptom: 's' },
+      { db: f.db, entriesRoot: f.entriesRoot },
+    );
+    const parsed = parseMarkdown(readFileSync(result.filePath, 'utf-8'));
+    expect(parsed.frontmatter.visibility).toBe('private');
   });
 
   it('includes Context section when provided', () => {

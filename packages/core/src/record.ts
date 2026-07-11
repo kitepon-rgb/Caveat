@@ -55,7 +55,7 @@ export function recordEntry(input: RecordInput, opts: RecordOptions): RecordResu
   const frontmatter: Frontmatter = {
     id,
     title: input.title,
-    visibility: input.visibility ?? 'public',
+    visibility: input.visibility ?? 'private',
     confidence: input.confidence ?? 'tentative',
     outcome: input.outcome ?? 'resolved',
     tags: input.tags ?? [],

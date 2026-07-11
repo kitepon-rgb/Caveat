@@ -63,7 +63,7 @@ export function listStale(db: DatabaseSync, opts: StaleOptions = {}): StaleRow[]
     id: r.id,
     source: r.source as Source,
     title: r.title,
-    visibility: (r.visibility as Visibility) ?? 'public',
+    visibility: (r.visibility as Visibility) ?? 'private',
     last_hit_at: r.last_hit_at,
   }));
 }

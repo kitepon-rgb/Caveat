@@ -133,7 +133,7 @@ function toSearchResult(row: EntryRow): SearchResult {
     title: row.title,
     symptomExcerpt: symptom.slice(0, SYMPTOM_EXCERPT_LENGTH),
     confidence: row.confidence as Confidence,
-    visibility: (row.visibility as Visibility) ?? 'public',
+    visibility: (row.visibility as Visibility) ?? 'private',
     environment: fm.environment ?? {},
   };
 }
