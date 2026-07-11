@@ -100,7 +100,7 @@ flowchart LR
 ```
 
 - **`markdown-in-git` is the source of truth.** SQLite (FTS5 trigram) is a rebuildable derived index, gitignored.
-- **Per-group sharing via plain git.** Your `~/.caveat/own/` is yours. Share via any git repo (your own, a team's `acme-corp/caveats`, etc.). Subscribers add it with `caveat community add <github-url>`; updates flow via `caveat community pull`. The tool stays out of the publish path.
+- **Two sharing boundaries, enforced by the tool.** Your `~/.caveat/own/` is yours. `caveat sync` mirrors it (public + private) to a **private** remote for your machines/org — refusing any anonymously-readable remote. `caveat publish` mirrors **only public** entries to a **public** repo. Subscribers add a repo with `caveat community add <github-url-or-username>`; updates flow via `caveat community pull`. No central server; no automatic merge of strangers' entries — trust stays social.
 - **`visibility: public | private`** frontmatter + `.husky/pre-commit` gate keeps private entries out of any repo you commit to.
 - **Agent integrations.** Claude Code gets an MCP server exposing 6 tools (`caveat_search` / `caveat_get` / `caveat_record` / `caveat_update` / `caveat_list_recent` / `caveat_pull`) plus hooks. Codex gets native hooks through `caveat codex-hook install`. Both surfaces reuse the same retrieval gates — no hardcoded keyword lists:
   - **UserPromptSubmit** (事前発火): when you submit a prompt, tokenize it (path-stripping + self-identity + pure-hiragana glue removal + CJK group dedup), FTS the DB, and surface entries that pass **three structural gates** — (1) ≥ 2 distinct group matches (co-occurrence), (2) ≥ 1 match in the entry's `## Symptom` section (failure-state evidence), (3) ≥ 1 corpus-rarest prompt token in `topical_text` (title + tags + environment values, topic evidence). Bare proper-noun mentions like `RTX 5090 CUDA で何かやってる` stay silent; only specific failure-state vocabulary plus a curated topic anchor (`cudaGetDeviceCount`, `SQLITE_READONLY`, …) fires the gate. No hardcoded word lists.
@@ -179,15 +179,26 @@ For Codex, run `caveat codex-hook diagnostics` first if you want a health check.
 It reports hook availability separately from whether Caveat-owned hooks are
 installed.
 
-### Sharing with a group / team / company
+### Sharing: two boundaries, two commands
 
-Caveat does not ship a publish flow. The recommended pattern is plain git:
+`visibility` is a **distribution ceiling**. Two commands enforce it:
 
-1. One person creates a GitHub repo (private or public), e.g. `acme-corp/caveats`, with an `entries/` directory.
-2. Each contributor either (a) makes that repo their `~/.caveat/own/` (set `knowledgeRepo` in `~/.caveatrc.json`) and writes directly into it, or (b) keeps a separate `~/.caveat/own/` and copies/cherry-picks shareable entries into the team repo by hand.
-3. Anyone who wants to read those caveats: `caveat community add https://github.com/acme-corp/caveats` then `caveat pull`.
+- **`caveat sync`** — sync your whole `~/.caveat/own/` (public *and* private entries) to a **private** git remote. This is how you keep your knowledge in step across your own machines, or share it inside an org — anyone with push/pull access to that private repo is inside your boundary. Before pushing, Caveat probes the remote and **refuses to push if it is anonymously readable** (a public repo), so private entries never leak by misconfiguration.
 
-Because contributors have write access to their own group repo, this is just `git push`; the tool stays out of the path.
+  ```sh
+  caveat sync --init        # gh-creates <you>/Caveat-Private (private), first push
+  caveat sync               # thereafter: commit → pull --rebase → reindex → push
+  caveat sync --init --repo https://github.com/acme-corp/Caveat-Private.git   # org / self-hosted
+  ```
+
+- **`caveat publish`** — mirror **only** `visibility: public` entries to a **public** repo, one-way. Private entries are never written; the mirror is re-verified before every push and aborts entirely on any malformed entry.
+
+  ```sh
+  caveat publish --init     # gh-creates <you>/Caveat-Public (public)
+  caveat publish            # mirror public entries, show the diff, confirm, push
+  ```
+
+Others read your public repo with `caveat community add <you>` (a bare GitHub username expands to `<you>/Caveat-Public`) then `caveat pull`. There is still no central server and no automatic merge of strangers' contributions — trust stays social. Contributions to someone's public repo go through its normal GitHub PR review.
 
 ### Using an existing knowledge repo instead of `~/.caveat/own/`
 

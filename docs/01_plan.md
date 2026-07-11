@@ -129,13 +129,13 @@ CUDA Toolkit を 12.5 以上にアップデート。PyTorch は cu125 wheel を�
 ```
 
 - **id** はスラッグ。markdown ファイル名と一致させる（`<id>.md`）
-- **visibility: private** はコミット不可（pre-commit でブロック）
+- **visibility**（v0.15 で定義を更新。正典は [06_sharing_and_reindex.md](06_sharing_and_reindex.md)）: **配布範囲の上限**を表す 2 値。`private` = 保有境界内（個人の全端末・組織のメンバー = 同じ private remote を push/pull できる人たち）で共有してよい／`public` = 第三者（世界）に出してよい。境界の執行は `caveat sync`（private remote への同期。匿名可読 remote は拒否）と `caveat publish`（public のみを公開 repo へ一方向ミラー）が行う。**旧記述「private はコミット不可（pre-commit でブロック）」は廃止** — pre-commit gate はツール repo 自身の dogfood `entries/` を守る現役だが、ユーザーの own repo では private も private remote へ同期するのが正しい
 - **environment** の比較仕様:
   - **semver キーのホワイトリスト**を `config/default.json` に `"semverKeys": ["driver", "cuda", "node"]` として持つ。リスト内キーは `semver.coerce` で正規化して semver 比較
   - semver キーかつ演算子付き（`>=, <=, >, <, =`）は範囲比較、演算子なしは `=` 扱い（semver 完全一致）
   - **誤ヒット防止**: `semver.coerce` の結果が元文字列先頭の `\d+(\.\d+){0,2}` 抽出と一致しない場合は semver 比較を放棄して false 判定（`coerce("windows-11") → 11.0.0` 等の暴発回避）
   - semver キー以外は lowercase substring match（演算子は受理しない）
-- **source_project**: MCP サーバが cwd から自動推定。比較前に両辺を `path.resolve` → `toLowerCase()` → `replace(/\\/g, '/')` で正規化した上で、`~/.caveatrc.json` の `projectRoots: string[]`（正規化済み prefix のリスト、未設定なら既定 `["c:/users/kite_/documents/program/"]`）に含まれる prefix 配下であれば、その直下の最初のセグメントを採用。該当外は git root の basename、git 外なら `null`。WSL パス（`/mnt/c/...`）は対象外
+- **source_project**: **常に `null` 固定**（実装実態）。frontmatter・スキーマ・不変キー一覧には存在するが、`recordEntry` が `null` をハードコードする（`packages/core/src/record.ts`）。理由: 共有知識に個人のプロジェクト名を漏らさない。〔旧設計「MCP サーバが cwd から自動推定（`projectRoots` prefix・`c:/users/kite_/...` 決め打ち・git root basename フォールバック）」は実装されずに廃案。プロジェクト帰属を記録する軸を将来復活させるかは 06_sharing_and_reindex.md の未解決点に記載〕
 - **source_session**: MCP サーバが `caveat_record` 実行時に自動付与（`<ISO-8601 UTC>/<ランダム 12 hex>`、48 bit）。Claude 側からの上書き不可
 - **created_at / updated_at**: ISO-8601 TEXT
 - **last_verified**: `YYYY-MM-DD`。該当罠が「今も有効と最後に確認した日」。`updated_at`（レコード編集時刻）と区別する意図。`caveat_record` 実行時は `created_at` と同値で自動付与。以降は明示更新のみ（`caveat_update` の更新可キー、ツール側の自動管理なし）。v1 では検索側での staleness 警告や閾値判定は実装しない（閾値の根拠データが未取得）
@@ -232,7 +232,7 @@ END;
 
 1. `caveat_search(query, filters?: { tags?, confidence?, source?, env? })` — FTS + frontmatter 絞り込み。**戻り値形**: `Array<{ id, source, title, symptomExcerpt: string (200 字), confidence, environment: object }>`
 2. `caveat_get(id)` — **戻り値形**: `{ id, source, path, frontmatter, sections: Record<string, string>, body: string }`（sections のキーは H2 見出しに `trim()` のみ適用した値、大小は原文維持。body は frontmatter 除去後の raw md）。戻り値の sections キーは `caveat_update` の sections 入力にそのまま渡せる（update 側が `trim().toLowerCase()` で正規化して一致判定する）
-3. `caveat_record(entry)` — 新規 md ファイル作成。未指定環境は `env.ts` が補完。`source_project` は cwd 推定。`source_session` はサーバ側で自動付与。`visibility` デフォルト `public`
+3. `caveat_record(entry)` — 新規 md ファイル作成。未指定環境は `env.ts` が補完。`source_project` は常に `null`（上記スキーマ節参照）。`source_session` はサーバ側で自動付与。`visibility` は zod で必須（省略時 core フォールバックは v0.15 で `private`＝迷ったら狭い側）
 4. `caveat_update(id, patch)` — 既存 md を merge して書き戻す。`patch` の形式は `{ frontmatter?: Partial<Frontmatter>, sections?: Record<string, string> }`。
    - **frontmatter merge**: shallow merge（`environment` も shallow）。**配列フィールド**（`tags` 等）は完全置換
    - **sections merge**: キー名と md の H2 見出しを `trim().toLowerCase()` で比較して完全一致なら該当段落を置換、一致しなければ末尾に追加（記号・trailing `:` は除去しない）

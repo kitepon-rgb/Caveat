@@ -1,6 +1,6 @@
 # Private tier 設計 — 対象範囲の拡張
 
-> **状態**: 検討中の設計メモ（まだ [01_plan.md](01_plan.md) には取り込んでいない）。
+> **状態**: 歴史文書（v0.11 で実装済み）。**visibility の定義と共有モデルは v0.15 で更新された** — 現行の正典は [06_sharing_and_reindex.md](06_sharing_and_reindex.md)。本メモの「private = 1 台ローカルのみ、複数マシン同期は保留」という前提は廃止され、private は private remote（`caveat sync`）で保有境界内に同期する方式に置き換わった。以下は当時の検討記録として保持する。
 > **日付**: 2026-04-23
 
 ## 背景 — Caveat の狙いの転換

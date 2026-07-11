@@ -132,15 +132,26 @@ Claude Code 向けの `caveat init` の動作:
 Codex 側は `caveat codex-hook diagnostics` で事前確認できます。diagnostics は
 Codex hook runtime が使えるかと、Caveat-owned hooks が install 済みかを分けて表示します。
 
-### チーム / 会社で共有する
+### 共有 — 2 つの境界、2 つのコマンド
 
-Caveat は publish フローを持ちません。推奨パターンは普通の git:
+`visibility` は**配布範囲の上限**です。境界を執行するコマンドが 2 つあります:
 
-1. 誰か一人が GitHub repo を作成（private / public どちらでも可）。例: `acme-corp/caveats`、ルートに `entries/` ディレクトリ。
-2. 各コントリビュータは (a) その repo を自分の `~/.caveat/own/` にする（`~/.caveatrc.json` の `knowledgeRepo` で指定）か、(b) 自分の `~/.caveat/own/` を別途持って共有可能なエントリだけ手動で team repo に cherry-pick する。
-3. 読みたい人は `caveat community add https://github.com/acme-corp/caveats` してから `caveat pull`。
+- **`caveat sync`** — `~/.caveat/own/` 全体（public も private も）を**非公開**の git remote と同期します。自分の全端末で知識を揃える、あるいは組織内で共有する経路です（その private repo に push/pull できる人が境界の内側）。push 前に remote を probe し、**匿名で読める（＝公開）remote には push を拒否**するので、設定ミスで private が漏れません。
 
-書き込み権限は team repo 側で管理されるので、共有経路は `git push` だけ。tool は介在しません。
+  ```sh
+  caveat sync --init        # gh で <you>/Caveat-Private（非公開）を作成し初回 push
+  caveat sync               # 以降: commit → pull --rebase → 再索引 → push
+  caveat sync --init --repo https://github.com/acme-corp/Caveat-Private.git   # 組織 / 自前ホスト
+  ```
+
+- **`caveat publish`** — `visibility: public` のエントリ**だけ**を**公開** repo へ一方向ミラーします。private は一切書き出されず、push 前にミラー全体を再検証、不正なエントリが 1 件でもあれば全体を中止します。
+
+  ```sh
+  caveat publish --init     # gh で <you>/Caveat-Public（公開）を作成
+  caveat publish            # public エントリをミラー → 差分表示 → 確認 → push
+  ```
+
+他の人はあなたの公開 repo を `caveat community add <you>`（裸の GitHub ユーザー名は `<you>/Caveat-Public` に展開）してから `caveat pull` で読みます。中央サーバは無く、見知らぬ他人の貢献を自動マージすることもありません — 信頼は社会的に引きます。公開 repo への貢献は通常の GitHub PR レビューを通します。
 
 ## 開発（Caveat 本体への貢献）
 

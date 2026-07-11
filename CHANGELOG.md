@@ -2,6 +2,21 @@
 
 All notable changes are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] — 2026-07-11
+
+### Added
+- **`caveat sync`** — sync your own knowledge repo to a **private** git remote (the shared boundary for you across machines, or your whole org). Runs a credential-free anonymous-readability probe against the effective push URL(s) and **refuses to push private entries to any anonymously-readable remote**. Without setup, `caveat sync --init` uses `gh` to create `<user>/Caveat-Private` after one confirmation (`--repo <url>` to override).
+- **`caveat publish`** — mirror only `visibility: public` entries to a **public** repo (`<user>/Caveat-Public` by default) as a one-way full replacement. Parses and re-verifies every mirrored file; aborts entirely if any entry has invalid visibility; nothing but the generated README and public `entries/**/*.md` may exist in the mirror.
+- **`caveat community add <username>`** — bare GitHub usernames now expand to `https://github.com/<name>/Caveat-Public` (validated against a handle pattern first).
+- **Automatic reindex** — Stop hooks detect when the entries tree changed (e.g. from `git pull` on another machine) via a content digest and reindex on a detached worker, so entries synced from other machines become searchable without a manual `caveat index`. Disable with `CAVEAT_INDEX_AUTOSYNC=off`.
+
+### Changed
+- `visibility` now means **distribution ceiling**: `private` = shareable within your ownership boundary (your machines / your org's private remote), `public` = shareable with the world. The design canon is [docs/06_sharing_and_reindex.md](docs/06_sharing_and_reindex.md).
+- The default when `visibility` is omitted (core fallback) is now **`private`**, not `public` (leak-safety). The MCP `caveat_record` tool still requires it explicitly.
+
+### Fixed
+- Entries synced in from other machines were invisible to search and hooks because nothing reindexed them; the digest-based auto-reindex closes this.
+
 ## [0.14.10] — 2026-05-10
 
 ### Changed

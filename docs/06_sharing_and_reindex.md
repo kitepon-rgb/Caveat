@@ -1,6 +1,6 @@
 # 06 — 共有の製品化と索引の自己修復（v0.15 恒久対策）
 
-> 状態: **承認済み・実装中**（2026-07-11 オーナー承認。本書が正本＝TODO を兼ねる）
+> 状態: **実装完了**（2026-07-11。v0.15.0・272 tests passing。Track 1/2/3 全チェック済み。本書が設計正典）
 > 前提: Fable 級統括／Codex 中位実装者（2026-07 時点）
 
 ## Context — なぜやるか
@@ -34,13 +34,13 @@
 
 **設計**: 検知は前景・軽量、再索引は detached worker。既存の pending sweep（`maybeSweepPendingDirs` / `.last-sweep` マーカー / env kill switch / Stop hook 冒頭 try-catch）と同じ型。
 
-- [ ] `packages/core/src/autoReindex.ts` 新規: `computeEntriesDigest`（own + 全 community の `(source, relpath, mtimeMs, size)` を sort → SHA-256。実測 193 files で 2–3ms）／マーカー I/O（`<caveatHome>/index/.entries-digest`、tmp 書き → `renameSync` の atomic 更新）／lockfile（`.reindex-lock`、`{flag:'wx'}` + pid 生存確認、**タイムアウト定数なし**。stale は ESRCH で破棄）／`reindexAllSources`（scanSource を own → 各 community に適用 + 消えた community source の行 purge。壊れ symlink 時は own 行を保持して warn）
-- [ ] `packages/core/src/indexer.ts`: `walkMarkdown` を export（digest と scan が**同一 walk** を共有するのが検知一致性の要）
-- [ ] `apps/cli/src/autoReindexTrigger.ts` 新規: 前景検知 + `spawn(node, [cli, 'hook', 'reindex'], {detached, stdio:'ignore'}).unref()`。順序: env `CAVEAT_INDEX_AUTOSYNC==='off'` → skip ／ DB 無し → silent skip ／ lock 存在 → skip ／ digest 一致 → skip（これが事実上のデバウンス。時間デバウンスは置かない — pull 直後の反映が目的）
-- [ ] `apps/cli/src/commands/hookCmd.ts`: `stop` 冒頭の sweep 直後に trigger を try/catch 並置。`HookName` に `'reindex'` worker エントリ追加（digest snapshot → 全 scan 成功後にのみマーカー更新 → `.last-reindex.json` に結果記録。途中クラッシュ = マーカー未更新 = 次 Stop で自己修復）
-- [ ] `apps/cli/src/commands/codexHookCmd.ts`: codex `stop` 冒頭に同じ trigger（worker は `hook reindex` を共用）
-- [ ] `caveat index` / `pull` / `init` を `reindexAllSources` + マーカー更新に集約（init は同期実行 belt-and-suspenders — install 直後の索引空も解消）
-- [ ] テスト: `packages/core/tests/autoReindex.test.ts`（digest 決定性・変化検知・lock・幽霊行掃除・source purge）／`apps/cli/tests/autoReindexHook.test.ts`（`hook reindex` E2E: FS 追加 → 再索引 → user-prompt-submit で浮上、stop 発火、clean skip、kill switch、lock 競合）
+- [x] `packages/core/src/autoReindex.ts` 新規: `computeEntriesDigest`（own + 全 community の `(source, relpath, mtimeMs, size)` を sort → SHA-256。実測 193 files で 2–3ms）／マーカー I/O（`<caveatHome>/index/.entries-digest`、tmp 書き → `renameSync` の atomic 更新）／lockfile（`.reindex-lock`、`{flag:'wx'}` + pid 生存確認、**タイムアウト定数なし**。stale は ESRCH で破棄）／`reindexAllSources`（scanSource を own → 各 community に適用 + 消えた community source の行 purge。壊れ symlink 時は own 行を保持して warn）
+- [x] `packages/core/src/indexer.ts`: `walkMarkdown` を export（digest と scan が**同一 walk** を共有するのが検知一致性の要）
+- [x] `apps/cli/src/autoReindexTrigger.ts` 新規: 前景検知 + `spawn(node, [cli, 'hook', 'reindex'], {detached, stdio:'ignore'}).unref()`。順序: env `CAVEAT_INDEX_AUTOSYNC==='off'` → skip ／ DB 無し → silent skip ／ lock 存在 → skip ／ digest 一致 → skip（これが事実上のデバウンス。時間デバウンスは置かない — pull 直後の反映が目的）
+- [x] `apps/cli/src/commands/hookCmd.ts`: `stop` 冒頭の sweep 直後に trigger を try/catch 並置。`HookName` に `'reindex'` worker エントリ追加（digest snapshot → 全 scan 成功後にのみマーカー更新 → `.last-reindex.json` に結果記録。途中クラッシュ = マーカー未更新 = 次 Stop で自己修復）
+- [x] `apps/cli/src/commands/codexHookCmd.ts`: codex `stop` 冒頭に同じ trigger（worker は `hook reindex` を共用）
+- [x] `caveat index` / `pull` / `init` を `reindexAllSources` + マーカー更新に集約（init は同期実行 belt-and-suspenders — install 直後の索引空も解消）
+- [x] テスト: `packages/core/tests/autoReindex.test.ts`（digest 決定性・変化検知・lock・幽霊行掃除・source purge）／`apps/cli/tests/autoReindexHook.test.ts`（`hook reindex` E2E: FS 追加 → 再索引 → user-prompt-submit で浮上、stop 発火、clean skip、kill switch、lock 競合）
 
 **発火点は Stop のみ**（PostToolUse は前景 ~20ms 予算、UserPromptSubmit はプロンプト遅延に直結。収束が 1 ターン遅れるだけなので不要）。
 
@@ -49,28 +49,28 @@
 **private tier**: `caveat sync` — own を Caveat 管理の git repo として private remote と同期。個人多端末も組織も同一機構。
 **public tier**: `caveat publish` — frontmatter パース済み `visibility: public` のみを公開 repo へ一方向全置換ミラー。世界は `community add` で購読。
 
-- [ ] `packages/core/src/remoteVisibility.ts` 新規: `deriveAnonymousProbeUrl`（https 素通し / scp・ssh 形式を https へ構文変換。ホスト名リスト禁止）＋ `probeAnonymousRead`（credential 無しで `<url>/info/refs?service=git-upload-pack` を GET。git smart-HTTP 共通仕様。3 値: `anonymous-readable` / `denied` / `indeterminate`。`PROBE_TIMEOUT_MS = 10_000` は命名定数+根拠コメント）
-- [ ] `packages/core/src/sync.ts` 新規: preflight（非 repo / **own が外側 repo に内包 → `EXTERNAL_TOPLEVEL` 明示エラー（オーナーの dotagents symlink 構成はここで安全に拒否され、従来運用継続 + Track 1 が索引を拾う）** / detached HEAD / origin 無し）→ 境界検査 → `git add -A` + commit → pull --rebase（コンフリクトは `rebase --abort` で復元して明示エラー・ローカル commit は保持）→ own reindex + digest マーカー更新（Track 1 と接続、hook 側の冗長 worker を抑止）→ push
-- [ ] **境界執行の規則**（sync 時。2026-07-11 敵対的検証 C1-C3 を反映し **tree 内容非依存**に強化）: 判定は remote の匿名可読性のみで行う — `anonymous-readable` → **無条件拒否・override 不可**（現在の tree が全部 public でも拒否。理由: push は**履歴全体**を運び、過去コミットの private や `git add -A` が拾った非 md ファイルは tree 検査では見えない = sync は private 専用チャネルと定義する）／`indeterminate` → 拒否、`--trust-remote-private` 明示時のみ続行／`denied` → 続行。**probe は実効 push URL**（`git remote get-url --push origin`、insteadOf 適用後）に対して行う（fetch URL と push 先の食い違いを突く経路を遮断）
-- [ ] **セットアップの既定は決め打ち規約**: own が未設定のまま `caveat sync` を打ったら、(1) `gh api user` で GitHub ユーザー名を解決 → (2) `<user>/Caveat-Private` の存在確認 → 無ければ `gh repo create Caveat-Private --private` を**確認 1 回**の上で実行 → (3) remote 設定 + 初回 push。作成直後に匿名読取 probe で「本当に非公開か」を検証。`gh` が無い/未ログインなら黙らず「実行すべきコマンド 2 行」を提示して停止（silent fallback なし）。`--repo <url>` で組織 repo 等へ上書き可
-- [ ] 既存 remote + ローカル空（2 台目導入）→ checkout + reindex ／ **両側に entries → 拒否**（自動マージしない、手動退避手順を提示）
-- [ ] `packages/core/src/publish.ts` 新規: `collectPublishSet`（全 .md を parse、public のみ。**検査した bytes をそのまま持ち回り TOCTOU 排除**。invalid 1 件でも全体中止）→ ミラー workdir `<caveatHome>/publish/mirror`（clone or fetch + `reset --hard origin/<default>` **+ `git clean -ffdx`**〔C4: 前回クラッシュの untracked 残骸が commit に混入する経路を遮断〕）→ `entries/` 全消し → public のみ再配置（削除・改名の追従を機械的に保証）→ 決定的 README 生成（timestamp なし・購読方法つき）→ **出口検査 `verifyMirror`**（合否は「ミラー全ファイルが parse 成功かつ visibility === 'public'」の単独 assert。C7: `findBlockedFiles` は parse 失敗を素通しするため安全網として**数えない**）→ **公開差分の確認**（C5: 追加/変更/削除エントリ一覧を提示し確認。`--yes` でスキップ可。境界内の他者が push したエントリを無自覚に世界公開する confused-deputy 対策）→ commit + push
-- [ ] **visibility 分類の一元化**（C9）: `'public' | 'private' | 'invalid'` の分類関数を core に 1 箇所だけ置き、**厳密一致・trim/小文字化等の正規化を一切しない**（親切正規化は fail-closed 判定を緩める）。sync / publish / verifyMirror / gate はすべてこれを使う
-- [ ] **init の `.gitignore` テンプレ更新**（C8）: 「private はコミット禁止（gate が強制）」という旧モデルのコメントと死に文の `*.private.md` 行を、「private も private remote へ同期する。公開境界は caveat publish が執行する」に差し替え
-- [ ] **publish の既定も決め打ち**: `publishTarget` 未設定で `caveat publish` を打ったら `<user>/Caveat-Public` を既定とし、無ければ `gh repo create Caveat-Public --public` を確認 1 回で実行 → `~/.caveatrc.json` に `publishTarget` を保存（`writeUserConfigPatch` 新設）。`caveat publish --init <url>` で上書き可（sync 側の remote は own/.git の origin そのものが状態なので config 不要）
-- [ ] `caveat community add` が **裸の GitHub ユーザー名/組織名を受理**し `https://github.com/<name>/Caveat-Public` に展開（既存の URL 形式はそのまま維持）。展開**前**に `^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$` で検証（C6: `../` 等によるパストラバーサル遮断）
-- [ ] `packages/core/src/record.ts` L58: visibility フォールバック `?? 'public'` → `?? 'private'`（「迷ったら private」と整合）。読み取り側の `?? 'public'` 3 箇所（repository.ts / claudeHooks.ts / stale.ts）も `'private'` へ統一
-- [ ] `paths.ts` に `publishMirrorDir`、`config.ts`/`types.ts` に `publishTarget: string | null` 追加。CLI コマンド登録（`apps/cli/src/commands/sync.ts` / `publish.ts`、`--dry-run` 両対応）
-- [ ] テスト: remote は**ローカル bare repo**（`community.test.ts` の `initBareWithContent` 流用）、probe は `node:http` テストサーバ + スタブ注入。**publish の核心テスト = ミラーを別 dir に clone して private の bytes が 1 箇所も無いことを全走査 assert**。sync 往復（A で record → sync → B で sync → 到達）、コンフリクト復元、record デフォルト変更の回帰（`record.test.ts` L55 ほか `pnpm -r test` 全通し）
+- [x] `packages/core/src/remoteVisibility.ts` 新規: `deriveAnonymousProbeUrl`（https 素通し / scp・ssh 形式を https へ構文変換。ホスト名リスト禁止）＋ `probeAnonymousRead`（credential 無しで `<url>/info/refs?service=git-upload-pack` を GET。git smart-HTTP 共通仕様。3 値: `anonymous-readable` / `denied` / `indeterminate`。`PROBE_TIMEOUT_MS = 10_000` は命名定数+根拠コメント）
+- [x] `packages/core/src/sync.ts` 新規: preflight（非 repo / **own が外側 repo に内包 → `EXTERNAL_TOPLEVEL` 明示エラー（オーナーの dotagents symlink 構成はここで安全に拒否され、従来運用継続 + Track 1 が索引を拾う）** / detached HEAD / origin 無し）→ 境界検査 → `git add -A` + commit → pull --rebase（コンフリクトは `rebase --abort` で復元して明示エラー・ローカル commit は保持）→ own reindex + digest マーカー更新（Track 1 と接続、hook 側の冗長 worker を抑止）→ push
+- [x] **境界執行の規則**（sync 時。2026-07-11 敵対的検証 C1-C3 を反映し **tree 内容非依存**に強化）: 判定は remote の匿名可読性のみで行う — `anonymous-readable` → **無条件拒否・override 不可**（現在の tree が全部 public でも拒否。理由: push は**履歴全体**を運び、過去コミットの private や `git add -A` が拾った非 md ファイルは tree 検査では見えない = sync は private 専用チャネルと定義する）／`indeterminate` → 拒否、`--trust-remote-private` 明示時のみ続行／`denied` → 続行。**probe は実効 push URL**（`git remote get-url --push origin`、insteadOf 適用後）に対して行う（fetch URL と push 先の食い違いを突く経路を遮断）
+- [x] **セットアップの既定は決め打ち規約**: own が未設定のまま `caveat sync` を打ったら、(1) `gh api user` で GitHub ユーザー名を解決 → (2) `<user>/Caveat-Private` の存在確認 → 無ければ `gh repo create Caveat-Private --private` を**確認 1 回**の上で実行 → (3) remote 設定 + 初回 push。作成直後に匿名読取 probe で「本当に非公開か」を検証。`gh` が無い/未ログインなら黙らず「実行すべきコマンド 2 行」を提示して停止（silent fallback なし）。`--repo <url>` で組織 repo 等へ上書き可
+- [x] 既存 remote + ローカル空（2 台目導入）→ checkout + reindex ／ **両側に entries → 拒否**（自動マージしない、手動退避手順を提示）
+- [x] `packages/core/src/publish.ts` 新規: `collectPublishSet`（全 .md を parse、public のみ。**検査した bytes をそのまま持ち回り TOCTOU 排除**。invalid 1 件でも全体中止）→ ミラー workdir `<caveatHome>/publish/mirror`（clone or fetch + `reset --hard origin/<default>` **+ `git clean -ffdx`**〔C4: 前回クラッシュの untracked 残骸が commit に混入する経路を遮断〕）→ `entries/` 全消し → public のみ再配置（削除・改名の追従を機械的に保証）→ 決定的 README 生成（timestamp なし・購読方法つき）→ **出口検査 `verifyMirror`**（合否は「ミラー全ファイルが parse 成功かつ visibility === 'public'」の単独 assert。C7: `findBlockedFiles` は parse 失敗を素通しするため安全網として**数えない**）→ **公開差分の確認**（C5: 追加/変更/削除エントリ一覧を提示し確認。`--yes` でスキップ可。境界内の他者が push したエントリを無自覚に世界公開する confused-deputy 対策）→ commit + push
+- [x] **visibility 分類の一元化**（C9）: `'public' | 'private' | 'invalid'` の分類関数を core に 1 箇所だけ置き、**厳密一致・trim/小文字化等の正規化を一切しない**（親切正規化は fail-closed 判定を緩める）。sync / publish / verifyMirror / gate はすべてこれを使う
+- [x] **init の `.gitignore` テンプレ更新**（C8）: 「private はコミット禁止（gate が強制）」という旧モデルのコメントと死に文の `*.private.md` 行を、「private も private remote へ同期する。公開境界は caveat publish が執行する」に差し替え
+- [x] **publish の既定も決め打ち**: `publishTarget` 未設定で `caveat publish` を打ったら `<user>/Caveat-Public` を既定とし、無ければ `gh repo create Caveat-Public --public` を確認 1 回で実行 → `~/.caveatrc.json` に `publishTarget` を保存（`writeUserConfigPatch` 新設）。`caveat publish --init <url>` で上書き可（sync 側の remote は own/.git の origin そのものが状態なので config 不要）
+- [x] `caveat community add` が **裸の GitHub ユーザー名/組織名を受理**し `https://github.com/<name>/Caveat-Public` に展開（既存の URL 形式はそのまま維持）。展開**前**に `^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$` で検証（C6: `../` 等によるパストラバーサル遮断）
+- [x] `packages/core/src/record.ts` L58: visibility フォールバック `?? 'public'` → `?? 'private'`（「迷ったら private」と整合）。読み取り側の `?? 'public'` 3 箇所（repository.ts / claudeHooks.ts / stale.ts）も `'private'` へ統一
+- [x] `paths.ts` に `publishMirrorDir`、`config.ts`/`types.ts` に `publishTarget: string | null` 追加。CLI コマンド登録（`apps/cli/src/commands/sync.ts` / `publish.ts`、`--dry-run` 両対応）
+- [x] テスト: remote は**ローカル bare repo**（`community.test.ts` の `initBareWithContent` 流用）、probe は `node:http` テストサーバ + スタブ注入。**publish の核心テスト = ミラーを別 dir に clone して private の bytes が 1 箇所も無いことを全走査 assert**。sync 往復（A で record → sync → B で sync → 到達）、コンフリクト復元、record デフォルト変更の回帰（`record.test.ts` L55 ほか `pnpm -r test` 全通し）
 
 ## Track 3 — 文書の正典化と清算
 
 - [x] `docs/06_sharing_and_reindex.md` 新規（本書）
-- [ ] `docs/01_plan.md` 清算: source_project の旧設計記述（cwd 自動推定・`c:/users/kite_/...` 決め打ち）を実装実態（null 固定）に合わせ、「private = コミット不可」の旧 visibility 記述を二段階定義へ差し替え
-- [ ] `docs/private-tier-design.md` に「visibility 定義は 06 に更新済み」のヘッダ注記（歴史文書として保持）
-- [ ] `CLAUDE.md` / `README.md`・`README.ja.md` / `CHANGELOG.md` 更新（sync/publish の使い方、`CAVEAT_INDEX_AUTOSYNC`、visibility 定義）
-- [ ] ツール repo の `entries/`（35 件・停滞）: README に「正典の公開 DB は Caveat-Public」のポインタを追記（entries/ 自体は dogfood サンプルとして残置。移設は publish 開始後に判断）
-- [ ] **dotagents 側（別 repo・小修正）**: README の「`*.private.md` は端末ローカル（gitignore で強制）」という事実と異なる記述を「private も含め dotagents（private repo）で同期。境界は caveat sync/publish が執行」に修正
+- [x] `docs/01_plan.md` 清算: source_project の旧設計記述（cwd 自動推定・`c:/users/kite_/...` 決め打ち）を実装実態（null 固定）に合わせ、「private = コミット不可」の旧 visibility 記述を二段階定義へ差し替え
+- [x] `docs/private-tier-design.md` に「visibility 定義は 06 に更新済み」のヘッダ注記（歴史文書として保持）
+- [x] `CLAUDE.md` / `README.md`・`README.ja.md` / `CHANGELOG.md` 更新（sync/publish の使い方、`CAVEAT_INDEX_AUTOSYNC`、visibility 定義）
+- [x] ツール repo の `entries/`（35 件・停滞）: README に「正典の公開 DB は Caveat-Public」のポインタを追記（entries/ 自体は dogfood サンプルとして残置。移設は publish 開始後に判断）
+- [x] **dotagents 側（別 repo・小修正）**: README の「`*.private.md` は端末ローカル（gitignore で強制）」という事実と異なる記述を「private も含め dotagents（private repo）で同期。境界は caveat sync/publish が執行」に修正
 
 ## 実装の進め方 — オーケストレーション必須（統括コスト最小化）
 
