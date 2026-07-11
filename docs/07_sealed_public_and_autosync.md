@@ -1,7 +1,7 @@
 # 07 — 封緘公開層・自動同期・init 一発化・公開検閲・検索計測（v0.16 設計正典）
 
 > 状態: **実装中 — 刻み(1)(2) 完了**（2026-07-11 承認・同日着手。Explore×2 / Web 事例調査×2 / Plan×2 / refuter 敵対的検証 1 巡を経由。Oracle はオーナー却下により未使用）
-> 消化済み: 刻み(1) gitRuntime = a3c22a2 + 079c4ed / 刻み(2) sealedBundle・sealedKeys = 95ebfab / 刻み(3) publish 封緘化 = 0bf4d42（各刻みとも実装委譲 → refuter/検証 → 統括ゲート再実行の型）。次は刻み(4) community/索引の封緘対応（A4/A5）
+> 消化済み: 刻み(1) gitRuntime = a3c22a2 + 079c4ed / 刻み(2) sealedBundle・sealedKeys = 95ebfab / 刻み(3) publish 封緘化 = 0bf4d42 / 刻み(4) community・索引の封緘対応（A4/A5 + B-2/B-3）（各刻みとも実装委譲 → refuter/検証 → 統括ゲート再実行の型）。Track A の封緘本体は完了。次は刻み(5) Track B keyserver Worker + purge（実機・オーナー個別確認）または Track C autosync
 > 前提: Fable 級統括／Codex・sonnet 級実装者（2026-07 時点）
 > 本書がチェックボックス付き TODO を兼ねる（グローバル CLAUDE.md「プランは TODO を兼ねる」）
 
@@ -61,7 +61,7 @@ Caveat-Public には平文 markdown を置かず、**暗号化バンドル（配
 
 ### A2. 鍵ライフサイクル（第一級セクション〔refuter 総合 3 位〕）
 
-> コード部分完了 95ebfab。キャッシュは (keyserverUrl, keyId) 複合キー（別 publisher が同じ keyId "v1" を使う衝突を分離）。keyserverUrl は https のみ許可（ループバック http は開発/テスト用例外）＝ A4 で community 由来の敵対的 URL が入る前に SSRF 面を封鎖済み。resolveContentKey は防御コピーを返す。ローテーション手順の docs 化のみ未消化（下の未チェック項目）。
+> コード部分完了 95ebfab。キャッシュは (keyserverUrl, keyId) 複合キー（別 publisher が同じ keyId "v1" を使う衝突を分離）。keyserverUrl は https 無条件許可・http はループバック（127.0.0.1/::1/localhost）のみ許可＝「平文 http で内部を叩く」経路だけを塞ぐ（**https→内部ホストは素通り＝完全な SSRF 封鎖ではない**。刻み4 で community バンドル header 由来の keyserverUrl が prewarm の fetch に入るため、悪意ある publisher が header に `https://<内部ホスト>` を仕込めば購読者端末が blind GET を撃てる残余がある。恒久修正は下の未解決点へ繰り越し）。resolveContentKey は防御コピーを返す。ローテーション手順の docs 化のみ未消化（下の未チェック項目）。
 
 - [x] `sealedKeys.ts`: `ContentKeyProvider` 抽象 = 同期 `resolveContentKey(keyId)`（キャッシュ限定）+ 非同期 `ensureKeyAvailable(keyId)`（keyserver 取得）。**プリウォーム方式**＝索引パイプラインは同期のまま、走査前に必要 keyId を並列取得
 - [x] keyId は `"keyserver:<id>"` 形式。KeyserverProvider: `GET <keyserverUrl>/v1/keys/<id>` → `{keyId, key(base64 32B)}`、`AbortSignal.timeout(10_000)`（PROBE_TIMEOUT_MS と同型）、キャッシュは `<caveatHome>/keys/`（atomic write、壊れたら削除して再取得）。**ネットワーク不通かつキャッシュ無しは明示エラー**（silent fallback 禁止）— 呼び手（reindex）は当該 source のみ skip + warn、既存行は保持
@@ -83,19 +83,23 @@ Caveat-Public には平文 markdown を置かず、**暗号化バンドル（配
 
 ### A4. community の封緘対応
 
-- [ ] `communityPull` を `fetch(['origin','--force','--depth','1'])` → `reset --hard FETCH_HEAD` → `clean -ffdx` に変更（orphan force-push 耐性。simple-git 3.36 の引数解釈は refuter が実ソースで確認済み。FETCH_HEAD は shallow+single-branch で常に正）。**平文 repo 購読はそのまま両対応**（git 操作は形式非依存、回帰テスト必須）
-- [ ] 封緘 repo の検出 = `bundle/entries.caveat` の存在。`community add` は変更不要（clone は形式非依存）
-- [ ] docs/CHANGELOG に移行注記: v0.15 クライアントは封緘 repo の pull が "unrelated histories" で恒久失敗する → 「caveat-cli をアップグレードせよ」〔refuter C-4。現購読者ゼロなので実害最小だが明記〕
+> 完了（刻み4、refuter 敵対的検証済み・致命/要修正ゼロ）。communityPull は fetch --force --depth 1 → reset --hard FETCH_HEAD → clean -ffdx（orphan force-push 追従・平文 repo 回帰も green）。
+
+- [x] `communityPull` を `fetch(['origin','--force','--depth','1'])` → `reset --hard FETCH_HEAD` → `clean -ffdx` に変更（orphan force-push 耐性。simple-git 3.36 の引数解釈は refuter が実ソースで確認済み。FETCH_HEAD は shallow+single-branch で常に正）。**平文 repo 購読はそのまま両対応**（git 操作は形式非依存、回帰テスト必須）
+- [x] 封緘 repo の検出 = `bundle/entries.caveat` の存在。`community add` は変更不要（clone は形式非依存）
+- [x] docs/CHANGELOG に移行注記: v0.15 クライアントは封緘 repo の pull が "unrelated histories" で恒久失敗する → 「caveat-cli をアップグレードせよ」〔refuter C-4。現購読者ゼロなので実害最小だが明記〕
 
 ### A5. 索引・自動再索引の封緘対応〔refuter 総合 2 位: ここを外すと自動再索引が無音死〕
 
-- [ ] `sourceRoots()` を discriminated union 化（own は常に plaintext / community は bundle 有無で分岐）
-- [ ] `computeEntriesDigest` に bundle ファイルの `(source, 'bundle', mtimeMs, size)` 行を追加 → **Stop hook 自動再索引が封緘 source の更新を検知できる**
-- [ ] `scanSealedSource`: bundle をメモリ内で復号 → parseMarkdown → 既存 `upsertEntry` + touched-table（scanSource と同型）。**復号平文はディスクに書かない**（DB のみ。ここが「平文は保有境界内のみ」の執行点）
-- [ ] `reindexAllSources` に per-source try/catch（鍵解決不能・未知 version は当該 source skip + warn、既存行保持。他 source を巻き込まない）+ `keyProvider` 引数追加。呼び出し元（indexCmd / pull / reindex worker / sync）は先頭で `await prewarmSealedKeys` の 1 行追加（本体は同期のまま）
-- [ ] **`caveat_update` は `source !== 'own'` を明示拒否**〔refuter B-2: community エントリへの update は現状でも own dir に join する既存バグ。封緘とは独立に v0.16 で塞ぐ〕
-- [ ] codexSidecar の `caveatEntryReferencePath`: community source では実ファイル参照を出さない（bundle 由来注記に差し替え）〔refuter B-3〕
-- [ ] E2E テスト: bare repo に封緘 bundle push → community add → prewarm + reindex → FTS ヒット → hook 浮上まで。封緘ミラー clone 全走査で「平文 1 バイトも無い」assert（既存 publish テストの封緘版）
+> 完了（刻み4、refuter 実挙動で確認）。scanSealedSource は復号バッファを buildEntryUpsertRow→upsertEntry（DB のみ）に流し平文をディスクに materialize しない＝執行点成立。reindexAllSources は per-source try/catch を **withSourceSavepoint**（契約以上）で包み、mid-stream 失敗を SQLite savepoint で原子的にロールバック（既存行保持・他 source 無傷・FTS 整合保全）。行導出は buildEntryUpsertRow を scanSource と共有（二重実装なし）。B-2 は core+MCP 二重ガード（fail-closed）、B-3 は community で実ファイル参照を注記に差し替え。
+
+- [x] `sourceRoots()` を discriminated union 化（own は常に plaintext / community は bundle 有無で分岐）
+- [x] `computeEntriesDigest` に bundle ファイルの `(source, 'bundle', mtimeMs, size)` 行を追加 → **Stop hook 自動再索引が封緘 source の更新を検知できる**
+- [x] `scanSealedSource`: bundle をメモリ内で復号 → parseMarkdown → 既存 `upsertEntry` + touched-table（scanSource と同型）。**復号平文はディスクに書かない**（DB のみ。ここが「平文は保有境界内のみ」の執行点）
+- [x] `reindexAllSources` に per-source try/catch（鍵解決不能・未知 version は当該 source skip + warn、既存行保持。他 source を巻き込まない）+ `keyProvider` 引数追加。呼び出し元（indexCmd / pull / reindex worker / sync）は先頭で `await prewarmSealedKeys` の 1 行追加（本体は同期のまま）
+- [x] **`caveat_update` は `source !== 'own'` を明示拒否**〔refuter B-2: community エントリへの update は現状でも own dir に join する既存バグ。封緘とは独立に v0.16 で塞ぐ〕
+- [x] codexSidecar の `caveatEntryReferencePath`: community source では実ファイル参照を出さない（bundle 由来注記に差し替え）〔refuter B-3〕
+- [x] E2E テスト: bare repo に封緘 bundle push → community add → prewarm + reindex → FTS ヒット → hook 浮上まで。封緘ミラー clone 全走査で「平文 1 バイトも無い」assert（既存 publish テストの封緘版）〔完了: 平文非存在 assert は生バイト grep で community/ 全体（ciphertext 含む）+ home/ を走査、DB のある index/ のみ除外。clone 経路の sealed E2E は community.test.ts の orphan force-push テストが間接カバー〕
 
 ### A6. 既存平文の purge（実行時に個別確認・不可逆操作）
 
@@ -203,6 +207,7 @@ Caveat-Public には平文 markdown を置かず、**暗号化バンドル（配
 ## 未解決点（記録のみ・本 track で解決しない）
 
 - keyserver 無認証の帰結（人間は鍵を取得可能）— トークン制昇格の実需判断はオーナー
+- **community バンドル header 由来 keyserverUrl の SSRF 残余（刻み4 で顕在化）**: https→内部ホストへの blind GET（no-auth・10s timeout・応答は keyId 一致 JSON 以外破棄）を購読者端末が撃たされ得る。完全防御には接続時 IP 解決＋private/link-local レンジ遮断が必要（DNS rebinding があるためホスト名文字列一致では不十分＝別トラック）。現状は脅威モデル「動機ある人間」の範囲内として繰り越し
 - 旧 v0.15 クライアントへの後方互換パッチは配布不能（CHANGELOG 告知のみ）
 - `matchDigest` ベース --allow の実質無期限性（行移動でも生き続ける）— 運用で問題化したら見直し
 - rare-anchor min-DF の再定義（Track G の測定結果待ち）
