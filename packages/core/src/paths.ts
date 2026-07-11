@@ -41,6 +41,7 @@ export interface ResolvedPaths {
   dbPath: string;
   entriesDir: string;
   communityDir: string;
+  publishMirrorDir: string;
 }
 
 export function resolvePaths(
@@ -60,5 +61,6 @@ export function resolvePaths(
     // user — and they embed their own .git dirs which would otherwise nest
     // inside the user's git-tracked knowledge repo.
     communityDir: join(caveatHome, 'community'),
+    publishMirrorDir: join(caveatHome, 'publish', 'mirror'),
   };
 }

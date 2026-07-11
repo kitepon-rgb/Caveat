@@ -5,6 +5,7 @@ import { simpleGit } from 'simple-git';
 import type { Logger } from './db.js';
 
 const GITHUB_URL_RE = /^https:\/\/github\.com\/[^/]+\/([^/]+?)(\.git)?\/?$/;
+const GITHUB_HANDLE_RE = /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$/;
 
 export interface UrlValidation {
   valid: boolean;
@@ -51,7 +52,13 @@ export interface CommunityAddResult {
 }
 
 export async function communityAdd(opts: CommunityAddOptions): Promise<CommunityAddResult> {
-  const validation = validateCommunityUrl(opts.url);
+  // A bare name is intentionally expanded before URL validation. Everything
+  // else remains subject to the original GitHub HTTPS-only URL contract.
+  const supplied = opts.url ?? '';
+  const url = /^https?:\/\//.test(supplied.trim())
+    ? supplied
+    : GITHUB_HANDLE_RE.test(supplied) ? `https://github.com/${supplied}/Caveat-Public` : supplied;
+  const validation = validateCommunityUrl(url);
   if (!validation.valid) {
     throw new Error(`invalid community URL: ${validation.reason}`);
   }
@@ -62,7 +69,7 @@ export async function communityAdd(opts: CommunityAddOptions): Promise<Community
   const depth = opts.depth ?? 1;
 
   const git = simpleGit();
-  await git.clone(opts.url, target, ['--depth', String(depth)]);
+  await git.clone(url, target, ['--depth', String(depth)]);
 
   return { handle, path: target };
 }

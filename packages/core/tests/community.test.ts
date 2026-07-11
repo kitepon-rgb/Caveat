@@ -59,6 +59,19 @@ describe('validateCommunityUrl', () => {
   });
 });
 
+describe('communityAdd bare-name expansion (C6 traversal guard)', () => {
+  it('rejects a traversal/invalid bare name without attempting a clone', async () => {
+    // A bare name that is not a valid GitHub handle must NOT be expanded to a
+    // URL and must NOT reach git clone; it falls through to URL validation and
+    // is rejected. This is the path-traversal guard.
+    for (const bad of ['../evil', 'a/b', '-leading', 'trailing-', 'has space']) {
+      await expect(
+        communityAdd({ url: bad, communityDir: mkdtempSync(join(tmpdir(), 'caveat-c6-')) }),
+      ).rejects.toThrow(/invalid community URL/i);
+    }
+  });
+});
+
 describe('resolveHandleCollision', () => {
   it('returns base when no conflict', () => {
     expect(resolveHandleCollision('foo', () => false)).toBe('foo');

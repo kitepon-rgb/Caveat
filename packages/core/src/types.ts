@@ -54,4 +54,5 @@ export interface CoreConfig {
   knowledgeRepo: string;
   semverKeys: string[];
   communitySources: string[];
+  publishTarget: string | null;
 }

@@ -17,6 +17,7 @@ import { runCodexHook } from './commands/codexHookCmd.js';
 import { installCodexHooks, uninstallCodexHooks } from './codexHookInstall.js';
 import { runPull } from './commands/pull.js';
 import { runSync } from './commands/sync.js';
+import { runPublish } from './commands/publish.js';
 import {
   runCodexSidecarDiagnostics,
   runCodexSidecarSmoke,
@@ -179,6 +180,17 @@ program
   }) => {
     const ctx = buildContext(stdoutLogger);
     await runSync(ctx, opts);
+  });
+
+program
+  .command('publish')
+  .description('Mirror own public Caveat entries to a public git repository')
+  .option('--init <url>', 'set the public mirror target')
+  .option('--dry-run', 'show public mirror changes without committing or pushing', false)
+  .option('--yes', 'approve creating a default repository or publishing changes', false)
+  .action(async (opts: { init?: string; dryRun: boolean; yes: boolean }) => {
+    const ctx = buildContext(stdoutLogger);
+    await runPublish(ctx, opts);
   });
 
 program

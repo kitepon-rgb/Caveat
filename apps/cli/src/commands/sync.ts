@@ -1,15 +1,6 @@
-import { spawnSync } from 'node:child_process';
-import { readSync } from 'node:fs';
 import { syncOwn, initOwnSync } from '@caveat/core';
 import type { CliContext } from '../context.js';
-
-export interface GhRunResult {
-  status: number | null;
-  stdout: string;
-  stderr: string;
-}
-
-export type GhRunner = (args: string[]) => GhRunResult;
+import { askOnce, commandError, runGh, type GhRunResult, type GhRunner } from '../ghSetup.js';
 
 export interface SyncCmdOptions {
   init?: boolean | string;
@@ -23,28 +14,6 @@ export interface SyncCmdDependencies {
   ghRunner?: GhRunner;
   isTty?: () => boolean;
   confirm?: (question: string) => boolean;
-}
-
-function runGh(args: string[]): GhRunResult {
-  const result = spawnSync('gh', args, { encoding: 'utf-8' });
-  return {
-    status: result.status,
-    stdout: typeof result.stdout === 'string' ? result.stdout : '',
-    stderr: typeof result.stderr === 'string' ? result.stderr : '',
-  };
-}
-
-function commandError(result: GhRunResult, fallback: string): Error {
-  return new Error((result.stderr || result.stdout || fallback).trim());
-}
-
-function askOnce(question: string): boolean {
-  process.stdout.write(`${question} `);
-  // Read a single chunk instead of until-EOF: on a TTY in canonical mode this
-  // returns after one line, whereas readFileSync(0) would block until Ctrl-D.
-  const buf = Buffer.alloc(256);
-  const bytes = readSync(0, buf, 0, buf.length, null);
-  return /^(?:y|yes)$/i.test(buf.toString('utf-8', 0, bytes).trim());
 }
 
 async function defaultPrivateRepoUrl(

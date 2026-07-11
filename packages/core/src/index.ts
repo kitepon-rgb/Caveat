@@ -22,4 +22,5 @@ export * from './visibility.js';
 export * from './remoteVisibility.js';
 export * from './sync.js';
 export * from './visibilityGate.js';
+export * from './publish.js';
 export * from './codexSidecar.js';

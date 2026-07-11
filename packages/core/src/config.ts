@@ -4,12 +4,14 @@ export interface CaveatConfig {
   knowledgeRepo: string;
   semverKeys: string[];
   communitySources: string[];
+  publishTarget: string | null;
 }
 
 export const DEFAULT_CONFIG: CaveatConfig = {
   knowledgeRepo: 'own',
   semverKeys: ['driver', 'cuda', 'node'],
   communitySources: [],
+  publishTarget: null,
 };
 
 export function loadConfig(userConfigPath: string): CaveatConfig {
@@ -23,6 +25,17 @@ export function ensureUserConfig(userConfigPath: string): void {
   if (!existsSync(userConfigPath)) {
     writeFileSync(userConfigPath, '{}\n', 'utf-8');
   }
+}
+
+/** Write only user overrides, preserving unrelated keys in the sparse config file. */
+export function writeUserConfigPatch(
+  userConfigPath: string,
+  patch: Partial<CaveatConfig>,
+): void {
+  const existing = existsSync(userConfigPath)
+    ? (JSON.parse(readFileSync(userConfigPath, 'utf-8')) as Record<string, unknown>)
+    : {};
+  writeFileSync(userConfigPath, `${JSON.stringify({ ...existing, ...patch }, null, 2)}\n`, 'utf-8');
 }
 
 function deepMerge(base: unknown, overlay: unknown): unknown {
