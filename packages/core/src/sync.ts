@@ -1,11 +1,12 @@
 import { existsSync, mkdirSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { simpleGit } from 'simple-git';
+import type { SimpleGit } from 'simple-git';
 import type { Logger } from './db.js';
 import { openDb } from './db.js';
 import { computeEntriesDigest, reindexAllSources, writeDigestMarker } from './autoReindex.js';
 import type { ResolvedPaths } from './paths.js';
 import { deriveAnonymousProbeUrl, probeAnonymousRead, type RemoteAccess } from './remoteVisibility.js';
+import { createGit } from './gitRuntime.js';
 
 export type SyncErrorCode =
   | 'NOT_A_REPO'
@@ -78,7 +79,7 @@ function normalizePath(path: string): string {
 // git push delivers to EVERY push URL, not just the first. `--all` lists them
 // all (insteadOf/pushInsteadOf applied); we must probe each — probing only the
 // first lets a second, public pushurl receive private entries unchecked.
-async function effectivePushUrls(git: ReturnType<typeof simpleGit>): Promise<string[]> {
+async function effectivePushUrls(git: SimpleGit): Promise<string[]> {
   let raw: string;
   try {
     raw = await git.raw(['remote', 'get-url', '--push', '--all', 'origin']);
@@ -124,7 +125,7 @@ export async function preflightSync(
   ownDir: string,
   opts: PreflightSyncOptions = {},
 ): Promise<SyncPreflight> {
-  const git = simpleGit(ownDir);
+  const git = createGit(ownDir);
   if (!(await git.checkIsRepo())) {
     throw new SyncError('NOT_A_REPO', 'own knowledge directory is not a git repository; run `caveat sync --init` first');
   }
@@ -166,7 +167,7 @@ function reindexAndMark(opts: Pick<SyncOwnOptions, 'caveatHome' | 'paths' | 'log
 
 export async function syncOwn(opts: SyncOwnOptions): Promise<SyncOwnResult> {
   const preflight = await preflightSync(opts.ownDir, opts);
-  const git = simpleGit(preflight.ownDir);
+  const git = createGit(preflight.ownDir);
   const status = await git.status();
   if (opts.dryRun) {
     return {
@@ -248,7 +249,7 @@ function scaffold(ownDir: string): void {
   if (!existsSync(gitignore)) writeFileSync(gitignore, KNOWLEDGE_GITIGNORE, 'utf-8');
 }
 
-async function defaultRemoteBranch(git: ReturnType<typeof simpleGit>, url: string): Promise<string> {
+async function defaultRemoteBranch(git: SimpleGit, url: string): Promise<string> {
   const symref = await git.raw(['ls-remote', '--symref', url, 'HEAD']);
   const match = /^ref: refs\/heads\/([^\s]+)\s+HEAD$/m.exec(symref);
   if (match) return match[1]!;
@@ -263,19 +264,19 @@ export async function initOwnSync(opts: InitOwnSyncOptions): Promise<InitOwnSync
   // A fresh install has no own dir yet — create it before any git inspection
   // (simple-git refuses to start in a directory that does not exist).
   mkdirSync(ownDir, { recursive: true });
-  const existing = simpleGit(ownDir);
+  const existing = createGit(ownDir);
   if (await existing.checkIsRepo()) {
     throw new SyncError('OWN_REPO_EXISTS', `own knowledge directory is already a git repository: ${ownDir}`);
   }
 
-  const inspector = simpleGit(ownDir);
+  const inspector = createGit(ownDir);
   const refs = (await inspector.raw(['ls-remote', '--heads', opts.url])).trim();
   const entryCount = countMarkdownEntries(ownDir);
   if (refs && entryCount > 0) {
     throw new SyncError('BOTH_HAVE_ENTRIES', 'local and remote both contain entries; resolve the ownership conflict before initializing sync');
   }
 
-  const git = simpleGit(ownDir);
+  const git = createGit(ownDir);
   const createdGitDir = join(ownDir, '.git');
   await git.init();
   try {

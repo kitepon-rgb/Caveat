@@ -1,8 +1,8 @@
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { simpleGit } from 'simple-git';
 import type { Logger } from './db.js';
+import { createGit } from './gitRuntime.js';
 
 const GITHUB_URL_RE = /^https:\/\/github\.com\/[^/]+\/([^/]+?)(\.git)?\/?$/;
 const GITHUB_HANDLE_RE = /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$/;
@@ -68,7 +68,7 @@ export async function communityAdd(opts: CommunityAddOptions): Promise<Community
   const target = join(opts.communityDir, handle);
   const depth = opts.depth ?? 1;
 
-  const git = simpleGit();
+  const git = createGit();
   await git.clone(url, target, ['--depth', String(depth)]);
 
   return { handle, path: target };
@@ -94,7 +94,7 @@ export async function communityPull(
   for (const entry of readdirSync(opts.communityDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const path = join(opts.communityDir, entry.name);
-    const git = simpleGit(path);
+    const git = createGit(path);
     try {
       await git.pull();
       results.push({ handle: entry.name, path, status: 'ok' });

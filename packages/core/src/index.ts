@@ -20,6 +20,7 @@ export * from './markHit.js';
 export * from './stale.js';
 export * from './visibility.js';
 export * from './remoteVisibility.js';
+export * from './gitRuntime.js';
 export * from './sync.js';
 export * from './visibilityGate.js';
 export * from './publish.js';

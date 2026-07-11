@@ -1,12 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
-import { simpleGit, type SimpleGit } from 'simple-git';
+import type { SimpleGit } from 'simple-git';
 import { parseMarkdown } from './frontmatter.js';
 import { walkMarkdown } from './indexer.js';
 import type { Logger } from './db.js';
 import type { CaveatConfig } from './config.js';
 import type { ResolvedPaths } from './paths.js';
 import { classifyVisibility } from './visibility.js';
+import { createGit } from './gitRuntime.js';
 
 export interface PublishFile { relPath: string; content: Buffer; }
 export interface PublishInvalid { relPath: string; reason: string; }
@@ -31,18 +32,18 @@ export function collectPublishSet(entriesDir: string): PublishSet {
 }
 
 export async function preparePublishMirror(opts: { mirrorDir: string; target: string; git?: SimpleGit }): Promise<void> {
-  const git = opts.git ?? simpleGit();
+  const git = opts.git ?? createGit();
   if (!existsSync(opts.mirrorDir)) {
     mkdirSync(dirname(opts.mirrorDir), { recursive: true });
     await git.clone(opts.target, opts.mirrorDir);
   } else {
-    const mirrorGit = simpleGit(opts.mirrorDir);
+    const mirrorGit = createGit(opts.mirrorDir);
     const old = (await mirrorGit.raw(['remote', 'get-url', 'origin'])).trim();
     if (old !== opts.target) {
       throw new Error(`publish mirror points at ${old} but publishTarget is ${opts.target} — remove ${opts.mirrorDir} and re-run`);
     }
   }
-  const mirrorGit = simpleGit(opts.mirrorDir);
+  const mirrorGit = createGit(opts.mirrorDir);
   await mirrorGit.fetch('origin');
   const head = (await mirrorGit.raw(['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD']).catch(() => '')).trim();
   if (head) await mirrorGit.reset(['--hard', head]);
@@ -149,7 +150,7 @@ export async function publishOwn(opts: PublishOwnOptions): Promise<PublishResult
   writeMirror({ mirrorDir: opts.paths.publishMirrorDir, files: collected.files, readme: publishReadme(collected.files.length, collected.files) });
   const verified = verifyMirror(opts.paths.publishMirrorDir);
   if (verified.fileCount !== collected.files.length) throw new Error(`publish mirror file count mismatch: expected ${collected.files.length}, got ${verified.fileCount}`);
-  const git = simpleGit(opts.paths.publishMirrorDir);
+  const git = createGit(opts.paths.publishMirrorDir);
   await git.add('-A');
   const changes = stagedChanges(await git.raw(['diff', '--cached', '--name-status']));
   if (!changes.lines.length) { opts.logger.info('no changes to publish'); return { fileCount: verified.fileCount, changed: false, dryRun: Boolean(opts.dryRun) }; }
