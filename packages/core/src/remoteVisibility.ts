@@ -11,6 +11,7 @@ export interface ProbeAnonymousReadOptions {
 
 // Ten seconds bounds a network preflight without making a transient remote outage a hard failure.
 export const PROBE_TIMEOUT_MS = 10_000;
+export const PROBE_REQUEST_FAILED_REASON = 'anonymous read probe request failed';
 
 /**
  * Converts Git's SSH spellings to an anonymous HTTPS endpoint. Host names are
@@ -68,7 +69,7 @@ export async function probeAnonymousRead(
     }
     return { kind: 'anonymous-readable' };
   } catch {
-    return { kind: 'indeterminate', reason: 'anonymous read probe request failed' };
+    return { kind: 'indeterminate', reason: PROBE_REQUEST_FAILED_REASON };
   }
 }
 

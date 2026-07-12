@@ -14,7 +14,9 @@ import type { DatabaseSync } from 'node:sqlite';
 import { createHash, randomBytes } from 'node:crypto';
 import {
   appendPendingReminder,
+  CAVEAT_AUTO_SYNC_ENV,
   defaultSelfIdentityTokens,
+  drainGlobalPendingReminders,
   drainPendingReminders,
   findCaveatsForPrompt,
   hasAnyStruggleSignal,
@@ -29,6 +31,7 @@ import {
   prewarmSealedKeys,
   writeDigestMarker,
   readSessionSignals,
+  runAutoSync,
   stopReminderText,
   struggleSearchText,
   toolErrorReminderText,
@@ -39,8 +42,9 @@ import {
 } from '@caveat/core';
 import { buildContext, type CliContext } from '../context.js';
 import { maybeTriggerAutoReindex } from '../autoReindexTrigger.js';
+import { maybeTriggerAutoSync } from '../autoSyncTrigger.js';
 
-export type HookName = 'user-prompt-submit' | 'post-tool-use' | 'stop' | 'worker' | 'reindex';
+export type HookName = 'user-prompt-submit' | 'post-tool-use' | 'stop' | 'worker' | 'reindex' | 'autosync';
 
 const silentLogger: Logger = {
   info: () => {},
@@ -132,7 +136,10 @@ function systemReminderOutput(text: string): string {
 function drainForSession(sessionId: string): string[] {
   const ctx = buildContextSafely();
   if (!ctx) return [];
-  return drainPendingReminders(ctx.caveatHome, sessionId);
+  return [
+    ...drainPendingReminders(ctx.caveatHome, sessionId),
+    ...drainGlobalPendingReminders(ctx.caveatHome),
+  ];
 }
 
 function claudeContextDedupeKey(text: string): string {
@@ -402,6 +409,25 @@ async function runReindexWorker(): Promise<void> {
   }
 }
 
+async function runAutoSyncWorker(): Promise<void> {
+  if (process.env[CAVEAT_AUTO_SYNC_ENV] === 'off') {
+    process.stderr.write('[caveat:hook] auto sync disabled by CAVEAT_AUTO_SYNC=off\n');
+    return;
+  }
+  const ctx = buildContextSafely();
+  if (!ctx) return;
+  try {
+    await runAutoSync({
+      caveatHome: ctx.caveatHome,
+      ownDir: ctx.paths.knowledgeRepo,
+      paths: ctx.paths,
+      logger: silentLogger,
+    });
+  } catch (err: unknown) {
+    process.stderr.write(`[caveat:hook] auto sync error: ${errorMessage(err)}\n`);
+  }
+}
+
 function buildToolErrorReminder(job: WorkerJob, hits: SearchResult[]): string {
   const base = toolErrorReminderText(hits);
   const mode = hookCodexSidecarMode();
@@ -601,6 +627,10 @@ export async function runHook(name: HookName, arg?: string): Promise<void> {
     await runReindexWorker();
     process.exit(0);
   }
+  if (name === 'autosync') {
+    await runAutoSyncWorker();
+    process.exit(0);
+  }
   if (name === 'worker') {
     if (!arg) process.exit(0);
     await runWorker(arg);
@@ -666,6 +696,12 @@ export async function runHook(name: HookName, arg?: string): Promise<void> {
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         process.stderr.write(`[caveat:hook] auto reindex trigger error: ${msg}\n`);
+      }
+      try {
+        maybeTriggerAutoSync(ctx);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`[caveat:hook] auto sync trigger error: ${msg}\n`);
       }
     }
     if (payload.stop_hook_active === true) process.exit(0);

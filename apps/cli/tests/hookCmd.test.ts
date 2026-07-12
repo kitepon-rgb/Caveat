@@ -24,7 +24,11 @@ function runHook(
       cwd: fileURLToPath(new URL('..', import.meta.url)),
       input: JSON.stringify(input),
       encoding: 'utf-8',
-      env,
+      // These tests assert on the hook's synchronous stdout / pending-queue
+      // behavior. A stop hook otherwise spawns detached reindex + autosync
+      // workers whose background DB and pending writes race those assertions
+      // under load; default both off (an explicit env key can re-enable).
+      env: { CAVEAT_INDEX_AUTOSYNC: 'off', CAVEAT_AUTO_SYNC: 'off', ...env },
     },
   );
 }

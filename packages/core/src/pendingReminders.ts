@@ -25,6 +25,8 @@ function sanitizeSessionId(raw: string): string {
   return clean.length > 0 ? clean : '_unknown';
 }
 
+export const GLOBAL_PENDING_SESSION = '_global';
+
 export function pendingDirFor(caveatHome: string, sessionId: string): string {
   return join(caveatHome, 'pending', sanitizeSessionId(sessionId));
 }
@@ -40,6 +42,10 @@ export function appendPendingReminder(
   const path = join(dir, name);
   writeFileSync(path, text, 'utf-8');
   return path;
+}
+
+export function appendGlobalPendingReminder(caveatHome: string, text: string): string {
+  return appendPendingReminder(caveatHome, GLOBAL_PENDING_SESSION, text);
 }
 
 /**
@@ -217,4 +223,8 @@ export function drainPendingReminders(caveatHome: string, sessionId: string): st
     }
   }
   return out;
+}
+
+export function drainGlobalPendingReminders(caveatHome: string): string[] {
+  return drainPendingReminders(caveatHome, GLOBAL_PENDING_SESSION);
 }

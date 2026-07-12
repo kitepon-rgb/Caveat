@@ -232,6 +232,11 @@ export const KNOWLEDGE_GITIGNORE = [
   '# Obsidian per-user config: workspace layout, theme, plugin state, cache.',
   '.obsidian/',
   '',
+  '# Editor / OS scratch files that should never sync.',
+  '.DS_Store',
+  '*.swp',
+  '*~',
+  '',
 ].join('\n');
 
 function countMarkdownEntries(ownDir: string): number {

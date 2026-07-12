@@ -36,7 +36,11 @@ function cli(name: string, home: string, env: NodeJS.ProcessEnv = process.env) {
       cwd: fileURLToPath(new URL('..', import.meta.url)),
       input: JSON.stringify({ session_id: 'auto-reindex', prompt: 'quasar junction boot failure' }),
       encoding: 'utf-8',
-      env: { ...env, CAVEAT_HOME: home, HOME: join(home, 'user') },
+      // This file exercises the reindex system in isolation. The autosync
+      // worker also reindexes (rewriting the shared .entries-digest marker), so
+      // leave it off here or its background write races these marker/mtime
+      // assertions. Callers can still override via env.
+      env: { CAVEAT_AUTO_SYNC: 'off', ...env, CAVEAT_HOME: home, HOME: join(home, 'user') },
     },
   );
 }

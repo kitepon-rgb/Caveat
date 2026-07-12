@@ -9,7 +9,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { scanSource, walkMarkdown, type ScanResult } from './indexer.js';
 import {
@@ -30,9 +30,11 @@ export interface DigestMarker extends EntriesDigest {
   generatedAt: string;
 }
 
-export interface ReindexLock {
+export interface FileLock {
   path: string;
 }
+
+export type ReindexLock = FileLock;
 
 export interface ReindexResult {
   perSource: Record<string, ScanResult>;
@@ -137,18 +139,16 @@ function tryCreateLock(path: string): boolean {
   }
 }
 
-export function acquireReindexLock(caveatHome: string): ReindexLock | null {
-  const dir = indexDir(caveatHome);
-  mkdirSync(dir, { recursive: true });
-  const path = lockPath(caveatHome);
-  if (tryCreateLock(path)) return { path };
+export function acquireFileLock(lockFilePath: string): FileLock | null {
+  mkdirSync(dirname(lockFilePath), { recursive: true });
+  if (tryCreateLock(lockFilePath)) return { path: lockFilePath };
 
   let pid: number;
   try {
-    pid = Number.parseInt(readFileSync(path, 'utf-8').trim(), 10);
+    pid = Number.parseInt(readFileSync(lockFilePath, 'utf-8').trim(), 10);
     if (!Number.isInteger(pid) || pid <= 0) return null;
   } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return tryCreateLock(path) ? { path } : null;
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return tryCreateLock(lockFilePath) ? { path: lockFilePath } : null;
     return null;
   }
   try {
@@ -159,19 +159,27 @@ export function acquireReindexLock(caveatHome: string): ReindexLock | null {
     if (code !== 'ESRCH') return null;
   }
   try {
-    unlinkSync(path);
+    unlinkSync(lockFilePath);
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
   }
-  return tryCreateLock(path) ? { path } : null;
+  return tryCreateLock(lockFilePath) ? { path: lockFilePath } : null;
 }
 
-export function releaseReindexLock(lock: ReindexLock): void {
+export function releaseFileLock(lock: FileLock): void {
   try {
     unlinkSync(lock.path);
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
   }
+}
+
+export function acquireReindexLock(caveatHome: string): ReindexLock | null {
+  return acquireFileLock(lockPath(caveatHome));
+}
+
+export function releaseReindexLock(lock: ReindexLock): void {
+  releaseFileLock(lock);
 }
 
 export function reindexAllSources(opts: {

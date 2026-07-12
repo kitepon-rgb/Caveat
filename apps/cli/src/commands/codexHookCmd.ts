@@ -7,10 +7,12 @@ import type { DatabaseSync } from 'node:sqlite';
 import {
   appendPendingReminder,
   defaultSelfIdentityTokens,
+  drainGlobalPendingReminders,
   drainPendingReminders,
   findCaveatsForPrompt,
   hasAnyStruggleSignal,
   markHit,
+  maybeSweepPendingDirs,
   openDb,
   readCodexSessionSignals,
   stopReminderText,
@@ -23,6 +25,7 @@ import {
 } from '@caveat/core';
 import { buildContext, type CliContext } from '../context.js';
 import { maybeTriggerAutoReindex } from '../autoReindexTrigger.js';
+import { maybeTriggerAutoSync } from '../autoSyncTrigger.js';
 import { detectCodexHookInstallation } from '../codexHookInstall.js';
 
 export type CodexHookName =
@@ -281,7 +284,10 @@ export function codexContextOutput(text: string, eventName = 'UserPromptSubmit')
 function drainForSession(sessionId: string): string[] {
   const ctx = buildContextSafely();
   if (!ctx) return [];
-  return drainPendingReminders(ctx.caveatHome, sessionId);
+  return [
+    ...drainPendingReminders(ctx.caveatHome, sessionId),
+    ...drainGlobalPendingReminders(ctx.caveatHome),
+  ];
 }
 
 function codexContextDedupeKey(text: string): string {
@@ -532,7 +538,21 @@ export async function runCodexHook(name: CodexHookName, arg?: string): Promise<v
   if (name === 'stop') {
     try {
       const ctx = buildContextSafely();
-      if (ctx) maybeTriggerAutoReindex(ctx);
+      if (ctx) {
+        try {
+          maybeSweepPendingDirs(ctx.caveatHome);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          process.stderr.write(`[caveat:codex-hook] pending sweep error: ${msg}\n`);
+        }
+        maybeTriggerAutoReindex(ctx);
+        try {
+          maybeTriggerAutoSync(ctx);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          process.stderr.write(`[caveat:codex-hook] auto sync trigger error: ${msg}\n`);
+        }
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       process.stderr.write(`[caveat:codex-hook] auto reindex trigger error: ${msg}\n`);

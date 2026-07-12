@@ -194,6 +194,10 @@ describe('Codex stop hook', () => {
             ...process.env,
             CAVEAT_HOME: caveatHome,
             HOME: userHome,
+            // Keep the detached reindex/autosync workers a stop would spawn out
+            // of this synchronous stop-reminder assertion (they race it under load).
+            CAVEAT_INDEX_AUTOSYNC: 'off',
+            CAVEAT_AUTO_SYNC: 'off',
           },
         },
       );
@@ -257,6 +261,11 @@ describe('Codex stop hook', () => {
               ...process.env,
               CAVEAT_HOME: caveatHome,
               HOME: userHome,
+              // Isolate stop-reminder dedup from the detached reindex/autosync
+              // workers this hook would otherwise spawn: their background DB
+              // writes race the second stop's search under load and flake this.
+              CAVEAT_INDEX_AUTOSYNC: 'off',
+              CAVEAT_AUTO_SYNC: 'off',
             },
           },
         );

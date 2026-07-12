@@ -1,4 +1,4 @@
-import { syncOwn, initOwnSync } from '@caveat/core';
+import { resetAutoSyncFailureState, syncOwn, initOwnSync } from '@caveat/core';
 import type { CliContext } from '../context.js';
 import { askOnce, commandError, runGh, type GhRunResult, type GhRunner } from '../ghSetup.js';
 
@@ -92,6 +92,11 @@ export async function runSync(
     } else {
       const rebased = result.pulled ? ', rebased onto remote' : '';
       ctx.logger.info(`synced ${result.branch} → origin (${result.changedFiles} local change(s)${rebased})`);
+      try {
+        resetAutoSyncFailureState(ctx.caveatHome);
+      } catch {
+        // best-effort
+      }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
