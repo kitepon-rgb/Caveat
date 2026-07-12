@@ -1,0 +1,11 @@
+name = "caveat-keyserver"
+main = "src/worker.ts"
+compatibility_date = "2026-07-01"
+
+# 鍵は `wrangler kv key put` で登録する。この設定ファイルには実鍵・実 KV
+# namespace id を一切書かない（このファイルは git 管理下に置かれる想定）。
+#
+# セットアップ手順の全体は README.md を参照。
+[[kv_namespaces]]
+binding = "KEYS"
+id = "<REPLACE_WITH_KV_NAMESPACE_ID>"
