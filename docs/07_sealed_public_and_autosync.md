@@ -1,7 +1,7 @@
 # 07 — 封緘公開層・自動同期・init 一発化・公開検閲・検索計測（v0.16 設計正典）
 
-> 状態: **実装中 — 刻み(1)(2) 完了**（2026-07-11 承認・同日着手。Explore×2 / Web 事例調査×2 / Plan×2 / refuter 敵対的検証 1 巡を経由。Oracle はオーナー却下により未使用）
-> 消化済み: 刻み(1) gitRuntime = a3c22a2 + 079c4ed / 刻み(2) sealedBundle・sealedKeys = 95ebfab / 刻み(3) publish 封緘化 = 0bf4d42 / 刻み(4) community・索引の封緘対応（A4/A5 + B-2/B-3）（各刻みとも実装委譲 → refuter/検証 → 統括ゲート再実行の型）。Track A の封緘本体は完了。次は刻み(5) Track B keyserver Worker + purge（実機・オーナー個別確認）または Track C autosync
+> 状態: **実装中 — 刻み(1)〜(5) コード完了**（2026-07-11 承認・同日着手。Explore×2 / Web 事例調査×2 / Plan×2 / refuter 敵対的検証 1 巡を経由。Oracle はオーナー却下により未使用）
+> 消化済み: 刻み(1) gitRuntime = a3c22a2 + 079c4ed / 刻み(2) sealedBundle・sealedKeys = 95ebfab / 刻み(3) publish 封緘化 = 0bf4d42 / 刻み(4) community・索引の封緘対応（A4/A5 + B-2/B-3）/ 刻み(5) keyserver-lite Worker（コード部分）= 0c5a698（各刻みとも実装委譲 → refuter/検証 → 統括ゲート再実行の型）。Track A の封緘本体 + Track B の Worker コードは完了。**残りの実機作業（Worker 実デプロイ・A6 purge）は外向き・不可逆のためオーナー個別確認まで保留**。次は刻み(6) Track C autosync（純コード作業＝オーナーゲート不要）
 > 前提: Fable 級統括／Codex・sonnet 級実装者（2026-07 時点）
 > 本書がチェックボックス付き TODO を兼ねる（グローバル CLAUDE.md「プランは TODO を兼ねる」）
 
@@ -66,7 +66,7 @@ Caveat-Public には平文 markdown を置かず、**暗号化バンドル（配
 - [x] `sealedKeys.ts`: `ContentKeyProvider` 抽象 = 同期 `resolveContentKey(keyId)`（キャッシュ限定）+ 非同期 `ensureKeyAvailable(keyId)`（keyserver 取得）。**プリウォーム方式**＝索引パイプラインは同期のまま、走査前に必要 keyId を並列取得
 - [x] keyId は `"keyserver:<id>"` 形式。KeyserverProvider: `GET <keyserverUrl>/v1/keys/<id>` → `{keyId, key(base64 32B)}`、`AbortSignal.timeout(10_000)`（PROBE_TIMEOUT_MS と同型）、キャッシュは `<caveatHome>/keys/`（atomic write、壊れたら削除して再取得）。**ネットワーク不通かつキャッシュ無しは明示エラー**（silent fallback 禁止）— 呼び手（reindex）は当該 source のみ skip + warn、既存行は保持
 - [x] **端末間同一鍵の保証**: 鍵は Worker 側にのみ存在し全端末が keyId で取得 → 決定的ビルド（no-op 検出・差分算出）が端末を跨いで成立〔refuter C-補: per-machine 鍵だと publish ピンポンが起きる問題を構造的に回避〕
-- [ ] ローテーション手順を docs 化: 新 keyId の鍵を Worker に追加 → `~/.caveatrc.json` の `sealedKeyId` 更新 → publish（Worker は旧 keyId も返し続ける＝購読者の旧バンドル読み取りを壊さない）
+- [x] ローテーション手順を docs 化（keyserver/README.md「鍵ローテーション手順」節・刻み5 = 0c5a698）: 新 keyId の鍵を Worker に追加 → `~/.caveatrc.json` の `sealedKeyId` 更新 → publish（Worker は旧 keyId も返し続ける＝購読者の旧バンドル読み取りを壊さない）
 - [x] config 追加: `sealedKeyId`（既定 `v1`）/ `sealedKeyserverUrl`。publish 時の実効 keyId = `keyserver:<sealedKeyId>`。embedded モードは**実装しない**（オーナー裁定は keyserver。プロバイダ抽象は残すが実装は 1 つ＝YAGNI）
 
 ### A3. publish の封緘化
@@ -109,9 +109,9 @@ Caveat-Public には平文 markdown を置かず、**暗号化バンドル（配
 
 ## Track B — keyserver-lite Worker（新規・最小インフラ）
 
-- [ ] リポジトリ内 `keyserver/` に Cloudflare Worker 最小実装: `GET /v1/keys/<id>` → KV/secret から `{keyId, key}` を返す（無認証・CORS 不要・GET のみ・レート制限は CF 既定に任せる）。コードは公開して問題ない（鍵は Worker secret/KV にのみ存在）
-- [ ] デプロイ手順を docs 化: `openssl rand -base64 32` で鍵生成 → `wrangler kv` or secret 登録 → deploy → `~/.caveatrc.json` に `sealedKeyserverUrl` 設定。**デプロイ実行はオーナー承認後・実行時に個別確認**（外向き操作）
-- [ ] 将来の昇格経路（実装しない・設計メモのみ）: 同エンドポイントに Bearer token 検証を足せばトークン制へ移行できる形を保つ
+- [x] リポジトリ内 `keyserver/` に Cloudflare Worker 最小実装（= 0c5a698）: `GET /v1/keys/<id>` → KV から `{keyId, key}` をパススルー（無認証・CORS 不要・GET のみ・レート制限は CF 既定に任せる）。コードは公開して問題ない（鍵は Worker KV にのみ存在）。`handleKeyRequest` 純関数・test 18 本 green・typecheck clean・refuter 検証済み。本体 pnpm workspace 非参加の独立パッケージ
+- [x] デプロイ手順を docs 化（keyserver/README.md「デプロイ手順」節）: `openssl rand -base64 32` で鍵生成 → `wrangler kv` 登録 → deploy → `~/.caveatrc.json` に `sealedKeyserverUrl` 設定。**ただしデプロイ実行そのものはオーナー承認後・実行時に個別確認（外向き操作）＝コード/手順は完了・実機デプロイは未実施**
+- [x] 将来の昇格経路（実装しない・設計メモのみ・keyserver/README.md「将来の昇格経路」節）: 同エンドポイントに Bearer token 検証を足せばトークン制へ移行できる形を保つ
 
 ## Track C — 自動同期サイクル（課題 3・5 を吸収）
 
