@@ -135,6 +135,71 @@ describe('installCodexHooks', () => {
     expect(findBackup(fx.codexHome, 'config.toml.caveat-backup-')).toBeDefined();
   });
 
+  it('respects an explicit false feature as consent and skips all hook writes', () => {
+    const original = 'model = "gpt-5.5"\n[features]\ncodex_hooks = false\nother = true\n';
+    writeFileSync(fx.configPath, original, 'utf-8');
+
+    const result = installCodexHooks({
+      codexHome: fx.codexHome,
+      cliScriptPath: fx.cliScriptPath,
+      nodePath: fx.nodePath,
+      dryRun: false,
+      logger: silentLogger,
+    });
+
+    expect(result.feature).toBe('blocked');
+    expect(result.hooks.userPromptSubmit).toBe('skipped');
+    expect(result.blockedReason).toMatch(/explicitly false/);
+    expect(readFileSync(fx.configPath, 'utf-8')).toBe(original);
+    expect(existsSync(fx.hooksPath)).toBe(false);
+    expect(findBackup(fx.codexHome, 'config.toml.caveat-backup-')).toBeUndefined();
+  });
+
+  it('leaves an existing true feature unchanged', () => {
+    writeFileSync(fx.configPath, '[features]\ncodex_hooks = true\n', 'utf-8');
+    const result = installCodexHooks({
+      codexHome: fx.codexHome,
+      cliScriptPath: fx.cliScriptPath,
+      nodePath: fx.nodePath,
+      dryRun: false,
+      logger: silentLogger,
+    });
+    expect(result.feature).toBe('unchanged');
+    expect(readFileSync(fx.configPath, 'utf-8')).toBe('[features]\ncodex_hooks = true\n');
+    expect(findBackup(fx.codexHome, 'config.toml.caveat-backup-')).toBeUndefined();
+  });
+
+  it('blocks dotted feature syntax instead of creating a duplicate TOML definition', () => {
+    const original = 'features.codex_hooks = false\n';
+    writeFileSync(fx.configPath, original, 'utf-8');
+    const result = installCodexHooks({
+      codexHome: fx.codexHome,
+      cliScriptPath: fx.cliScriptPath,
+      nodePath: fx.nodePath,
+      dryRun: false,
+      logger: silentLogger,
+    });
+    expect(result.feature).toBe('blocked');
+    expect(readFileSync(fx.configPath, 'utf-8')).toBe(original);
+    expect(existsSync(fx.hooksPath)).toBe(false);
+  });
+
+  it('adds a features table without damaging other TOML and backs up config', () => {
+    writeFileSync(fx.configPath, 'model = "gpt-5.5"\n[projects."/tmp/x"]\ntrust_level = "trusted"\n', 'utf-8');
+    const result = installCodexHooks({
+      codexHome: fx.codexHome,
+      cliScriptPath: fx.cliScriptPath,
+      nodePath: fx.nodePath,
+      dryRun: false,
+      logger: silentLogger,
+    });
+    const config = readFileSync(fx.configPath, 'utf-8');
+    expect(result.feature).toBe('enabled');
+    expect(config).toContain('[projects."/tmp/x"]\ntrust_level = "trusted"');
+    expect(config).toContain('[features]\ncodex_hooks = true');
+    expect(findBackup(fx.codexHome, 'config.toml.caveat-backup-')).toBeDefined();
+  });
+
   it('updates existing Caveat hooks when the installed node path changes', () => {
     writeFileSync(
       fx.hooksPath,

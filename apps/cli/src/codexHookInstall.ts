@@ -12,11 +12,12 @@ export interface CodexHookInstallOptions {
 
 export interface CodexHookInstallResult {
   hooks: {
-    userPromptSubmit: 'added' | 'unchanged';
-    postToolUse: 'added' | 'unchanged';
-    stop: 'added' | 'unchanged';
+    userPromptSubmit: 'added' | 'unchanged' | 'skipped';
+    postToolUse: 'added' | 'unchanged' | 'skipped';
+    stop: 'added' | 'unchanged' | 'skipped';
   };
-  feature: 'enabled' | 'unchanged';
+  feature: 'enabled' | 'unchanged' | 'blocked';
+  blockedReason?: string;
   backupPath?: string;
   configBackupPath?: string;
 }
@@ -153,28 +154,77 @@ function removeHook(
   return true;
 }
 
-function enableCodexHooksFeature(raw: string): { text: string; changed: boolean } {
-  if (/^\s*codex_hooks\s*=\s*true\s*$/m.test(raw)) return { text: raw, changed: false };
+function enableCodexHooksFeature(raw: string):
+  | { status: 'enabled'; text: string; changed: boolean }
+  | { status: 'blocked'; text: string; changed: false; reason: string } {
   const lines = raw.split(/\r?\n/);
-  const featuresStart = lines.findIndex((line) => /^\s*\[features]\s*$/.test(line));
+  const unsupportedFeatureShape = lines.find((line) =>
+    /^\s*(?:["']features["']|features)\s*(?:\.|=)/.test(line) ||
+    /^\s*\[\[?\s*(?:["']features["']|features\.)/.test(line),
+  );
+  if (unsupportedFeatureShape) {
+    return {
+      status: 'blocked',
+      text: raw,
+      changed: false,
+      reason: 'config.toml uses a non-canonical features table shape that Caveat will not rewrite safely',
+    };
+  }
+  const featureHeaders = lines
+    .map((line, index) => (/^\s*\[features]\s*(?:#.*)?$/.test(line) ? index : -1))
+    .filter((index) => index >= 0);
+  if (featureHeaders.length > 1) {
+    return {
+      status: 'blocked',
+      text: raw,
+      changed: false,
+      reason: 'config.toml contains more than one [features] table',
+    };
+  }
+  const featuresStart = featureHeaders[0] ?? -1;
   if (featuresStart === -1) {
     const prefix = raw.trimEnd();
     const text = `${prefix}${prefix ? '\n\n' : ''}[features]\ncodex_hooks = true\n`;
-    return { text, changed: true };
+    return { status: 'enabled', text, changed: true };
   }
 
-  let insertAt = featuresStart + 1;
+  const assignments: Array<{ index: number; value: string }> = [];
   for (let i = featuresStart + 1; i < lines.length; i += 1) {
-    if (/^\s*\[.+]\s*$/.test(lines[i]!)) {
+    if (/^\s*\[\[?.+?\]?]\s*(?:#.*)?$/.test(lines[i]!)) {
       break;
     }
-    if (/^\s*codex_hooks\s*=/.test(lines[i]!)) {
-      lines[i] = 'codex_hooks = true';
-      return { text: `${lines.join('\n').trimEnd()}\n`, changed: true };
+    const assignment = /^\s*codex_hooks\s*=\s*([^#]*?)\s*(?:#.*)?$/.exec(lines[i]!);
+    if (assignment) {
+      assignments.push({ index: i, value: assignment[1]!.trim() });
+    } else if (/^\s*["']codex_hooks["']\s*=/.test(lines[i]!)) {
+      return {
+        status: 'blocked',
+        text: raw,
+        changed: false,
+        reason: '[features].codex_hooks uses a quoted key that Caveat will not rewrite safely',
+      };
     }
   }
-  lines.splice(insertAt, 0, 'codex_hooks = true');
-  return { text: `${lines.join('\n').trimEnd()}\n`, changed: true };
+  if (assignments.length > 1) {
+    return {
+      status: 'blocked',
+      text: raw,
+      changed: false,
+      reason: '[features].codex_hooks is defined more than once',
+    };
+  }
+  const existing = assignments[0];
+  if (existing) {
+    if (existing.value === 'true') return { status: 'enabled', text: raw, changed: false };
+    return {
+      status: 'blocked',
+      text: raw,
+      changed: false,
+      reason: `[features].codex_hooks is explicitly ${existing.value || 'set to a non-true value'}`,
+    };
+  }
+  lines.splice(featuresStart + 1, 0, 'codex_hooks = true');
+  return { status: 'enabled', text: `${lines.join('\n').trimEnd()}\n`, changed: true };
 }
 
 function writeConfigWithBackup(path: string, text: string): string {
@@ -192,6 +242,16 @@ function writeConfigWithBackup(path: string, text: string): string {
 export function installCodexHooks(opts: CodexHookInstallOptions): CodexHookInstallResult {
   const hooksPath = join(opts.codexHome, 'hooks.json');
   const configPath = join(opts.codexHome, 'config.toml');
+  const rawConfig = existsSync(configPath) ? readFileSync(configPath, 'utf-8') : '';
+  const enabled = enableCodexHooksFeature(rawConfig);
+  if (enabled.status === 'blocked') {
+    return {
+      hooks: { userPromptSubmit: 'skipped', postToolUse: 'skipped', stop: 'skipped' },
+      feature: 'blocked',
+      blockedReason: enabled.reason,
+    };
+  }
+
   const hooksJson = readHooks(hooksPath);
 
   const userPromptSubmit = upsertHook(
@@ -213,8 +273,6 @@ export function installCodexHooks(opts: CodexHookInstallOptions): CodexHookInsta
     'stop',
   );
 
-  const rawConfig = existsSync(configPath) ? readFileSync(configPath, 'utf-8') : '';
-  const enabled = enableCodexHooksFeature(rawConfig);
   const anyHookAdded =
     userPromptSubmit === 'added' || postToolUse === 'added' || stop === 'added';
 

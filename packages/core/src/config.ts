@@ -3,7 +3,6 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 export interface CaveatConfig {
   knowledgeRepo: string;
   semverKeys: string[];
-  communitySources: string[];
   publishTarget: string | null;
   sealedKeyId: string;
   sealedKeyserverUrl: string | null;
@@ -12,7 +11,6 @@ export interface CaveatConfig {
 export const DEFAULT_CONFIG: CaveatConfig = {
   knowledgeRepo: 'own',
   semverKeys: ['driver', 'cuda', 'node'],
-  communitySources: [],
   publishTarget: null,
   sealedKeyId: 'v1',
   sealedKeyserverUrl: null,

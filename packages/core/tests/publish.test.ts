@@ -96,7 +96,6 @@ async function makeFixture(): Promise<Fixture> {
     config: {
       knowledgeRepo: 'own',
       semverKeys: [],
-      communitySources: [],
       publishTarget: remote,
       sealedKeyId: 'v1',
       sealedKeyserverUrl: keyServer.url,

@@ -44,6 +44,10 @@ program
     'Initialize ~/.caveatrc.json, ~/.caveat/, and register Claude Code integration. Add knowledge sources later with `caveat community add <github-url>`.',
   )
   .option('--skip-claude', 'skip Claude Code MCP + hook registration', false)
+  .option('--sync [url]', 'initialize private sync (optionally with its URL)')
+  .option('--publish-target [url]', 'configure the sealed public mirror target')
+  .option('--yes', 'approve creating conventional GitHub repositories', false)
+  .option('--skip-codex-hook', 'skip Codex hook installation', false)
   .option('--dry-run', 'show planned changes without writing', false)
   .option(
     '--pending-stale-days <days>',
@@ -57,12 +61,24 @@ program
     },
   )
   .action(
-    async (opts: { skipClaude: boolean; dryRun: boolean; pendingStaleDays?: number }) => {
+    async (opts: {
+      skipClaude: boolean;
+      sync?: boolean | string;
+      publishTarget?: boolean | string;
+      yes: boolean;
+      skipCodexHook: boolean;
+      dryRun: boolean;
+      pendingStaleDays?: number;
+    }) => {
       const ctx = buildContext(stdoutLogger);
       await runInit(ctx, {
         skipClaude: opts.skipClaude,
         dryRun: opts.dryRun,
         pendingStaleDays: opts.pendingStaleDays,
+        sync: opts.sync,
+        publishTarget: opts.publishTarget,
+        yes: opts.yes,
+        skipCodexHook: opts.skipCodexHook,
       });
     },
   );
@@ -243,6 +259,11 @@ codexHook
     stdoutLogger.info(`PostToolUse hook: ${result.hooks.postToolUse}`);
     stdoutLogger.info(`Stop hook: ${result.hooks.stop}`);
     stdoutLogger.info(`codex_hooks feature: ${result.feature}`);
+    if (result.feature === 'blocked') {
+      stdoutLogger.warn(
+        `${result.blockedReason}; preserving explicit consent. Set \`codex_hooks = true\` in ${opts.codexHome}/config.toml, then rerun \`caveat codex-hook install\`.`,
+      );
+    }
     if (result.backupPath) stdoutLogger.info(`hooks.json backed up: ${result.backupPath}`);
     if (result.configBackupPath) {
       stdoutLogger.info(`config.toml backed up: ${result.configBackupPath}`);
@@ -413,7 +434,7 @@ codexSidecar
 
 const community = program
   .command('community')
-  .description('Manage community caveat repos (shallow clones under <knowledgeRepo>/community/)');
+  .description('Manage community caveat repos (shallow clones under <caveatHome>/community/)');
 
 community
   .command('add <url>')

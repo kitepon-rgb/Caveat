@@ -1,7 +1,7 @@
 # 07 — 封緘公開層・自動同期・init 一発化・公開検閲・検索計測（v0.16 設計正典）
 
-> 状態: **実装中 — 刻み(1)〜(6) コード完了**（2026-07-11 承認・同日着手。Explore×2 / Web 事例調査×2 / Plan×2 / refuter 敵対的検証を各刻みで経由。Oracle はオーナー却下により未使用）
-> 消化済み: 刻み(1) gitRuntime = a3c22a2 + 079c4ed / 刻み(2) sealedBundle・sealedKeys = 95ebfab / 刻み(3) publish 封緘化 = 0bf4d42 / 刻み(4) community・索引の封緘対応（A4/A5 + B-2/B-3）/ 刻み(5) keyserver-lite Worker（コード部分）= 0c5a698 / 刻み(6) Track C autosync + Track F の Codex sweep 修正（各刻みとも実装委譲 → refuter/検証 → 統括ゲート再実行の型。刻み6 は codex_work 委譲 → refuter が実バグ 2 件発見 → 統括直接修正）。Track A の封緘本体 + Track B の Worker コード + Track C 自動同期は完了。**残りの実機作業（Worker 実デプロイ・A6 purge）は外向き・不可逆のためオーナー個別確認まで保留**。次は刻み(7) Track D init 一発化
+> 状態: **実装中 — 刻み(1)〜(7) コード完了**（2026-07-11 承認・同日着手。Explore×2 / Web 事例調査×2 / Plan×2 / refuter 敵対的検証を各刻みで経由。Oracle はオーナー却下により未使用）
+> 消化済み: 刻み(1) gitRuntime = a3c22a2 + 079c4ed / 刻み(2) sealedBundle・sealedKeys = 95ebfab / 刻み(3) publish 封緘化 = 0bf4d42 / 刻み(4) community・索引の封緘対応（A4/A5 + B-2/B-3）/ 刻み(5) keyserver-lite Worker（コード部分）= 0c5a698 / 刻み(6) Track C autosync + Track F の Codex sweep 修正 = 5140467 / 刻み(7) Track D init 一発化（各刻みとも実装委譲 → refuter/検証 → 統括ゲート再実行の型。刻み6/7 は codex_work 委譲＝6 は Codex 中位・7 は Codex 旗艦 Sol×high〈オーナー steer で上振れ〉）。Track A の封緘本体 + Track B の Worker コード + Track C 自動同期 + Track D init 統合は完了。**残りの実機作業（Worker 実デプロイ・A6 purge）は外向き・不可逆のためオーナー個別確認まで保留**。次は刻み(8) Track E publish 検閲ゲート
 > 前提: Fable 級統括／Codex・sonnet 級実装者（2026-07 時点）
 > 本書がチェックボックス付き TODO を兼ねる（グローバル CLAUDE.md「プランは TODO を兼ねる」）
 
@@ -133,12 +133,12 @@ Caveat-Public には平文 markdown を置かず、**暗号化バンドル（配
 
 ## Track D — init 一発化（課題 4）
 
-- [ ] `caveat init` に統合: `--sync [url]` / `--publish-target [url]` / `--yes` / `--skip-codex-hook` フラグ（既定 OFF＝既存 smoke テスト 3 件は無変更で green〔refuter F で検証済み〕）
-- [ ] **TTY 実行時は対話ナジを既定で出す**（フラグ未指定時のみ）: 「private 同期を今すぐ設定する？ [y/N]」「公開 repo（封緘）も設定する？ [y/N]」各 1 回、Enter=No。非 TTY はナジ自体をスキップ（CI 安全）。gh 不在/未ログインは実行すべきコマンド 2 行を提示して該当項目のみスキップ（silent fallback 禁止・init 全体は完走）— これで「一発で理想環境」をオーナー要求どおり満たしつつ既定の安全を保つ
-- [ ] sync 統合は `initOwnSync` 再利用 + `OWN_REPO_EXISTS` を「設定済み・skip」の info に吸収（冪等）。gh 検証ロジックは `ghSetup.ts` に一本化して sync / publish / init から共用
-- [ ] codex-hook 自動 install（codex 検出時）: `spawnSync` は **shell:true**（Windows の codex.cmd 解決〔refuter F-2、自 repo の既存規約・既存 caveat エントリどおり〕）、書き込み先は **`ctx.userHome/.codex` を明示**（テスト隔離〔refuter F-1〕）、config.toml の features 編集は**パース安全が確認できる場合のみ**・`codex_hooks = false` が明示されていたら skip + 手動コマンド提示〔refuter F-3: regex 編集で TOML 二重定義 → Codex 起動不能の事故経路と consent 問題〕
-- [ ] init 末尾に環境サマリ出力（own git / private remote / publish target / community 数 / codex hook の設定状態一覧）
-- [ ] 死にフィールド `communitySources` の削除・`community` サブコマンド説明文の旧パス修正（ついで清算）
+- [x] `caveat init` に統合: `--sync [url]` / `--publish-target [url]` / `--yes` / `--skip-codex-hook` フラグ（既定 OFF＝既存 smoke テスト 3 件は無変更で green〔refuter F で検証済み〕）
+- [x] **TTY 実行時は対話ナジを既定で出す**（フラグ未指定時のみ）: 「private 同期を今すぐ設定する？ [y/N]」「公開 repo（封緘）も設定する？ [y/N]」各 1 回、Enter=No。非 TTY はナジ自体をスキップ（CI 安全）。gh 不在/未ログインは実行すべきコマンド 2 行を提示して該当項目のみスキップ（silent fallback 禁止・init 全体は完走）— これで「一発で理想環境」をオーナー要求どおり満たしつつ既定の安全を保つ
+- [x] sync 統合は `initOwnSync` 再利用 + `OWN_REPO_EXISTS` を「設定済み・skip」の info に吸収（冪等）。gh 検証ロジックは `ghSetup.ts` に一本化して sync / publish / init から共用
+- [x] codex-hook 自動 install（codex 検出時）: `spawnSync` は **shell:true**（Windows の codex.cmd 解決〔refuter F-2、自 repo の既存規約・既存 caveat エントリどおり〕）、書き込み先は **`ctx.userHome/.codex` を明示**（テスト隔離〔refuter F-1〕）、config.toml の features 編集は**パース安全が確認できる場合のみ**・`codex_hooks = false` が明示されていたら skip + 手動コマンド提示〔refuter F-3: regex 編集で TOML 二重定義 → Codex 起動不能の事故経路と consent 問題〕
+- [x] init 末尾に環境サマリ出力（own git / private remote / publish target / community 数 / codex hook の設定状態一覧）
+- [x] 死にフィールド `communitySources` の削除・`community` サブコマンド説明文の旧パス修正（ついで清算）
 
 ## Track E — publish 検閲ゲート（課題 6・スコープは refuter が 161 件実測済み）
 

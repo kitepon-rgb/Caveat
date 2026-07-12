@@ -1,6 +1,6 @@
 import { resetAutoSyncFailureState, syncOwn, initOwnSync } from '@caveat/core';
 import type { CliContext } from '../context.js';
-import { askOnce, commandError, runGh, type GhRunResult, type GhRunner } from '../ghSetup.js';
+import { askOnce, defaultGitHubRepoUrl, runGh, type GhRunner } from '../ghSetup.js';
 
 export interface SyncCmdOptions {
   init?: boolean | string;
@@ -20,33 +20,13 @@ async function defaultPrivateRepoUrl(
   opts: SyncCmdOptions,
   deps: Required<Pick<SyncCmdDependencies, 'ghRunner' | 'isTty' | 'confirm'>>,
 ): Promise<string> {
-  const version = deps.ghRunner(['--version']);
-  if (version.status !== 0) {
-    throw new Error(
-      'gh is not available. create a private repository named Caveat-Private on GitHub, then run:\n' +
-      '  caveat sync --init <url>\n' +
-      '  # or install gh and run caveat sync --init',
-    );
-  }
-  const user = deps.ghRunner(['api', 'user', '-q', '.login']);
-  if (user.status !== 0 || !user.stdout.trim()) {
-    throw new Error('gh is not authenticated; run `gh auth login`, then retry `caveat sync --init`');
-  }
-  const login = user.stdout.trim();
-  const name = `${login}/Caveat-Private`;
-  const view = deps.ghRunner(['repo', 'view', name]);
-  if (view.status !== 0) {
-    const question = `create private repo github.com/${name}? [y/N]`;
-    if (!opts.yes) {
-      if (!deps.isTty()) {
-        throw new Error(`${question}; rerun with --yes to approve non-interactively`);
-      }
-      if (!deps.confirm(question)) throw new Error('private repository creation cancelled');
-    }
-    const create = deps.ghRunner(['repo', 'create', 'Caveat-Private', '--private']);
-    if (create.status !== 0) throw commandError(create, 'gh repo create failed');
-  }
-  return `https://github.com/${name}.git`;
+  return defaultGitHubRepoUrl({
+    repositoryName: 'Caveat-Private',
+    visibility: 'private',
+    yes: opts.yes,
+    retryCommand: 'caveat sync --init <url>',
+    ...deps,
+  });
 }
 
 export async function runSync(

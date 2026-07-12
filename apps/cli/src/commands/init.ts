@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
@@ -6,9 +7,12 @@ import {
   computeEntriesDigest,
   createKeyserverKeyProvider,
   ensureUserConfig,
+  initOwnSync,
   openDb,
   prewarmSealedKeys,
   reindexAllSources,
+  SyncError,
+  writeUserConfigPatch,
   writeDigestMarker,
 } from '@caveat/core';
 import type { CliContext } from '../context.js';
@@ -17,7 +21,13 @@ import {
   uninstallClaudeIntegration,
   type ClaudeInstallResult,
 } from '../claudeInstall.js';
+import {
+  detectCodexHookInstallation,
+  installCodexHooks,
+} from '../codexHookInstall.js';
+import { askOnce, defaultGitHubRepoUrl, runGh, type GhRunner } from '../ghSetup.js';
 import { resolveHookNodePath } from '../nodePath.js';
+import { validatePublishTarget } from './publish.js';
 
 export interface InitOptions {
   skipClaude: boolean;
@@ -29,12 +39,30 @@ export interface InitOptions {
    * any dir whose mtime is strictly in the past.
    */
   pendingStaleDays?: number;
+  sync?: boolean | string;
+  publishTarget?: boolean | string;
+  yes?: boolean;
+  skipCodexHook?: boolean;
+}
+
+export interface InitDependencies {
+  ghRunner?: GhRunner;
+  isTty?: () => boolean;
+  confirm?: (question: string) => boolean;
+  codexAvailable?: () => boolean;
 }
 
 export async function runInit(
   ctx: CliContext,
   opts: InitOptions = { skipClaude: false, dryRun: false },
+  dependencies: InitDependencies = {},
 ): Promise<void> {
+  const isTty = dependencies.isTty ?? (() => Boolean(process.stdin.isTTY));
+  const confirm = dependencies.confirm ?? askOnce;
+  const ghRunner = dependencies.ghRunner ?? runGh;
+  let publishTarget = ctx.config.publishTarget;
+  let codexHookState: 'installed' | 'partial' | 'not-installed' | 'skipped' = 'not-installed';
+
   ensureUserConfig(ctx.userConfigPath);
   ctx.logger.info(`user config: ${ctx.userConfigPath}`);
 
@@ -90,25 +118,186 @@ export async function runInit(
     'tip: subscribe to a group repo with `caveat community add <github-url>`, then `caveat pull`.',
   );
 
+  let syncRequested = opts.sync !== undefined && opts.sync !== false;
+  let syncNudgeAccepted = false;
+  if (opts.sync === undefined && isTty()) {
+    syncNudgeAccepted = confirm('private 同期を今すぐ設定する？ [y/N]');
+    syncRequested = syncNudgeAccepted;
+  }
+  if (syncRequested) {
+    try {
+      if (opts.dryRun) {
+        const target = typeof opts.sync === 'string' ? opts.sync : '<user>/Caveat-Private';
+        ctx.logger.info(`[dry-run] would initialize private sync: ${target}`);
+      } else {
+        const url = typeof opts.sync === 'string'
+          ? opts.sync
+          : defaultGitHubRepoUrl({
+              repositoryName: 'Caveat-Private',
+              visibility: 'private',
+              yes: (opts.yes ?? false) || syncNudgeAccepted,
+              retryCommand: 'caveat init --sync <url>',
+              ghRunner,
+              isTty,
+              confirm,
+            });
+        const result = await initOwnSync({
+          ownDir: ctx.paths.knowledgeRepo,
+          url,
+          caveatHome: ctx.caveatHome,
+          paths: ctx.paths,
+          logger: ctx.logger,
+          // file: remotes are governed by local filesystem permissions and have
+          // no anonymous HTTP surface for the remote-visibility probe to inspect.
+          trustRemotePrivate: isFileRemote(url),
+        });
+        ctx.logger.info(
+          result.remoteWasEmpty
+            ? `initialized private sync remote: ${url}`
+            : `checked out existing private remote: ${url} (branch ${result.branch})`,
+        );
+      }
+    } catch (err) {
+      if (err instanceof SyncError && err.code === 'OWN_REPO_EXISTS') {
+        ctx.logger.info('private sync already configured (own repo exists); skipped');
+      } else {
+        ctx.logger.warn(`private sync setup skipped: ${errorMessage(err)}`);
+      }
+    }
+  }
+
+  let publishRequested = opts.publishTarget !== undefined && opts.publishTarget !== false;
+  let publishNudgeAccepted = false;
+  if (opts.publishTarget === undefined && isTty()) {
+    publishNudgeAccepted = confirm('公開 repo（封緘ミラー）も設定する？ [y/N]');
+    publishRequested = publishNudgeAccepted;
+  }
+  if (publishRequested) {
+    try {
+      const requested = typeof opts.publishTarget === 'string'
+        ? validatePublishTarget(opts.publishTarget)
+        : publishTarget;
+      const target = requested ?? (opts.dryRun
+        ? '<user>/Caveat-Public'
+        : defaultGitHubRepoUrl({
+            repositoryName: 'Caveat-Public',
+            visibility: 'public',
+            yes: (opts.yes ?? false) || publishNudgeAccepted,
+            retryCommand: 'caveat init --publish-target <url>',
+            ghRunner,
+            isTty,
+            confirm,
+          }));
+      if (opts.dryRun) {
+        ctx.logger.info(`[dry-run] would configure publish target: ${target}`);
+        publishTarget = target;
+      } else if (target === publishTarget) {
+        ctx.logger.info(`publish target already configured: ${target}`);
+      } else {
+        writeUserConfigPatch(ctx.userConfigPath, { publishTarget: target });
+        publishTarget = target;
+        ctx.logger.info(`publish target configured: ${target}`);
+      }
+    } catch (err) {
+      ctx.logger.warn(`publish target setup skipped: ${errorMessage(err)}`);
+    }
+  }
+
   if (opts.skipClaude) {
     ctx.logger.info('Claude Code integration skipped (--skip-claude)');
-    return;
+  } else {
+    const cliScriptPath = process.argv[1];
+    if (!cliScriptPath) {
+      ctx.logger.warn('cannot determine CLI script path; skipping Claude integration');
+    } else {
+      const result = installClaudeIntegration({
+        claudeDir: join(ctx.userHome, '.claude'),
+        cliScriptPath,
+        nodePath: resolveHookNodePath(),
+        dryRun: opts.dryRun,
+        logger: ctx.logger,
+      });
+      reportInstallResult(ctx, result, opts.dryRun);
+    }
   }
 
-  const cliScriptPath = process.argv[1];
-  if (!cliScriptPath) {
-    ctx.logger.warn('cannot determine CLI script path; skipping Claude integration');
-    return;
+  if (opts.skipCodexHook) {
+    codexHookState = 'skipped';
+    ctx.logger.info('Codex hook integration skipped (--skip-codex-hook)');
+  } else if ((dependencies.codexAvailable ?? detectCodexAvailability)()) {
+    const cliScriptPath = process.argv[1];
+    if (!cliScriptPath) {
+      codexHookState = 'skipped';
+      ctx.logger.warn('cannot determine CLI script path; skipping Codex hook integration');
+    } else {
+      const codexHome = join(ctx.userHome, '.codex');
+      const result = installCodexHooks({
+        codexHome,
+        cliScriptPath,
+        nodePath: resolveHookNodePath(),
+        dryRun: opts.dryRun,
+        logger: ctx.logger,
+      });
+      if (result.feature === 'blocked') {
+        codexHookState = 'skipped';
+        ctx.logger.warn(
+          `${result.blockedReason}; preserving explicit consent. Set \`codex_hooks = true\` in ${join(codexHome, 'config.toml')}, then rerun \`caveat init\`.`,
+        );
+      } else if (opts.dryRun) {
+        codexHookState = 'skipped';
+        ctx.logger.info('[dry-run] would install Codex hooks');
+      } else {
+        codexHookState = detectCodexHookInstallation(codexHome).installation;
+      }
+    }
   }
 
-  const result = installClaudeIntegration({
-    claudeDir: join(ctx.userHome, '.claude'),
-    cliScriptPath,
-    nodePath: resolveHookNodePath(),
-    dryRun: opts.dryRun,
-    logger: ctx.logger,
+  reportEnvironmentSummary(ctx, publishTarget, codexHookState, opts.dryRun);
+}
+
+function detectCodexAvailability(): boolean {
+  // A command string plus shell:true resolves codex.cmd on Windows as well as codex on POSIX.
+  const result = spawnSync('codex --version', {
+    shell: true,
+    encoding: 'utf-8',
+    stdio: 'ignore',
   });
-  reportInstallResult(ctx, result, opts.dryRun);
+  return !result.error && result.status === 0;
+}
+
+function isFileRemote(url: string): boolean {
+  try {
+    return new URL(url).protocol === 'file:';
+  } catch {
+    return false;
+  }
+}
+
+function gitOutput(args: string[]): string | null {
+  const result = spawnSync('git', args, { encoding: 'utf-8' });
+  return result.status === 0 && typeof result.stdout === 'string' ? result.stdout.trim() : null;
+}
+
+function reportEnvironmentSummary(
+  ctx: CliContext,
+  publishTarget: string | null,
+  codexHookState: 'installed' | 'partial' | 'not-installed' | 'skipped',
+  dryRun: boolean,
+): void {
+  const prefix = dryRun ? '[dry-run] would have ' : '';
+  const isRepo = gitOutput(['-C', ctx.paths.knowledgeRepo, 'rev-parse', '--is-inside-work-tree']) === 'true';
+  const remote = isRepo
+    ? gitOutput(['-C', ctx.paths.knowledgeRepo, 'config', '--get', 'remote.origin.url'])
+    : null;
+  const communityCount = existsSync(ctx.paths.communityDir)
+    ? readdirSync(ctx.paths.communityDir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).length
+    : 0;
+  ctx.logger.info(`${prefix}environment summary:`);
+  ctx.logger.info(`  own git: ${isRepo ? 'repository' : 'not initialized'}`);
+  ctx.logger.info(`  private remote: ${remote || 'not configured'}`);
+  ctx.logger.info(`  publish target: ${publishTarget || 'not configured'}`);
+  ctx.logger.info(`  community sources: ${communityCount}`);
+  ctx.logger.info(`  codex hook: ${codexHookState}`);
 }
 
 function errorMessage(err: unknown): string {

@@ -13,7 +13,7 @@ const messages: string[] = [];
 const ctx = {
   caveatHome: '/tmp/caveat-home',
   userConfigPath: '/tmp/caveat-home/.caveatrc.json',
-  config: { knowledgeRepo: 'own', semverKeys: [], communitySources: [], publishTarget: null },
+  config: { knowledgeRepo: 'own', semverKeys: [], publishTarget: null },
   paths: { entriesDir: '/tmp/caveat-home/own/entries', publishMirrorDir: '/tmp/caveat-home/publish/mirror' },
   logger: {
     info: (m: string) => messages.push(`info:${m}`),
