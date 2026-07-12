@@ -11,6 +11,7 @@ import {
   drainPendingReminders,
   findCaveatsForPrompt,
   hasAnyStruggleSignal,
+  logHookQueryMiss,
   markHit,
   maybeSweepPendingDirs,
   openDb,
@@ -20,6 +21,7 @@ import {
   toolErrorReminderText,
   userPromptSubmitReminderText,
   type Logger,
+  type HookQuerySurface,
   type SearchResult,
   type SessionSignals,
 } from '@caveat/core';
@@ -84,29 +86,41 @@ function buildContextSafely(): CliContext | null {
   }
 }
 
-function searchCaveatsFromTextSafely(text: string): SearchResult[] {
+function searchCaveatsFromTextSafely(text: string, surface: HookQuerySurface): SearchResult[] {
   if (!text) return [];
   let db: DatabaseSync | undefined;
+  let caveatHome: string | undefined;
+  let hits: SearchResult[];
   try {
     const ctx = buildContextSafely();
     if (!ctx || !existsSync(ctx.paths.dbPath)) return [];
+    caveatHome = ctx.caveatHome;
     db = openDb({ path: ctx.paths.dbPath });
-    const hits = findCaveatsForPrompt(db, text, {
+    hits = findCaveatsForPrompt(db, text, {
       selfIdentity: defaultSelfIdentityTokens(),
     });
-    if (hits.length > 0) {
-      try {
-        markHit(db, hits);
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        process.stderr.write(`[caveat:codex-hook] markHit error: ${msg}\n`);
-      }
-    }
-    return hits;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[caveat:codex-hook] search error: ${msg}\n`);
     return [];
+  }
+  if (hits.length > 0) {
+    try {
+      markHit(db!, hits);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[caveat:codex-hook] markHit error: ${msg}\n`);
+    }
+  } else {
+    try {
+      logHookQueryMiss({ caveatHome: caveatHome!, agent: 'codex', surface, query: text });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[caveat:codex-hook] query log error: ${msg}\n`);
+    }
+  }
+  try {
+    return hits;
   } finally {
     db?.close();
   }
@@ -433,7 +447,7 @@ async function processCodexWorkerJob(
 
   if (!knownError && job.allowSymptomOnly !== true) return;
 
-  const hits = searchCaveatsFromTextSafely(searchText);
+  const hits = searchCaveatsFromTextSafely(searchText, 'tool_error');
   if (hits.length === 0) return;
 
   const ctx = buildContextSafely();
@@ -518,7 +532,7 @@ export async function runCodexHook(name: CodexHookName, arg?: string): Promise<v
   if (name === 'user-prompt-submit') {
     const contexts = sessionId ? drainForSession(sessionId) : [];
     const prompt = typeof payload.prompt === 'string' ? payload.prompt : '';
-    const hits = searchCaveatsFromTextSafely(prompt);
+    const hits = searchCaveatsFromTextSafely(prompt, 'user_prompt');
     if (hits.length > 0) {
       contexts.push(userPromptSubmitReminderText(hits));
     }
@@ -562,7 +576,7 @@ export async function runCodexHook(name: CodexHookName, arg?: string): Promise<v
       typeof payload.transcript_path === 'string' ? payload.transcript_path : '';
     const signals = transcriptPath ? loadSignalsSafely(transcriptPath) : null;
     if (!signals || !hasAnyStruggleSignal(signals)) process.exit(0);
-    const related = searchCaveatsFromTextSafely(struggleSearchText(signals));
+    const related = searchCaveatsFromTextSafely(struggleSearchText(signals), 'stop');
     if (sessionId) queueStopForSession(sessionId, signals, related);
     process.exit(0);
   }

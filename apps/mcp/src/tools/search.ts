@@ -7,7 +7,11 @@ const confidenceSchema = z.enum(['confirmed', 'reproduced', 'tentative']);
 const visibilityFilter = z.enum(['public', 'private', 'all']);
 
 export const searchInputShape = {
-  query: z.string().describe('FTS query (3+ chars for trigram). Empty string lists without text filter.'),
+  query: z
+    .string()
+    .describe(
+      'FTS query (3+ chars for trigram). Empty string lists without text filter. If a search returns 0 hits, retry with synonyms and Japanese/English paraphrases. Use plain tokens only; FTS operators are not supported.',
+    ),
   filters: z
     .object({
       tags: z.array(z.string()).optional(),

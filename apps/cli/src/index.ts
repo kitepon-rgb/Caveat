@@ -33,6 +33,10 @@ import {
 import { resolveHookNodePath } from './nodePath.js';
 
 const program = new Command();
+function collectRepeatable(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
 program
   .name('caveat')
   .description('External spec gotcha knowledge base CLI')
@@ -204,7 +208,9 @@ program
   .option('--init <url>', 'set the public mirror target')
   .option('--dry-run', 'show public mirror changes without committing or pushing', false)
   .option('--yes', 'approve creating a default repository or publishing changes', false)
-  .action(async (opts: { init?: string; dryRun: boolean; yes: boolean }) => {
+  .option('--allow <digest>', 'allow a scan finding by its sha256 digest (repeatable)', collectRepeatable, [])
+  .option('--save', 'persist --allow digests to .caveat-publish-allow.json in the own repo', false)
+  .action(async (opts: { init?: string; dryRun: boolean; yes: boolean; allow: string[]; save: boolean }) => {
     const ctx = buildContext(stdoutLogger);
     await runPublish(ctx, opts);
   });

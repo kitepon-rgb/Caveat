@@ -3,6 +3,13 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 const core = vi.hoisted(() => ({
   publishOwn: vi.fn(),
   writeUserConfigPatch: vi.fn(),
+  PublishScanError: class PublishScanError extends Error {
+    findings: unknown[];
+    constructor(findings: unknown[]) {
+      super('scan failed');
+      this.findings = findings;
+    }
+  },
 }));
 vi.mock('@caveat/core', () => core);
 
@@ -14,7 +21,7 @@ const ctx = {
   caveatHome: '/tmp/caveat-home',
   userConfigPath: '/tmp/caveat-home/.caveatrc.json',
   config: { knowledgeRepo: 'own', semverKeys: [], publishTarget: null },
-  paths: { entriesDir: '/tmp/caveat-home/own/entries', publishMirrorDir: '/tmp/caveat-home/publish/mirror' },
+  paths: { knowledgeRepo: '/tmp/caveat-home/own', entriesDir: '/tmp/caveat-home/own/entries', publishMirrorDir: '/tmp/caveat-home/publish/mirror' },
   logger: {
     info: (m: string) => messages.push(`info:${m}`),
     warn: () => {},
@@ -72,5 +79,60 @@ describe('caveat publish command', () => {
     await runPublish({ ...ctx, config: { ...ctx.config, publishTarget: 'https://github.com/x/Caveat-Public.git' } } as CliContext, { dryRun: true, yes: false });
     expect(messages.join('\n')).toMatch(/\[dry-run\]/);
     expect(process.exitCode).not.toBe(1);
+  });
+
+  it('passes publish scan allow/save options through', async () => {
+    core.publishOwn.mockResolvedValue({ fileCount: 1, changed: false, dryRun: false });
+    const withTarget = { ...ctx, config: { ...ctx.config, publishTarget: 'https://github.com/x/Caveat-Public.git' } } as CliContext;
+    await runPublish(withTarget, { dryRun: false, yes: true, allow: ['a'.repeat(64)], save: true });
+    expect(core.publishOwn).toHaveBeenCalledWith(expect.objectContaining({
+      allow: ['a'.repeat(64)],
+      saveAllow: true,
+    }));
+  });
+
+  it('passes an advisory callback only when the cwd has sidecar config', async () => {
+    core.publishOwn.mockResolvedValue({ fileCount: 1, changed: false, dryRun: false });
+    const withTarget = { ...ctx, config: { ...ctx.config, publishTarget: 'https://github.com/x/Caveat-Public.git' } } as CliContext;
+
+    await runPublish(withTarget, { dryRun: false, yes: false }, { hasCodexSidecarConfig: () => false });
+    expect(core.publishOwn).toHaveBeenLastCalledWith(expect.objectContaining({ advisory: undefined }));
+
+    await runPublish(withTarget, { dryRun: false, yes: false }, {
+      hasCodexSidecarConfig: () => true,
+      runCodexSidecarAdvisory: () => '[caveat:codex-sidecar] Codex advisory:\nreview',
+    });
+    expect(core.publishOwn).toHaveBeenLastCalledWith(expect.objectContaining({ advisory: expect.any(Function) }));
+  });
+
+  it('turns a throwing publish advisory dependency into an unavailable advisory', async () => {
+    core.publishOwn.mockResolvedValue({ fileCount: 1, changed: false, dryRun: false });
+    const withTarget = { ...ctx, config: { ...ctx.config, publishTarget: 'https://github.com/x/Caveat-Public.git' } } as CliContext;
+    const runner = vi.fn(() => { throw new Error('temporary directory cleanup failed'); });
+
+    await runPublish(withTarget, { dryRun: false, yes: false }, {
+      hasCodexSidecarConfig: () => true,
+      runCodexSidecarAdvisory: runner,
+    });
+    const call = core.publishOwn.mock.calls.at(-1)?.[0] as { advisory: (changes: { lines: string[]; added: number; modified: number; deleted: number }) => string };
+    expect(call.advisory({ lines: ['A entry.md'], added: 1, modified: 0, deleted: 0 }))
+      .toBe('[caveat:codex-sidecar] advisory unavailable: temporary directory cleanup failed');
+    expect(runner).toHaveBeenCalledTimes(1);
+  });
+
+  it('prints scan findings with copyable allow lines', async () => {
+    const err = new core.PublishScanError([{
+      relPath: 'entry.md',
+      line: 7,
+      rule: 'aws-key',
+      excerpt: 'aws AKIA****MNOP',
+      matchDigest: 'b'.repeat(64),
+    }]);
+    core.publishOwn.mockRejectedValue(err);
+    const withTarget = { ...ctx, config: { ...ctx.config, publishTarget: 'https://github.com/x/Caveat-Public.git' } } as CliContext;
+    await runPublish(withTarget, { dryRun: false, yes: true });
+    expect(messages.join('\n')).toContain('entry.md:7 aws-key aws AKIA****MNOP');
+    expect(messages.join('\n')).toContain(`--allow ${'b'.repeat(64)}`);
+    expect(process.exitCode).toBe(1);
   });
 });

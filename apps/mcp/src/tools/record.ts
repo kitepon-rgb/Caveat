@@ -8,7 +8,9 @@ const visibilitySchema = z.enum(['public', 'private']);
 
 export const recordInputShape = {
   title: z.string().min(1),
-  symptom: z.string().min(1),
+  symptom: z.string().min(1).describe(
+    'Describe the observed failure. Preserve raw errors and exact error strings verbatim; when a stable translation is known, also include the main symptom keywords in Japanese and English to improve retrieval. Do not force a full translation or guess at uncertain wording.',
+  ),
   cause: z.string().optional(),
   resolution: z.string().optional(),
   evidence: z.string().optional(),

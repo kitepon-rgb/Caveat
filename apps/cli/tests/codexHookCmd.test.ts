@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { appendPendingReminder, drainPendingReminders } from '@caveat/core';
+import { appendPendingReminder, drainPendingReminders, openDb } from '@caveat/core';
 import {
   buildCodexPostToolUseWorkerJob,
   codexContextOutput,
@@ -18,6 +18,39 @@ function readFixture(name: string): Record<string, unknown> {
 }
 
 describe('Codex hook output formatting', () => {
+  it('reports query-log failures without interrupting a successful zero-hit search', () => {
+    const root = mkdtempSync(join(tmpdir(), 'caveat-codex-query-log-error-'));
+    const caveatHome = join(root, 'caveat-home');
+    const userHome = join(root, 'home');
+    try {
+      mkdirSync(userHome, { recursive: true });
+      const db = openDb({ path: join(caveatHome, 'index', 'caveat.db') });
+      db.close();
+      writeFileSync(join(caveatHome, 'metrics'), 'not a directory', 'utf8');
+      const result = spawnSync(
+        process.execPath,
+        [
+          '--import',
+          'tsx',
+          fileURLToPath(new URL('../src/index.ts', import.meta.url)),
+          'codex-hook',
+          'user-prompt-submit',
+        ],
+        {
+          cwd: fileURLToPath(new URL('..', import.meta.url)),
+          input: JSON.stringify({ session_id: 'sess-1', hook_event_name: 'UserPromptSubmit', prompt: 'unmatched query' }),
+          encoding: 'utf-8',
+          env: { ...process.env, CAVEAT_HOME: caveatHome, HOME: userHome, CAVEAT_HOOK_QUERY_LOG: 'on' },
+        },
+      );
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toContain('[caveat:codex-hook] query log error:');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('formats user prompt context as hookSpecificOutput.additionalContext', () => {
     expect(JSON.parse(codexContextOutput('hello'))).toEqual({
       hookSpecificOutput: {

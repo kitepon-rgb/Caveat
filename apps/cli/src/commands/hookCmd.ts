@@ -1,10 +1,8 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
-  rmSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -20,6 +18,7 @@ import {
   drainPendingReminders,
   findCaveatsForPrompt,
   hasAnyStruggleSignal,
+  logHookQueryMiss,
   markHit,
   maybeSweepPendingDirs,
   openDb,
@@ -37,12 +36,14 @@ import {
   toolErrorReminderText,
   userPromptSubmitReminderText,
   type Logger,
+  type HookQuerySurface,
   type SearchResult,
   type SessionSignals,
 } from '@caveat/core';
 import { buildContext, type CliContext } from '../context.js';
 import { maybeTriggerAutoReindex } from '../autoReindexTrigger.js';
 import { maybeTriggerAutoSync } from '../autoSyncTrigger.js';
+import { formatCodexSidecarAdvisory, runCodexSidecarAdvisory } from './codexSidecarAdvisory.js';
 
 export type HookName = 'user-prompt-submit' | 'post-tool-use' | 'stop' | 'worker' | 'reindex' | 'autosync';
 
@@ -91,29 +92,41 @@ function buildContextSafely(): CliContext | null {
   }
 }
 
-function searchCaveatsFromTextSafely(text: string): SearchResult[] {
+function searchCaveatsFromTextSafely(text: string, surface: HookQuerySurface): SearchResult[] {
   if (!text) return [];
   let db: DatabaseSync | undefined;
+  let caveatHome: string | undefined;
+  let hits: SearchResult[];
   try {
     const ctx = buildContextSafely();
     if (!ctx || !existsSync(ctx.paths.dbPath)) return [];
+    caveatHome = ctx.caveatHome;
     db = openDb({ path: ctx.paths.dbPath });
-    const hits = findCaveatsForPrompt(db, text, {
+    hits = findCaveatsForPrompt(db, text, {
       selfIdentity: defaultSelfIdentityTokens(),
     });
-    if (hits.length > 0) {
-      try {
-        markHit(db, hits);
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        process.stderr.write(`[caveat:hook] markHit error: ${msg}\n`);
-      }
-    }
-    return hits;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[caveat:hook] search error: ${msg}\n`);
     return [];
+  }
+  if (hits.length > 0) {
+    try {
+      markHit(db!, hits);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[caveat:hook] markHit error: ${msg}\n`);
+    }
+  } else {
+    try {
+      logHookQueryMiss({ caveatHome: caveatHome!, agent: 'claude', surface, query: text });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[caveat:hook] query log error: ${msg}\n`);
+    }
+  }
+  try {
+    return hits;
   } finally {
     db?.close();
   }
@@ -130,7 +143,7 @@ function loadSignalsSafely(path: string): SessionSignals | null {
 }
 
 function systemReminderOutput(text: string): string {
-  return `<system-reminder>${text}</system-reminder>`;
+  return `<system-reminder>${text.replace(/</g, '‹').replace(/>/g, '›')}</system-reminder>`;
 }
 
 function drainForSession(sessionId: string): string[] {
@@ -334,7 +347,7 @@ async function runWorker(workFile: string): Promise<void> {
   }
   if (!job.searchText || !job.sessionId) process.exit(0);
 
-  const hits = searchCaveatsFromTextSafely(job.searchText);
+  const hits = searchCaveatsFromTextSafely(job.searchText, 'tool_error');
   if (hits.length === 0) process.exit(0);
 
   const ctx = buildContextSafely();
@@ -451,9 +464,7 @@ function buildToolErrorReminder(job: WorkerJob, hits: SearchResult[]): string {
     return [
       base,
       '',
-      '[caveat:codex-sidecar] Codex advisory:',
-      advisory.summary,
-      advisory.rawEventLogRef ? `rawEventLogRef: ${advisory.rawEventLogRef}` : '',
+      formatCodexSidecarAdvisory(advisory),
     ]
       .filter(Boolean)
       .join('\n');
@@ -462,7 +473,7 @@ function buildToolErrorReminder(job: WorkerJob, hits: SearchResult[]): string {
   return [
     base,
     '',
-    `[caveat:codex-sidecar] advisory unavailable: ${advisory.message}`,
+    formatCodexSidecarAdvisory(advisory),
   ].join('\n');
 }
 
@@ -499,9 +510,7 @@ function buildStopReminder(
     return [
       base,
       '',
-      '[caveat:codex-sidecar] Codex advisory:',
-      advisory.summary,
-      advisory.rawEventLogRef ? `rawEventLogRef: ${advisory.rawEventLogRef}` : '',
+      formatCodexSidecarAdvisory(advisory),
     ]
       .filter(Boolean)
       .join('\n');
@@ -510,116 +519,8 @@ function buildStopReminder(
   return [
     base,
     '',
-    `[caveat:codex-sidecar] advisory unavailable: ${advisory.message}`,
+    formatCodexSidecarAdvisory(advisory),
   ].join('\n');
-}
-
-function compactFailureMessage(message: string): string {
-  const singleLine = message.replace(/\s+/g, ' ').trim();
-  if (!singleLine) return 'unknown error';
-  return singleLine.length > 220 ? `${singleLine.slice(0, 220)}...` : singleLine;
-}
-
-function sidecarFailureDetail(output: string): string {
-  const protocol = output.match(/PROTOCOL_ERROR:[^"\r\n]+/);
-  if (protocol) return compactFailureMessage(protocol[0]!);
-
-  const lines = output
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const diagnostic = lines.find(
-    (line) => !line.startsWith('[caveat] [codex-sidecar] codex-sidecar '),
-  );
-  return compactFailureMessage(diagnostic ?? output);
-}
-
-function runCodexSidecarAdvisory(input: {
-  searchText: string;
-  limit: number;
-  projectRoot: string;
-  prompt: string;
-}): { status: 'ok'; summary: string; rawEventLogRef?: string } | { status: 'failed'; message: string } {
-  const cliScript = process.argv[1];
-  if (!cliScript) {
-    return { status: 'failed', message: 'current Caveat CLI script path is unavailable' };
-  }
-
-  const args = [
-    ...process.execArgv,
-    '--disable-warning=ExperimentalWarning',
-    cliScript,
-    'codex-sidecar',
-    'run',
-    'explore',
-    input.prompt,
-    '--preset',
-    'advisory',
-    '--query',
-    input.searchText,
-    '--limit',
-    String(Math.max(1, input.limit)),
-    '--host-agent',
-    'claude',
-    '--availability',
-    'operational',
-  ];
-  const resultDir = mkdtempSync(join(tmpdir(), 'caveat-codex-advisory-'));
-  const resultFile = join(resultDir, 'result.json');
-  args.push('--save-result', resultFile);
-
-  const nodeCli = process.env.CAVEAT_CODEX_SIDECAR_NODE_CLI;
-  if (nodeCli) {
-    args.push('--node-cli', nodeCli);
-  } else {
-    const command = process.env.CAVEAT_CODEX_SIDECAR_COMMAND;
-    if (command) args.push('--command', command);
-  }
-
-  try {
-    const result = spawnSync(process.execPath, args, {
-      cwd: input.projectRoot,
-      encoding: 'utf-8',
-      timeout: Number(process.env.CAVEAT_HOOK_CODEX_SIDECAR_TIMEOUT_MS ?? 120_000),
-      maxBuffer: 10 * 1024 * 1024,
-    });
-
-    if (result.error) {
-      return { status: 'failed', message: compactFailureMessage(result.error.message) };
-    }
-    if (result.status !== 0) {
-      const detail = (result.stderr || result.stdout || `exit ${result.status}`).trim();
-      return {
-        status: 'failed',
-        message: `sidecar command failed: ${sidecarFailureDetail(detail)}`,
-      };
-    }
-
-    const parsed = JSON.parse(readFileSync(resultFile, 'utf-8')) as {
-      status?: string;
-      summary?: unknown;
-      rawEventLogRef?: unknown;
-    };
-    if (parsed.status !== 'ok' || typeof parsed.summary !== 'string') {
-      return {
-        status: 'failed',
-        message: compactFailureMessage(`unexpected SidecarResult status: ${String(parsed.status)}`),
-      };
-    }
-    return {
-      status: 'ok',
-      summary: parsed.summary,
-      ...(typeof parsed.rawEventLogRef === 'string' ? { rawEventLogRef: parsed.rawEventLogRef } : {}),
-    };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return {
-      status: 'failed',
-      message: compactFailureMessage(`invalid SidecarResult JSON: ${msg}`),
-    };
-  } finally {
-    rmSync(resultDir, { recursive: true, force: true });
-  }
 }
 
 export async function runHook(name: HookName, arg?: string): Promise<void> {
@@ -652,7 +553,7 @@ export async function runHook(name: HookName, arg?: string): Promise<void> {
 
   if (name === 'user-prompt-submit') {
     const prompt = typeof payload.prompt === 'string' ? payload.prompt : '';
-    const hits = searchCaveatsFromTextSafely(prompt);
+    const hits = searchCaveatsFromTextSafely(prompt, 'user_prompt');
     if (hits.length > 0) {
       contexts.push(userPromptSubmitReminderText(hits));
     }
@@ -709,7 +610,7 @@ export async function runHook(name: HookName, arg?: string): Promise<void> {
       typeof payload.transcript_path === 'string' ? payload.transcript_path : '';
     const signals = transcriptPath ? loadSignalsSafely(transcriptPath) : null;
     if (!signals || !hasAnyStruggleSignal(signals)) process.exit(0);
-    const related = searchCaveatsFromTextSafely(struggleSearchText(signals));
+    const related = searchCaveatsFromTextSafely(struggleSearchText(signals), 'stop');
     queueStopForSession(sessionId, signals, related);
     process.exit(0);
   }

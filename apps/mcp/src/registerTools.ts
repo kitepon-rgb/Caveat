@@ -24,7 +24,7 @@ export function registerAllTools(server: McpServer, ctx: McpContext): void {
     {
       title: 'caveat_search',
       description:
-        'Search the "caveats" knowledge base — records of time-wasting traps in EXTERNAL specs (GPU/driver/CUDA versions, native-module builds, IDE/shell quirks, platform-specific behavior, library version incompatibilities) that someone already diagnosed. Call this FIRST when a problem smells environmental rather than a logic bug — before reading stack traces top-to-bottom or trying fixes. Query: 3+ chars, plain tokens only (no OR/NEAR/other FTS5 operators). Returns summary rows including `{id, source}` — pass BOTH to caveat_get for the full body.',
+        'Search the "caveats" knowledge base — records of time-wasting traps someone already diagnosed, including external-spec issues (GPU/driver/CUDA versions, native-module builds, IDE/shell quirks, platform-specific behavior, library version incompatibilities) and reusable repo-specific context. Call this FIRST when a problem smells like a known trap — before reading stack traces top-to-bottom or trying fixes. Query: 3+ chars, plain tokens only (no OR/NEAR/other FTS5 operators). If it returns 0 hits, retry with synonyms and Japanese/English paraphrases. Returns summary rows including `{id, source}` — pass BOTH to caveat_get for the full body.',
       inputSchema: searchInputShape,
     },
     async (args) => jsonResult(handleSearch(ctx, args as SearchArgs)),
@@ -46,7 +46,7 @@ export function registerAllTools(server: McpServer, ctx: McpContext): void {
     {
       title: 'caveat_record',
       description:
-        'Create a new caveat: a record of an external-spec trap that wasted real time (wrong driver, version mismatch, platform bug, IDE quirk, native-module issue, etc.) so future sessions can find it via caveat_search. REQUIRED BEFORE CALLING: (1) run caveat_search first to avoid duplicates, (2) ASK THE USER whether this should be `public` (shareable to the community DB) or `private` (kept local only) — never auto-classify visibility; the user owns the knowledge and decides its reach. Qualifies: specific symptom + diagnosed cause (or `outcome: impossible` verdict) + environment fingerprint. Does NOT qualify: project-internal bugs, user preferences, session summaries, ephemeral task notes. Auto-fills source_session and environment defaults; source_project is left null by design (shared knowledge must not leak per-user project names).',
+        'Create a new caveat: a reusable record of a time-wasting trap (wrong driver, version mismatch, platform bug, IDE quirk, native-module issue, or repo-specific context) so future sessions can find it via caveat_search. REQUIRED BEFORE CALLING: run caveat_search first to avoid duplicates. Set visibility using this binary criterion: `public` if a third party could reproduce it; `private` if it is repo/workflow-specific or depends on intentional local design; when unclear, prefer `private`; follow an explicit user visibility choice. Qualifies: specific symptom + diagnosed cause (or `outcome: impossible` verdict) + environment fingerprint. Does NOT qualify: ordinary project-internal logic bugs, user preferences, session summaries, or ephemeral task notes; reusable repo-specific traps may be `private`. Auto-fills source_session and environment defaults; source_project is left null by design (shared knowledge must not leak per-user project names).',
       inputSchema: recordInputShape,
     },
     async (args) => jsonResult(handleRecord(ctx, args as RecordArgs)),
@@ -57,7 +57,7 @@ export function registerAllTools(server: McpServer, ctx: McpContext): void {
     {
       title: 'caveat_update',
       description:
-        'Patch an existing caveat — use when newer evidence extends or corrects one that already exists. Frontmatter shallow-merges, but array fields (tags etc.) REPLACE rather than append — to add one tag, read the current list first, then patch with the full new array. Sections match by case-insensitive H2 heading. Immutable keys: id, created_at, source_session, source_project. Common uses: bump `last_verified` after re-confirming, add a resolution when it was `tentative`, flip `outcome` to `impossible`.',
+        'Patch an existing caveat — use when newer evidence extends or corrects one that already exists. Frontmatter shallow-merges, but array fields (tags etc.) REPLACE rather than append — to add one tag, read the current list first, then patch with the full new array. Sections match by case-insensitive H2 heading. When changing `Symptom`, preserve raw errors verbatim and add stable Japanese/English symptom keywords when known; do not force or guess translations. Immutable keys: id, created_at, source_session, source_project. Common uses: bump `last_verified` after re-confirming, add a resolution when it was `tentative`, flip `outcome` to `impossible`.',
       inputSchema: updateInputShape,
     },
     async (args) => jsonResult(handleUpdate(ctx, args as UpdateArgs)),

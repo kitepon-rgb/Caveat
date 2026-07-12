@@ -10,6 +10,10 @@ import { handleGet } from '../src/tools/get.js';
 import { handleRecord } from '../src/tools/record.js';
 import { handleUpdate } from '../src/tools/update.js';
 import { handleListRecent } from '../src/tools/listRecent.js';
+import { recordInputShape } from '../src/tools/record.js';
+import { updateInputShape } from '../src/tools/update.js';
+import { searchInputShape } from '../src/tools/search.js';
+import { registerAllTools } from '../src/registerTools.js';
 
 interface Fx {
   root: string;
@@ -174,4 +178,56 @@ describe('MCP tool handlers', () => {
     });
   });
 
+});
+
+describe('MCP tool metadata contracts', () => {
+  it('describes bilingual symptom enrichment without altering raw errors', () => {
+    expect(recordInputShape.symptom.description).toContain('Preserve raw errors');
+    expect(recordInputShape.symptom.description).toMatch(/Japanese and English/);
+    expect(recordInputShape.symptom.description).toContain('Do not force a full translation');
+
+    const sections = updateInputShape.patch.shape.sections;
+    expect(sections.description).toContain('When changing the Symptom section');
+    expect(sections.description).toContain('preserve raw errors');
+    expect(sections.description).toMatch(/Japanese and English/);
+  });
+
+  it('describes retrying zero-hit searches with bilingual synonyms while retaining plain-token FTS', () => {
+    expect(searchInputShape.query.description).toContain('If a search returns 0 hits');
+    expect(searchInputShape.query.description).toMatch(/synonyms and Japanese\/English paraphrases/);
+    expect(searchInputShape.query.description).toContain('FTS operators are not supported');
+  });
+
+  it('registers current search, visibility, and Symptom-update guidance', () => {
+    const registered = new Map<string, { description: string }>();
+    const server = {
+      registerTool(name: string, config: { description: string }) {
+        registered.set(name, config);
+      },
+    };
+    const f = makeFx();
+    try {
+      registerAllTools(server as never, f.ctx);
+    } finally {
+      cleanup(f);
+    }
+
+    const search = registered.get('caveat_search')?.description ?? '';
+    expect(search).toContain('If it returns 0 hits');
+    expect(search).toMatch(/synonyms and Japanese\/English paraphrases/);
+    expect(search).toContain('no OR/NEAR/other FTS5 operators');
+
+    const record = registered.get('caveat_record')?.description ?? '';
+    expect(record).toContain('run caveat_search first to avoid duplicates');
+    expect(record).toContain('third party could reproduce it');
+    expect(record).toContain('when unclear, prefer `private`');
+    expect(record).toContain('follow an explicit user visibility choice');
+    expect(record).toContain('reusable repo-specific traps may be `private`');
+    expect(record).not.toMatch(/ASK THE USER|never auto-classify|project-internal bugs, user preferences, session summaries, ephemeral task notes/);
+    expect(record).not.toContain('kept local only');
+
+    const update = registered.get('caveat_update')?.description ?? '';
+    expect(update).toContain('When changing `Symptom`, preserve raw errors verbatim');
+    expect(update).toMatch(/Japanese\/English symptom keywords/);
+  });
 });

@@ -11,10 +11,23 @@ import { classifyVisibility } from './visibility.js';
 import { createGit } from './gitRuntime.js';
 import { readSealedHeader, sealBundle, unsealBundle } from './sealedBundle.js';
 import { createKeyserverKeyProvider, normalizeKeyserverUrl, type ContentKeyProvider } from './sealedKeys.js';
+import {
+  loadPublishAllow,
+  publishSelfIdentityTokens,
+  PublishScanError,
+  savePublishAllow,
+  scanPublishFiles,
+} from './publishScan.js';
 
 export interface PublishFile { relPath: string; content: Buffer; showcase: boolean; }
 export interface PublishInvalid { relPath: string; reason: string; }
 export interface PublishSet { files: PublishFile[]; invalid: PublishInvalid[]; }
+export interface PublishChanges {
+  lines: string[];
+  added: number;
+  modified: number;
+  deleted: number;
+}
 
 const BUNDLE_RELPATH = 'bundle/entries.caveat';
 const TMP_BRANCH = 'caveat-publish-tmp';
@@ -173,7 +186,8 @@ export function verifySealedMirror(opts: {
 }
 
 export interface PublishOwnOptions {
-  paths: Pick<ResolvedPaths, 'caveatHome' | 'entriesDir' | 'publishMirrorDir'>;
+  paths: Pick<ResolvedPaths, 'caveatHome' | 'entriesDir' | 'publishMirrorDir'>
+    & Partial<Pick<ResolvedPaths, 'knowledgeRepo'>>;
   config: CaveatConfig;
   logger: Logger;
   confirmImpl: (question: string) => boolean;
@@ -181,6 +195,9 @@ export interface PublishOwnOptions {
   isTty?: () => boolean;
   dryRun?: boolean;
   yes?: boolean;
+  allow?: string[];
+  saveAllow?: boolean;
+  advisory?: (changes: PublishChanges) => string | null;
 }
 export interface PublishResult { fileCount: number; changed: boolean; dryRun: boolean; }
 
@@ -188,12 +205,7 @@ function sha256(content: Buffer): string {
   return createHash('sha256').update(content).digest('hex');
 }
 
-function diffFiles(previous: Array<{ relPath: string; content: Buffer }>, next: PublishFile[]): {
-  lines: string[];
-  added: number;
-  modified: number;
-  deleted: number;
-} {
+function diffFiles(previous: Array<{ relPath: string; content: Buffer }>, next: PublishFile[]): PublishChanges {
   const before = new Map(previous.map((file) => [file.relPath, sha256(file.content)]));
   const after = new Map(next.map((file) => [file.relPath, sha256(file.content)]));
   const paths = [...new Set([...before.keys(), ...after.keys()])].sort();
@@ -296,6 +308,17 @@ export async function publishOwn(opts: PublishOwnOptions): Promise<PublishResult
   }
   const collected = collectPublishSet(opts.paths.entriesDir);
   if (collected.invalid.length) throw new Error(`cannot publish invalid entries:\n${collected.invalid.map((x) => `${x.relPath}: ${x.reason}`).join('\n')}`);
+  const selfIdentity = publishSelfIdentityTokens();
+  // Preserve the pre-scan public API: entriesDir has always been
+  // <knowledgeRepo>/entries, so older callers need not supply knowledgeRepo.
+  const knowledgeRepo = opts.paths.knowledgeRepo ?? dirname(opts.paths.entriesDir);
+  const allow = new Set([...loadPublishAllow(knowledgeRepo), ...(opts.allow ?? [])]);
+  const scan = scanPublishFiles(collected.files, { selfIdentity, allow });
+  for (const warning of scan.warnings) {
+    opts.logger.warn(`publish scan warning: ${warning.relPath}:${warning.line} ${warning.rule} ${warning.excerpt}`);
+  }
+  if (opts.saveAllow && opts.allow?.length) savePublishAllow(knowledgeRepo, opts.allow);
+  if (scan.blocking.length) throw new PublishScanError(scan.blocking);
 
   // 端末 A/B の設定が trailing slash だけ違うと（正規化前は）bundle header に埋め込まれる
   // keyserverUrl のバイト列が乖離し、内容不変でも changed 判定されて相互 push し合う
@@ -328,7 +351,15 @@ export async function publishOwn(opts: PublishOwnOptions): Promise<PublishResult
   const question = `publish ${changes.lines.length} entry change(s)? [y/N]`;
   if (!opts.yes) {
     if (!(opts.isTty ?? (() => Boolean(process.stdin.isTTY)))()) throw new Error(`${question}; rerun with --yes to approve non-interactively`);
-    if (!opts.confirmImpl(question)) throw new Error('publish cancelled');
+    let advisory: string | null | undefined;
+    try {
+      advisory = opts.advisory?.(changes);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      opts.logger.warn(`publish advisory unavailable: ${message.replace(/\s+/g, ' ').trim() || 'unknown error'}`);
+    }
+    const questionWithAdvisory = advisory ? `${advisory}\n\n${question}` : question;
+    if (!opts.confirmImpl(questionWithAdvisory)) throw new Error('publish cancelled');
   }
 
   await checkoutOrphan(git);

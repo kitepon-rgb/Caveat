@@ -31,7 +31,12 @@ export const updateInputShape = {
     .describe('Only own entries may be updated. community entries are subscriptions; edit them upstream.'),
   patch: z.object({
     frontmatter: patchFrontmatterSchema.optional(),
-    sections: z.record(z.string(), z.string()).optional(),
+    sections: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe(
+        'Patch H2 sections by heading. When changing the Symptom section, preserve raw errors and exact error strings verbatim; when a stable translation is known, also include the main symptom keywords in Japanese and English to improve retrieval. Do not force a full translation or guess at uncertain wording.',
+      ),
   }),
 };
 

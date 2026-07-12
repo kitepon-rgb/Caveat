@@ -11,6 +11,7 @@ import {
   verifySealedMirror,
 } from '../src/publish.js';
 import type { PublishFile } from '../src/publish.js';
+import { PublishScanError, publishSelfIdentityTokens } from '../src/publishScan.js';
 import { sealBundle, unsealBundle } from '../src/sealedBundle.js';
 import type { CaveatConfig } from '../src/config.js';
 import type { Logger } from '../src/db.js';
@@ -36,6 +37,7 @@ interface Fixture {
   root: string;
   remote: string;
   caveatHome: string;
+  knowledgeRepo: string;
   entriesDir: string;
   mirrorDir: string;
   config: CaveatConfig;
@@ -83,13 +85,15 @@ async function makeFixture(): Promise<Fixture> {
   const remote = join(root, 'remote.git');
   git(['init', '--bare', remote]);
   const caveatHome = join(root, 'home');
-  const entriesDir = join(root, 'own', 'entries');
+  const knowledgeRepo = join(root, 'own');
+  const entriesDir = join(knowledgeRepo, 'entries');
   mkdirSync(entriesDir, { recursive: true });
   const keyServer = await startKeyServer(new Map([['v1', CONTENT_KEY]]));
   return {
     root,
     remote,
     caveatHome,
+    knowledgeRepo,
     entriesDir,
     mirrorDir: join(caveatHome, 'publish', 'mirror'),
     keyServer,
@@ -134,7 +138,7 @@ function mirrorFiles(clone: string): string[] {
 
 function publishArgs(logger: Logger = silentLogger) {
   return {
-    paths: { caveatHome: fixture.caveatHome, entriesDir: fixture.entriesDir, publishMirrorDir: fixture.mirrorDir },
+    paths: { caveatHome: fixture.caveatHome, knowledgeRepo: fixture.knowledgeRepo, entriesDir: fixture.entriesDir, publishMirrorDir: fixture.mirrorDir },
     config: fixture.config,
     logger,
     confirmImpl: alwaysYes,
@@ -214,11 +218,24 @@ describe('buildSealedReadme', () => {
 });
 
 describe('publishOwn (sealed local bare mirror)', { timeout: GIT_TEST_TIMEOUT_MS }, () => {
+  it('keeps the legacy public paths shape without requiring knowledgeRepo', async () => {
+    writeFileSync(join(fixture.entriesDir, 'legacy.md'), entry('legacy', 'public', 'legacy paths shape'));
+    const result = await publishOwn({
+      ...publishArgs(),
+      paths: {
+        caveatHome: fixture.caveatHome,
+        entriesDir: fixture.entriesDir,
+        publishMirrorDir: fixture.mirrorDir,
+      },
+    });
+    expect(result).toMatchObject({ changed: true, fileCount: 1 });
+  });
+
   it('publishes only README.md and bundle/entries.caveat without plaintext non-showcase bytes or history', async () => {
-    writeFileSync(join(fixture.entriesDir, 'pub.md'), entry('pub', 'public', 'PUBLIC-NONSHOWCASE-UNIQUE'));
-    writeFileSync(join(fixture.entriesDir, 'show.md'), entry('show', 'public', 'SHOWCASE-PLAINTEXT-UNIQUE', true));
+    writeFileSync(join(fixture.entriesDir, 'pub.md'), entry('pub', 'public', 'public nonshowcase unique text'));
+    writeFileSync(join(fixture.entriesDir, 'show.md'), entry('show', 'public', 'showcase plaintext unique text', true));
     mkdirSync(join(fixture.entriesDir, 'secret'), { recursive: true });
-    writeFileSync(join(fixture.entriesDir, 'secret', 'priv.md'), entry('priv', 'private', 'CONFIDENTIAL-INTERNAL-TOKEN'));
+    writeFileSync(join(fixture.entriesDir, 'secret', 'priv.md'), entry('priv', 'private', 'confidential internal token'));
 
     const result = await publishOwn(publishArgs());
     expect(result).toMatchObject({ changed: true, fileCount: 2, dryRun: false });
@@ -227,11 +244,11 @@ describe('publishOwn (sealed local bare mirror)', { timeout: GIT_TEST_TIMEOUT_MS
     expect(mirrorFiles(clone)).toEqual(['README.md', 'bundle/entries.caveat']);
     const readme = readFileSync(join(clone, 'README.md'), 'utf-8');
     const bundle = readFileSync(join(clone, 'bundle', 'entries.caveat'));
-    expect(readme).not.toContain('PUBLIC-NONSHOWCASE-UNIQUE');
-    expect(readme).not.toContain('CONFIDENTIAL-INTERNAL-TOKEN');
-    expect(bundle.includes(Buffer.from('PUBLIC-NONSHOWCASE-UNIQUE'))).toBe(false);
-    expect(bundle.includes(Buffer.from('CONFIDENTIAL-INTERNAL-TOKEN'))).toBe(false);
-    expect(readme).toContain('SHOWCASE-PLAINTEXT-UNIQUE');
+    expect(readme).not.toContain('public nonshowcase unique text');
+    expect(readme).not.toContain('confidential internal token');
+    expect(bundle.includes(Buffer.from('public nonshowcase unique text'))).toBe(false);
+    expect(bundle.includes(Buffer.from('confidential internal token'))).toBe(false);
+    expect(readme).toContain('showcase plaintext unique text');
     // non-showcase エントリの relPath / 拡張子抜きスラッグ自体もメタデータとして漏れて
     // はいけない (旧 Categories 行の漏洩と同じ形の再発防止)。'pub' は word-boundary で
     // 判定する — 'Public'/'publish' 等の README 定型句と部分一致してしまうため。
@@ -292,7 +309,7 @@ describe('publishOwn (sealed local bare mirror)', { timeout: GIT_TEST_TIMEOUT_MS
     // 作り直される系譜でしか再現しないため、まず remote に実コンテンツを push する。
     seedRemoteWithBundle(Buffer.from('seed-bundle-bytes'), '# Seed\n');
 
-    writeFileSync(join(fixture.entriesDir, 'a.md'), entry('a', 'public', 'DANGLING-HEAD-RECOVERY'));
+    writeFileSync(join(fixture.entriesDir, 'a.md'), entry('a', 'public', 'dangling head recovery'));
     await publishOwn(publishArgs());
     const clone1 = cloneMirrorBack();
     expect(git(['rev-list', '--count', 'HEAD'], clone1).trim()).toBe('1');
@@ -329,6 +346,23 @@ describe('publishOwn (sealed local bare mirror)', { timeout: GIT_TEST_TIMEOUT_MS
 
     const clone = cloneMirrorBack();
     expect(mirrorFiles(clone)).toEqual([]);
+  });
+
+  it('aborts before mirror work when a public entry contains self identity', async () => {
+    const token = [...publishSelfIdentityTokens()][0];
+    expect(token).toBeDefined();
+    writeFileSync(join(fixture.entriesDir, 'leak.md'), entry('leak', 'public', `ssh ${token}@server`));
+    let advisoryCalls = 0;
+
+    await expect(publishOwn({
+      ...publishArgs(),
+      advisory: () => {
+        advisoryCalls++;
+        return 'must not run';
+      },
+    })).rejects.toBeInstanceOf(PublishScanError);
+    expect(advisoryCalls).toBe(0);
+    expect(existsSync(fixture.mirrorDir)).toBe(false);
   });
 
   it('warns and shows all entries as added when the previous bundle cannot be decrypted', async () => {
@@ -396,6 +430,86 @@ describe('publishOwn (sealed local bare mirror)', { timeout: GIT_TEST_TIMEOUT_MS
     expect(git(['rev-list', '--count', 'HEAD'], clone2).trim()).toBe('1');
   });
 
+  it('adds an advisory to the interactive confirmation after scan and diff', async () => {
+    writeFileSync(join(fixture.entriesDir, 'a.md'), entry('a', 'public', 'pending publish'));
+    let receivedQuestion = '';
+    let advisoryCalls = 0;
+
+    await expect(publishOwn({
+      ...publishArgs(),
+      yes: false,
+      isTty: () => true,
+      confirmImpl: (question) => {
+        receivedQuestion = question;
+        return false;
+      },
+      advisory: (changes) => {
+        advisoryCalls++;
+        expect(changes.lines).toEqual(['A a.md']);
+        return '[caveat:codex-sidecar] Codex advisory:\nreview secret exposure';
+      },
+    })).rejects.toThrow('publish cancelled');
+
+    expect(advisoryCalls).toBe(1);
+    expect(receivedQuestion).toContain('review secret exposure');
+    expect(receivedQuestion).toContain('publish 1 entry change(s)? [y/N]');
+  });
+
+  it('keeps human confirmation available when the advisory reports a failure', async () => {
+    writeFileSync(join(fixture.entriesDir, 'a.md'), entry('a', 'public', 'pending publish'));
+    let receivedQuestion = '';
+
+    await expect(publishOwn({
+      ...publishArgs(),
+      yes: false,
+      isTty: () => true,
+      confirmImpl: (question) => {
+        receivedQuestion = question;
+        return false;
+      },
+      advisory: () => '[caveat:codex-sidecar] advisory unavailable: sidecar command failed: unavailable',
+    })).rejects.toThrow('publish cancelled');
+
+    expect(receivedQuestion).toContain('advisory unavailable: sidecar command failed: unavailable');
+    expect(receivedQuestion).toContain('publish 1 entry change(s)? [y/N]');
+  });
+
+  it('keeps human confirmation available when the advisory callback throws', async () => {
+    writeFileSync(join(fixture.entriesDir, 'a.md'), entry('a', 'public', 'pending publish'));
+    const logger = captureLogger();
+    let confirmCalls = 0;
+
+    await expect(publishOwn({
+      ...publishArgs(logger.logger),
+      yes: false,
+      isTty: () => true,
+      confirmImpl: () => {
+        confirmCalls++;
+        return false;
+      },
+      advisory: () => { throw new Error('sidecar temp cleanup failed'); },
+    })).rejects.toThrow('publish cancelled');
+
+    expect(confirmCalls).toBe(1);
+    expect(logger.warn).toContain('publish advisory unavailable: sidecar temp cleanup failed');
+  });
+
+  it('does not invoke the advisory for --yes, dry-run, or no-op publish paths', async () => {
+    writeFileSync(join(fixture.entriesDir, 'a.md'), entry('a', 'public', 'before'));
+    let advisoryCalls = 0;
+    const advisory = () => {
+      advisoryCalls++;
+      return 'should not run';
+    };
+
+    await publishOwn({ ...publishArgs(), advisory });
+    await publishOwn({ ...publishArgs(), advisory, yes: false, isTty: () => true });
+    writeFileSync(join(fixture.entriesDir, 'a.md'), entry('a', 'public', 'after'));
+    await publishOwn({ ...publishArgs(), advisory, dryRun: true, yes: false });
+
+    expect(advisoryCalls).toBe(0);
+  });
+
   it('rejects a mirror workdir pointing at a different target', async () => {
     writeFileSync(join(fixture.entriesDir, 'a.md'), entry('a', 'public'));
     await publishOwn(publishArgs());
@@ -416,7 +530,7 @@ describe('publishOwn (sealed local bare mirror)', { timeout: GIT_TEST_TIMEOUT_MS
     // process was killed mid-publish).
     git(['checkout', '-b', 'caveat-publish-tmp'], fixture.mirrorDir);
 
-    writeFileSync(join(fixture.entriesDir, 'a.md'), entry('a', 'public', 'after-crash-recovery'));
+    writeFileSync(join(fixture.entriesDir, 'a.md'), entry('a', 'public', 'after crash recovery'));
     const result = await publishOwn(publishArgs());
     expect(result.changed).toBe(true);
 
@@ -426,7 +540,7 @@ describe('publishOwn (sealed local bare mirror)', { timeout: GIT_TEST_TIMEOUT_MS
     const bundle = readFileSync(join(cloneAfter, 'bundle', 'entries.caveat'));
     const unsealed = unsealBundle(bundle, CONTENT_KEY);
     const changed = unsealed.files.find((f) => f.relPath === 'a.md');
-    expect(changed?.content.toString('utf-8')).toContain('after-crash-recovery');
+    expect(changed?.content.toString('utf-8')).toContain('after crash recovery');
   });
 });
 

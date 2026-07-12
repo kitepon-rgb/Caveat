@@ -200,6 +200,17 @@ installed.
 
 Others read your public repo with `caveat community add <you>` (a bare GitHub username expands to `<you>/Caveat-Public`) then `caveat pull`. There is still no central server and no automatic merge of strangers' contributions — trust stays social. Contributions to someone's public repo go through its normal GitHub PR review.
 
+Deleting and recreating a generated `Caveat-Public` repository can stop future
+readers and crawlers from seeing the old repository, but it is **not retroactive
+erasure**. Existing clones and copies held by GitHub caches, forks, archival
+services such as Software Heritage, or event archives such as GH Archive may
+remain outside the publisher's control.
+
+The `entries/` directory in this tool repository is intentionally retained as
+dogfood and format examples. It is not the canonical published knowledge set;
+that boundary is the generated `Caveat-Public` repository produced by
+`caveat publish`.
+
 ### Using an existing knowledge repo instead of `~/.caveat/own/`
 
 Write `~/.caveatrc.json`:
