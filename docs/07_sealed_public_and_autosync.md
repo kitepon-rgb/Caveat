@@ -79,7 +79,7 @@ Caveat-Public には平文 markdown を置かず、**暗号化バンドル（配
 - [x] commit フロー: `branch -D caveat-publish-tmp`（失敗無視）〔refuter C-2: クラッシュ残骸ブランチ対策〕→ `checkout --orphan` → add -A → commit → `branch -M <branch>` → `push --force` → `gc --prune=now`（ベストエフォート）。**毎回 rev-list count = 1**（履歴に平文も過去バンドルも積まない・repo サイズ一定）
 - [x] preparePublishMirror の fetch に `--prune` を追加〔refuter C-3 対策の一部〕
 - [x] 確認プロンプト（差分一覧 + y/N）は現行どおり維持（publish は手動＝オーナー裁定 3）
-- [x] **見本罠（試食枠・スター獲得の導線）**: README に選りすぐりの public 罠 3〜5 件を平文で全文掲載し、「全 161 件を読むには `npm i -g caveat-cli && caveat community add <user>`」の導線を付ける（封緘は通りすがりへの訴求力を削ぐため、展示品だけ平文でくれてやる折衷。オーナー承認 2026-07-11）。見本の選定は frontmatter `showcase: true`（または config のリスト）で指定し、変更時は publish の差分確認に載せる。**見本も Track E の検閲ゲートを通す**
+- [x] **見本罠（試食枠・スター獲得の導線）**: README に選りすぐりの public 罠 3〜5 件を平文で全文掲載し、「全 166 件を読むには `npm i -g caveat-cli && caveat community add <user>`」の導線を付ける（封緘は通りすがりへの訴求力を削ぐため、展示品だけ平文でくれてやる折衷。オーナー承認 2026-07-11）。見本の選定は frontmatter `showcase: true`（または config のリスト）で指定し、変更時は publish の差分確認に載せる。**見本も Track E の検閲ゲートを通す**
 
 ### A4. community の封緘対応
 
@@ -103,20 +103,20 @@ Caveat-Public には平文 markdown を置かず、**暗号化バンドル（配
 
 ### A6. 既存平文の purge（実行時に個別確認・不可逆操作）
 
-- [ ] **本番 purge runbook**: 下記の全削除前ゲートを順に通した後だけ `gh repo delete kitepon-rgb/Caveat-Public --yes` → 同名 public repo 再作成 → 封緘版初回 publish を行う。削除を Worker / scanner / rehearsal より先行させない
-  - [ ] H承認済みの keyserver Worker / KV を実デプロイし、鍵値を表示せず HTTP 2xx・keyId一致・base64復号32Bを検証
+- [x] **本番 purge runbook**（2026-07-12 完了）: 下記の全削除前ゲートを順に通した後だけ `gh repo delete kitepon-rgb/Caveat-Public --yes` → 同名 public repo 再作成 → 封緘版初回 publish を行う。削除を Worker / scanner / rehearsal より先行させない
+  - [x] H承認済みの keyserver Worker / KV を実デプロイし、鍵値を表示せず HTTP 2xx・keyId一致・base64復号32Bを検証。`caveat-keyserver.kitepon.workers.dev` を system DNS / `1.1.1.1` / HTTP / key contract の10秒間隔3連続成功で安定確認
   - [x] publish scanner の実identity 8行を匿名化し、再scanを blocking 2件（公開識別子のみ）まで減らして、その2 digestだけを明示allow
   - [x] `showcase: true` を安全な public entry 3〜5件へ付け、受入条件を「non-showcase の識別子・本文0 / README平文集合=showcase集合」とする（5件選定）
-  - [ ] own正本とCaveat本体を各clean commitへ固定し、stash 0・upstream差分を確認。production key + 現corpus + 使い捨てlocal bare remoteで完全publishし、1 commit・所定tree・bundle復号・公開入力集合とのhash一致を削除前に証明
-  - [ ] 旧repo ID/HEAD/設定を記録し、旧mirror全refをmode `0600`のlocal git bundleへ退避・`git bundle verify`。成功確定まで旧mirrorを消さない
-  - [ ] 削除後404 → 明示ownerで同名public repo作成 → repo ID変更を確認 → 固定buildで対話publish → fresh clone/APIでmainのみ・1 commit・所定tree・remote SHA一致・non-showcase平文0・復号集合一致・空CAVEAT_HOMEのcommunity add/pull/reindex/searchを検証
+  - [x] own正本 `95d0807` とCaveat本体 `f435dd2` を各clean commitへ固定し、stash 0・upstream差分0を確認。production key + 現corpus + 使い捨てlocal bare remoteで完全publishし、1 commit・所定tree・bundle復号・公開入力集合166件とのhash一致を削除前に証明
+  - [x] 旧repo ID/HEAD/設定を記録し、旧mirror全refをmode `0600`のlocal git bundleへ退避・`git bundle verify`。backup は `/Users/kite/.caveat/publish/backup/20260712T143532Z/`（dir `0700`）に保持し、旧mirrorも消さない
+  - [x] 削除後404 → 明示ownerで同名public repo作成 → repo ID `1297270670` から `1298361088` への変更を確認 → 固定buildで封緘publish（commit `d9ff1c0`）→ fresh clone/APIでmainのみ・1 commit・所定tree・remote SHA一致・README平文集合=showcase 5件・non-showcase 161件のrelPath非露出・復号集合166/166一致・空CAVEAT_HOMEのcommunity add/pull/index/searchを検証
 - [x] 限界の文書化: fork・GitHub キャッシュ・Software Heritage・GH Archive に既取得分は残り得る。GitHub traffic は purge 前に clone 12 / unique cloner 10 を観測しており、既取得コピーがないとは扱わない。「purge は今後の新規閲覧者・クローラの遮断であり、遡及消去ではない」を README に明記
 - [x] ツール repo の dogfood `entries/`（35 件・2026-04 から公開済み）: **全残置**（オーナー裁定 2026-07-12）。既に数ヶ月クロール済みで保護効果が薄く、dogfood・フォーマット見本としての整合性を優先
 
 ## Track B — keyserver-lite Worker（新規・最小インフラ）
 
 - [x] リポジトリ内 `keyserver/` に Cloudflare Worker 最小実装（= 0c5a698）: `GET /v1/keys/<id>` → KV から `{keyId, key}` をパススルー（無認証・CORS 不要・GET のみ・レート制限は CF 既定に任せる）。コードは公開して問題ない（鍵は Worker KV にのみ存在）。`handleKeyRequest` 純関数・test 18 本 green・typecheck clean・refuter 検証済み。本体 pnpm workspace 非参加の独立パッケージ
-- [x] デプロイ手順を docs 化（keyserver/README.md「デプロイ手順」節）: `openssl rand -base64 32` で鍵生成 → `wrangler kv` 登録 → deploy → `~/.caveatrc.json` に `sealedKeyserverUrl` 設定。**ただしデプロイ実行そのものはオーナー承認後・実行時に個別確認（外向き操作）＝コード/手順は完了・実機デプロイは未実施**
+- [x] デプロイ手順を docs 化（keyserver/README.md「デプロイ手順」節）: `openssl rand -base64 32` で鍵生成 → `wrangler kv` 登録 → deploy → `~/.caveatrc.json` に `sealedKeyserverUrl` 設定。2026-07-12 にオーナー承認のもと KV / `v1` 32B鍵 / Worker を実デプロイし、鍵値非表示の remote read-back、HTTP契約、DNS安定を検証済み。実namespace IDは追跡中の `wrangler.toml` へ書かず、一時設定だけで投入
 - [x] 将来の昇格経路（実装しない・設計メモのみ・keyserver/README.md「将来の昇格経路」節）: 同エンドポイントに Bearer token 検証を足せばトークン制へ移行できる形を保つ
 
 ## Track C — 自動同期サイクル（課題 3・5 を吸収）
