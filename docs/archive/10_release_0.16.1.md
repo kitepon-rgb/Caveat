@@ -39,14 +39,14 @@ diagnosticsが一貫して扱い、公開tarballからのClaude/Codex hook動作
 - [x] `caveat-cli@0.16.0`をnpm deprecateする。
 - [x] installer / diagnosticsを正規`features.hooks`へ移行し、install時に旧aliasを安全に除去する。
 - [x] version / CHANGELOGを`0.16.1`へ更新し、全gate・refuter監査を通す。
-- [ ] 修正版commitをpushし、全6 CI job greenを確認する。
-- [ ] annotated tag `v0.16.1`を作成・pushし、`caveat-cli@0.16.1`をnpm publishする。
-- [ ] npm registryのversion / dist-tag / integrityを確認する。
-- [ ] 公開packageを一時prefixへfresh installし、version / manifest / executable modeを確認する。
-- [ ] 一時HOMEでinit二回、Claude/Codex hook diagnostics、uninstall cleanupを確認する。
-- [ ] 公開packageでnew Codex / Claude session smokeとsidecar advisory両surfaceを確認する。
-- [ ] worktree clean、origin同期、npm latest、CI greenを確認する。
-- [ ] 結果と残余リスクを記録し、本書を`docs/archive/`へ移す。
+- [x] 修正版commitをpushし、全6 CI job greenを確認する。
+- [x] annotated tag `v0.16.1`を作成・pushし、`caveat-cli@0.16.1`をnpm publishする。
+- [x] npm registryのversion / dist-tag / integrityを確認する。
+- [x] 公開packageを一時prefixへfresh installし、version / manifest / executable modeを確認する。
+- [x] 一時HOMEでinit二回、Claude/Codex hook diagnostics、uninstall cleanupを確認する。
+- [x] 公開packageでnew Codex sessionとsidecar advisory両surfaceを確認し、Claude fresh sessionの未実施理由を記録する。
+- [x] worktree clean、origin同期、npm latest、CI greenを確認する。
+- [x] 結果と残余リスクを記録し、本書を`docs/archive/`へ移す。
 
 ## 着手時点
 
@@ -77,3 +77,23 @@ diagnosticsが一貫して扱い、公開tarballからのClaude/Codex hook動作
   残るため、警告解消には0.16.1で一度installしてからuninstallする。
 - workspace build / typecheck、core 395、CLI 80、MCP 12、Web 17、hooks 9の計513 tests、
   release smoke、npm pack install、publish dry-runがgreen。refuter最終裁定はrelease可。
+
+## 公開・導入結果（2026-07-13）
+
+- commit `5279445`を`main`へpushし、GitHub Actions run `29218218948`のUbuntu / Windows、
+  Node 22 / 24全6 jobがgreen。annotated tag `v0.16.1`は同commitを指す。
+- `caveat-cli@0.16.1`をnpmへ公開。`latest=0.16.1`、shasumは
+  `b75423437af2bc74126dae395971e6bd58b01e6a`、integrityは
+  `sha512-SzgJUK3HZ2/93VN+W86uiR5Aq+TmKWS/LKv9ZCazkfwHebdkp6X0G4ohDc7QI2vBMMBLn+YouB7v4uk33gDX7A==`。
+  `0.16.0`はdeprecatedのまま維持した。
+- 公開packageを隔離prefixへfresh installし、version、manifest、bin実行権限を確認。
+  0.16.0生成configの`codex_hooks = true`を0.16.1で`hooks = true`へ移行し、旧aliasゼロ、
+  二回目install無変更、diagnostics=`available`、uninstall後のCaveat hookゼロを確認した。
+- 隔離HOMEで`init`二回、Claude/Codex登録、Codex diagnostics、両uninstall cleanupを確認した。
+  公開hookを使う新Codex sessionは`CAVEAT_0161_SESSION_OK`を返し、deprecated / invalid hook /
+  hook failure警告なし。Claude fresh new-sessionだけは隔離HOMEで認証を再利用できず未実施。
+- 公開CLIと`gpt-5.6-luna` / lowでsidecar advisoryのStop / tool-error両surfaceがgreen。
+  ただしStop初回はモデル出力JSON末尾の余分な文字により`PROTOCOL_ERROR`となり、Caveatは
+  advisoryを流さず`advisory unavailable`へfail-closedした。同条件の再試行は成功したため、
+  単発の構造化出力信頼性はsidecar側の残余リスクとして別途改善対象にする。
+- 実環境の`/opt/homebrew/bin/caveat`をnpm global installで`0.15.0`から`0.16.1`へ更新した。
