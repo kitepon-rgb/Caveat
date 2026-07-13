@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { appendPendingReminder, drainPendingReminders, openDb, runtimeErrorsSnapshot, runtimeErrorsStatePath } from '@caveat/core';
+import { appendPendingReminder, drainPendingReminders, openDb, runWindowsAcl, runtimeErrorsSnapshot, runtimeErrorsStatePath } from '@caveat/core';
 import { claudePendingCleanupFailureText, sweepStaleWorkerDirs, workerRoot } from '../src/commands/hookCmd.js';
 
 it('formats Claude pending cleanup failures with a fixed stderr prefix', () => {
@@ -130,17 +130,21 @@ describe('Claude hook output', () => {
 
   it('records an unexpected search/open failure but not expected empty-input validation', () => {
     const root = mkdtempSync(join(tmpdir(), 'caveat-claude-runtime-error-'));
-    const caveatHome = join(root, 'caveat-home'); const userHome = join(root, 'home'); const configHome = join(root, 'xdg-config'); const stateHome = join(root, 'xdg-state');
-    const runtimeEnv = { ...process.env, CAVEAT_HOME: caveatHome, HOME: userHome, XDG_CONFIG_HOME: configHome, XDG_STATE_HOME: stateHome };
+    const caveatHome = join(root, 'caveat-home'); const userHome = join(root, 'home'); const configHome = join(root, 'xdg-config'); const stateHome = join(root, 'xdg-state'); const localAppData = join(root, 'local-app-data');
+    const runtimeEnv = { ...process.env, CAVEAT_HOME: caveatHome, HOME: userHome, USERPROFILE: userHome, LOCALAPPDATA: localAppData, XDG_CONFIG_HOME: configHome, XDG_STATE_HOME: stateHome };
     try {
-      mkdirSync(userHome, { recursive: true }); mkdirSync(join(configHome, 'dotagents'), { recursive: true });
-      const reporterConfig = join(configHome, 'dotagents', 'factory-reporter.json'); writeFileSync(reporterConfig, JSON.stringify({ schema_version: '1.0', host: { id: 'fixture', profile: 'mac' }, collection: { enabled: true }, reporting: { enabled: false } }), { mode: 0o600 }); chmodSync(reporterConfig, 0o600);
+      const reporterConfig = process.platform === 'win32' ? join(localAppData, 'dotagents', 'factory-reporter', 'config.json') : join(configHome, 'dotagents', 'factory-reporter.json');
+      mkdirSync(userHome, { recursive: true }); mkdirSync(dirname(reporterConfig), { recursive: true });
+      writeFileSync(reporterConfig, JSON.stringify({ schema_version: '1.0', host: { id: 'fixture', profile: process.platform === 'win32' ? 'windows-native' : 'mac' }, collection: { enabled: true }, reporting: { enabled: false } }), { mode: 0o600 }); chmodSync(reporterConfig, 0o600);
+      if (process.platform === 'win32') runWindowsAcl(reporterConfig, false, true);
       mkdirSync(join(caveatHome, 'index', 'caveat.db'), { recursive: true });
       const failed = runHook('user-prompt-submit', { session_id: 's', prompt: 'search this' }, runtimeEnv);
       expect(failed.status).toBe(0); expect(failed.stderr).toContain('[caveat:hook] search error:');
       expect(runtimeErrorsSnapshot(0, 256, { env: runtimeEnv }).runtime_errors).toMatchObject([{ error_code: 'CAVEAT.CLAUDE_HOOK_FAILED' }]);
 
-      const validationEnv = { ...runtimeEnv, XDG_STATE_HOME: join(root, 'validation-state') };
+      const validationEnv = process.platform === 'win32'
+        ? { ...runtimeEnv, LOCALAPPDATA: join(root, 'validation-local-app-data') }
+        : { ...runtimeEnv, XDG_STATE_HOME: join(root, 'validation-state') };
       const validation = runHook('user-prompt-submit', { session_id: 's' }, validationEnv);
       expect(validation.status).toBe(0); expect(existsSync(runtimeErrorsStatePath(validationEnv))).toBe(false);
     } finally {

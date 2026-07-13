@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
-import { openDb, recordRuntimeError, runtimeErrorsStatePath } from '@caveat/core';
+import { openDb, recordRuntimeError, runWindowsAcl, runtimeErrorsStatePath } from '@caveat/core';
 
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
 const cli = join(repo, 'apps', 'cli', 'dist', 'caveat.js');
@@ -22,12 +22,16 @@ function json(result: ReturnType<typeof run>) {
 function isolated() {
   const root = mkdtempSync(join(tmpdir(), 'caveat-factory-cli-'));
   const home = join(root, 'home'); const caveatHome = join(root, 'caveat');
-  const configHome = join(root, 'xdg-config'); const stateHome = join(root, 'xdg-state');
+  const configHome = join(root, 'xdg-config'); const stateHome = join(root, 'xdg-state'); const localAppData = join(root, 'local-app-data');
   mkdirSync(home, { recursive: true }); mkdirSync(caveatHome, { recursive: true });
-  mkdirSync(join(configHome, 'dotagents'), { recursive: true });
-  const reporterConfig = join(configHome, 'dotagents', 'factory-reporter.json'); writeFileSync(reporterConfig, JSON.stringify({ schema_version: '1.0', host: { id: 'fixture', profile: 'mac' }, collection: { enabled: true }, reporting: { enabled: false } }), { mode: 0o600 }); chmodSync(reporterConfig, 0o600);
+  const reporterConfig = process.platform === 'win32'
+    ? join(localAppData, 'dotagents', 'factory-reporter', 'config.json')
+    : join(configHome, 'dotagents', 'factory-reporter.json');
+  mkdirSync(dirname(reporterConfig), { recursive: true });
+  writeFileSync(reporterConfig, JSON.stringify({ schema_version: '1.0', host: { id: 'fixture', profile: process.platform === 'win32' ? 'windows-native' : 'mac' }, collection: { enabled: true }, reporting: { enabled: false } }), { mode: 0o600 }); chmodSync(reporterConfig, 0o600);
+  if (process.platform === 'win32') runWindowsAcl(reporterConfig, false, true);
   const codexHome = join(root, 'codex');
-  return { root, home, caveatHome, codexHome, env: { ...process.env, HOME: home, CAVEAT_HOME: caveatHome, CODEX_HOME: codexHome, XDG_CONFIG_HOME: configHome, XDG_STATE_HOME: stateHome, PATH: process.env.PATH ?? '' } };
+  return { root, home, caveatHome, codexHome, env: { ...process.env, HOME: home, USERPROFILE: home, LOCALAPPDATA: localAppData, CAVEAT_HOME: caveatHome, CODEX_HOME: codexHome, XDG_CONFIG_HOME: configHome, XDG_STATE_HOME: stateHome, PATH: process.env.PATH ?? '' } };
 }
 
 function readyFactory(fixture: ReturnType<typeof isolated>) {
@@ -36,12 +40,14 @@ function readyFactory(fixture: ReturnType<typeof isolated>) {
   execFileSync('git', ['init', '--bare', remote], { stdio: 'pipe' }); execFileSync('git', ['init'], { cwd: own, stdio: 'pipe' });
   execFileSync('git', ['config', 'user.email', 'fixture@example.test'], { cwd: own }); execFileSync('git', ['config', 'user.name', 'Fixture'], { cwd: own });
   writeFileSync(join(own, 'README.md'), 'fixture\n'); execFileSync('git', ['add', '.'], { cwd: own }); execFileSync('git', ['commit', '-m', 'fixture'], { cwd: own, stdio: 'pipe' }); execFileSync('git', ['branch', '-M', 'main'], { cwd: own }); execFileSync('git', ['remote', 'add', 'origin', remote], { cwd: own }); execFileSync('git', ['push', '-u', 'origin', 'main'], { cwd: own, stdio: 'pipe' });
+  const quoted = (value: string) => value.includes(' ') ? `"${value}"` : value;
+  const nodeCommand = quoted(process.execPath); const cliCommand = quoted(cli);
   writeFileSync(join(fixture.home, '.claude.json'), JSON.stringify({ mcpServers: { caveat: { type: 'stdio', command: process.execPath, args: ['--disable-warning=ExperimentalWarning', cli, 'mcp-server'], env: {} } } }));
-  mkdirSync(join(fixture.home, '.claude'), { recursive: true }); writeFileSync(join(fixture.home, '.claude', 'settings.json'), JSON.stringify({ hooks: { UserPromptSubmit: [{ hooks: [{ command: `${process.execPath} ${cli} hook user-prompt-submit` }] }], PostToolUse: [{ hooks: [{ command: `${process.execPath} ${cli} hook post-tool-use` }] }], PostToolUseFailure: [{ hooks: [{ command: `${process.execPath} ${cli} hook post-tool-use` }] }], Stop: [{ hooks: [{ command: `${process.execPath} ${cli} hook stop` }] }] } }));
-  mkdirSync(fixture.codexHome, { recursive: true }); writeFileSync(join(fixture.codexHome, 'config.toml'), '[features]\nhooks = true\n'); writeFileSync(join(fixture.codexHome, 'hooks.json'), JSON.stringify({ hooks: { UserPromptSubmit: [{ hooks: [{ command: `${process.execPath} ${cli} codex-hook user-prompt-submit` }] }], PostToolUse: [{ hooks: [{ command: `${process.execPath} ${cli} codex-hook post-tool-use` }] }], Stop: [{ hooks: [{ command: `${process.execPath} ${cli} codex-hook stop` }] }] } }));
+  mkdirSync(join(fixture.home, '.claude'), { recursive: true }); writeFileSync(join(fixture.home, '.claude', 'settings.json'), JSON.stringify({ hooks: { UserPromptSubmit: [{ hooks: [{ command: `${nodeCommand} ${cliCommand} hook user-prompt-submit` }] }], PostToolUse: [{ hooks: [{ command: `${nodeCommand} ${cliCommand} hook post-tool-use` }] }], PostToolUseFailure: [{ hooks: [{ command: `${nodeCommand} ${cliCommand} hook post-tool-use` }] }], Stop: [{ hooks: [{ command: `${nodeCommand} ${cliCommand} hook stop` }] }] } }));
+  mkdirSync(fixture.codexHome, { recursive: true }); writeFileSync(join(fixture.codexHome, 'config.toml'), '[features]\nhooks = true\n'); writeFileSync(join(fixture.codexHome, 'hooks.json'), JSON.stringify({ hooks: { UserPromptSubmit: [{ hooks: [{ command: `${nodeCommand} ${cliCommand} codex-hook user-prompt-submit` }] }], PostToolUse: [{ hooks: [{ command: `${nodeCommand} ${cliCommand} codex-hook post-tool-use` }] }], Stop: [{ hooks: [{ command: `${nodeCommand} ${cliCommand} codex-hook stop` }] }] } }));
 }
 
-describe('built factory/runtime CLI contracts', () => {
+describe('built factory/runtime CLI contracts', { timeout: process.platform === 'win32' ? 30_000 : 5_000 }, () => {
   it('keeps a missing isolated home read-only and emits one JSON diagnostic with non-ready exit', () => {
     const fixture = isolated(); const db = join(fixture.caveatHome, 'index', 'caveat.db');
     const result = run(['factory-diagnostics', '--json'], fixture.env);
