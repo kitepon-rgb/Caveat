@@ -9,8 +9,13 @@ import {
   buildCodexPostToolUseWorkerJob,
   codexFeatureListEnv,
   codexContextOutput,
+  codexPendingCleanupFailureText,
   isCodexToolError,
 } from '../src/commands/codexHookCmd.js';
+
+it('formats Codex pending cleanup failures with a fixed stderr prefix', () => {
+  expect(codexPendingCleanupFailureText()).toBe('[caveat:codex-hook] pending reminder cleanup failed');
+});
 
 function readFixture(name: string): Record<string, unknown> {
   return JSON.parse(
@@ -180,7 +185,7 @@ describe('Codex stop hook', () => {
       expect(text).toContain('tool failure: 2');
       expect(text).toContain('recent reminder 1');
       expect(text).toContain('recent reminder 2');
-      expect(text).toContain('pending reminder 2 件を重複または上限により省略しました');
+      expect(text).toContain('pending reminder 1 件を重複または上限により省略しました');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -349,8 +354,8 @@ describe('isCodexToolError', () => {
       transcriptPath: '/tmp/caveat-codex-capture/sessions/rollout.jsonl',
       toolUseId: 'call_dASy1j0HCKmwNgfdBT7Zkh2K',
     });
-    expect(job?.searchText).toContain('__caveat_missing_command_12345');
-    expect(job?.searchText).toContain('command not found');
+    expect(job?.topicText).toContain('__caveat_missing_command_12345');
+    expect(job?.failureText).toContain('command not found');
   });
 
   it('detects explicit exit_code fields', () => {

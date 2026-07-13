@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import {
   defaultSelfIdentityTokens,
   extractPromptCandidates,
+  findCaveatsForHook,
+  findCaveatsForHookSegments,
   findCaveatsForPrompt,
   toolErrorReminderText,
   userPromptSubmitReminderText,
@@ -12,6 +14,7 @@ import {
 } from '../src/claudeHooks.js';
 import { openDb } from '../src/db.js';
 import { recordEntry } from '../src/record.js';
+import { struggleSearchText } from '../src/transcriptSignals.js';
 
 describe('extractPromptCandidates', () => {
   it('returns [] on empty / non-string', () => {
@@ -329,6 +332,99 @@ describe('findCaveatsForPrompt (co-occurrence based)', () => {
     ]);
     try {
       expect(findCaveatsForPrompt(db, '誤発火はどの Hook で？')).toEqual([]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('characterizes the current Stop false hit after query and failure text lose provenance', () => {
+    // The WebSearch input contributes only the generic word `status`; the
+    // failure contributes only generic request-failure language.  They refer
+    // to different work, but Stop currently concatenates both sources before
+    // the evaluator can apply its three gates, so this unrelated entry hits.
+    const { db, cleanup } = seededDb([
+      {
+        title: 'Status dashboard refresh',
+        symptom: 'request failed after retry',
+      },
+    ]);
+    const stopSignals = {
+      toolFailureCount: 1,
+      fileEditCounts: [],
+      webSearchCount: 1,
+      webFetchCount: 0,
+      bashRetryCount: 0,
+      durationMinutes: 0,
+      errorSnippets: ['request failed after retry'],
+      searchQueries: ['check status'],
+    };
+    try {
+      const combined = struggleSearchText(stopSignals);
+      expect(findCaveatsForPrompt(db, combined).map((hit) => hit.title)).toEqual([
+        'Status dashboard refresh',
+      ]);
+      expect(findCaveatsForHook(db, {
+        topicText: stopSignals.searchQueries.join('\n'),
+        failureText: stopSignals.errorSnippets.join('\n'),
+        surface: 'stop',
+      })).toEqual([]);
+      expect(findCaveatsForHookSegments(db, [
+        { topicText: '', failureText: 'request failed after retry', surface: 'stop' },
+        { topicText: '', failureText: 'check status', surface: 'stop' },
+      ])).toEqual([]);
+
+      // Either source alone remains silent under the current three gates.
+      expect(findCaveatsForPrompt(db, struggleSearchText({
+        ...stopSignals,
+        errorSnippets: [],
+      }))).toEqual([]);
+      expect(findCaveatsForPrompt(db, struggleSearchText({
+        ...stopSignals,
+        searchQueries: [],
+      }))).toEqual([]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('uses tool input as topic evidence but only failure output as symptom evidence', () => {
+    const { db, cleanup } = seededDb([
+      {
+        title: 'pnpm native module install',
+        symptom: 'node-gyp build failed with missing compiler',
+      },
+    ]);
+    try {
+      expect(findCaveatsForHook(db, {
+        topicText: 'pnpm install native module',
+        failureText: 'node-gyp build failed with missing compiler',
+        surface: 'tool_error',
+      }).map((hit) => hit.title)).toEqual(['pnpm native module install']);
+
+      expect(findCaveatsForHook(db, {
+        topicText: 'pnpm install native module failed',
+        failureText: 'command returned a non-zero status',
+        surface: 'tool_error',
+      })).toEqual([]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('keeps UserPromptSubmit on the legacy three-gate contract', () => {
+    const { db, cleanup } = seededDb([
+      {
+        title: 'CUDA device discovery',
+        symptom: 'cudaGetDeviceCount returns zero devices',
+      },
+    ]);
+    const prompt = 'CUDA cudaGetDeviceCount returns zero devices';
+    try {
+      expect(findCaveatsForHook(db, {
+        topicText: prompt,
+        failureText: prompt,
+        surface: 'user_prompt',
+      })).toEqual(findCaveatsForPrompt(db, prompt));
     } finally {
       cleanup();
     }

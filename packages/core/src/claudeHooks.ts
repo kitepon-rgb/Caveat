@@ -233,6 +233,74 @@ export function findCaveatsForPrompt(
   prompt: unknown,
   opts: { limit?: number; selfIdentity?: Set<string> } = {},
 ): SearchResult[] {
+  return findCaveatsForText(db, prompt, opts);
+}
+
+export type HookSearchSurface = 'user_prompt' | 'tool_error' | 'stop';
+
+export interface HookSearchInput {
+  topicText: string;
+  failureText: string;
+  surface: HookSearchSurface;
+}
+
+/**
+ * Hook-only retrieval boundary that keeps topic and failure provenance intact.
+ * User prompts retain the legacy three-gate contract. Tool errors may use the
+ * input as topical context, but only failure output can satisfy the symptom
+ * gate. Stop signals are session-wide and not causally paired, so unrelated
+ * search queries never combine with error snippets to manufacture a hit.
+ */
+export function findCaveatsForHook(
+  db: DatabaseSync,
+  input: HookSearchInput,
+  opts: { limit?: number; selfIdentity?: Set<string> } = {},
+): SearchResult[] {
+  if (input.surface === 'user_prompt') {
+    const prompt = input.topicText || input.failureText;
+    return findCaveatsForText(db, prompt, opts);
+  }
+  if (input.surface === 'stop') {
+    return findCaveatsForText(db, input.failureText, opts);
+  }
+
+  const failureTokens = new Set(
+    buildPromptCandidates(input.failureText).map((candidate) => candidate.token.toLowerCase()),
+  );
+  return findCaveatsForText(
+    db,
+    [input.topicText, input.failureText].filter(Boolean).join('\n'),
+    opts,
+    failureTokens,
+  );
+}
+
+export function findCaveatsForHookSegments(
+  db: DatabaseSync,
+  inputs: readonly HookSearchInput[],
+  opts: { limit?: number; selfIdentity?: Set<string> } = {},
+): SearchResult[] {
+  const limit = opts.limit ?? DEFAULT_REMINDER_HIT_LIMIT;
+  const out: SearchResult[] = [];
+  const seen = new Set<string>();
+  for (const input of inputs) {
+    for (const hit of findCaveatsForHook(db, input, { ...opts, limit })) {
+      const key = `${hit.source}\u0000${hit.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(hit);
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
+}
+
+function findCaveatsForText(
+  db: DatabaseSync,
+  prompt: unknown,
+  opts: { limit?: number; selfIdentity?: Set<string> } = {},
+  symptomEvidenceTokens?: Set<string>,
+): SearchResult[] {
   if (typeof prompt !== 'string' || prompt.length === 0) return [];
   const candidates = buildPromptCandidates(prompt);
   if (candidates.length === 0) return [];
@@ -300,7 +368,11 @@ export function findCaveatsForPrompt(
         perEntry.set(row.rowid, entry);
       }
       entry.groups.add(cand.group);
-      if (entry.symptomLower !== null && tokenAppearsIn(tokLower, entry.symptomLower)) {
+      if (
+        entry.symptomLower !== null
+        && (symptomEvidenceTokens === undefined || symptomEvidenceTokens.has(tokLower))
+        && tokenAppearsIn(tokLower, entry.symptomLower)
+      ) {
         entry.symptomTokens.add(tokLower);
       }
       if (entry.topicalLower !== null && tokenAppearsIn(tokLower, entry.topicalLower)) {

@@ -8,6 +8,18 @@ export type CodexSidecarAdvisory =
   | { status: 'ok'; summary: string; rawEventLogRef?: string }
   | { status: 'failed'; message: string };
 
+const DEFAULT_HOOK_SIDECAR_TIMEOUT_MS = 120_000;
+export const MAX_HOOK_SIDECAR_TIMEOUT_MS = 240_000;
+
+export function resolveHookSidecarTimeoutMs(raw: string | undefined): number {
+  if (raw === undefined) return DEFAULT_HOOK_SIDECAR_TIMEOUT_MS;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1 || value > MAX_HOOK_SIDECAR_TIMEOUT_MS) {
+    throw new Error(`CAVEAT_HOOK_CODEX_SIDECAR_TIMEOUT_MS must be an integer from 1 to ${MAX_HOOK_SIDECAR_TIMEOUT_MS}`);
+  }
+  return value;
+}
+
 function compactFailureMessage(message: string): string {
   const singleLine = message.replace(/\s+/g, ' ').trim();
   if (!singleLine) return 'unknown error';
@@ -87,7 +99,9 @@ export function runCodexSidecarAdvisory(input: {
     const result = spawnSync(process.execPath, args, {
       cwd: input.projectRoot,
       encoding: 'utf-8',
-      timeout: Number(process.env.CAVEAT_HOOK_CODEX_SIDECAR_TIMEOUT_MS ?? 120_000),
+      // Keep at least one minute between the longest supported model call and
+      // the pending single-flight claim TTL (five minutes).
+      timeout: resolveHookSidecarTimeoutMs(process.env.CAVEAT_HOOK_CODEX_SIDECAR_TIMEOUT_MS),
       maxBuffer: 10 * 1024 * 1024,
     });
 

@@ -295,7 +295,7 @@ function findPendingReminder(home) {
   while (Date.now() < deadline) {
     if (existsSync(pendingDir)) {
       const [first] = listFiles(pendingDir)
-        .filter((path) => path.endsWith('.txt'))
+        .filter((path) => path.endsWith('.ready') || path.endsWith('.txt'))
         .sort();
       if (first) return first;
     }
@@ -327,6 +327,7 @@ function verifyRawLog(path) {
   let turnRequestId;
   let turnId;
   let turnInputOk = false;
+  let turnSchemaOk = false;
   let turnCompleted = false;
   const expectedBlock = JSON.stringify(expectedHookSignalBlock());
   for (const line of raw.trim().split(/\n/)) {
@@ -343,6 +344,12 @@ function verifyRawLog(path) {
       } else if (entry.data?.method === 'turn/start') {
         if (!threadId || entry.data?.params?.threadId !== threadId) continue;
         turnRequestId = entry.data.id;
+        const outputSchema = entry.data?.params?.outputSchema;
+        turnSchemaOk = outputSchema?.type === 'object' &&
+          outputSchema?.additionalProperties === false &&
+          Array.isArray(outputSchema?.required) &&
+          outputSchema.required.includes('summary') &&
+          outputSchema.required.includes('recommendedNextAction');
         const input = entry.data?.params?.input;
         const text = Array.isArray(input) && input.length === 1 && input[0]?.type === 'text'
           ? input[0].text
@@ -373,6 +380,7 @@ function verifyRawLog(path) {
   }
   if (!startupOk) throw new Error('raw log does not contain advisory startup model policy');
   if (!effectivePolicyOk) throw new Error('thread/start response does not confirm effective advisory model policy');
+  if (!turnSchemaOk) throw new Error('turn/start request does not contain the closed SidecarResult outputSchema');
   if (!turnInputOk) throw new Error('turn/start request does not contain the exact bounded hook signal context');
   if (!turnId || !turnCompleted) throw new Error('hook signal turn did not complete on the matched thread and turn');
 }

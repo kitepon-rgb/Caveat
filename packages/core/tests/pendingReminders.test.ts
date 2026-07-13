@@ -1,21 +1,30 @@
 import { describe, it, expect } from 'vitest';
+import { spawn } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { DatabaseSync } from 'node:sqlite';
 import {
   appendPendingReminder,
+  acquirePendingClaim,
+  buildPendingSemanticKey,
   cleanupStalePendingDirs,
   drainPendingReminders,
+  drainPendingRemindersDetailed,
   maybeSweepPendingDirs,
   pendingDirFor,
+  publishPendingReminder,
+  releasePendingClaim,
 } from '../src/pendingReminders.js';
 
 function freshHome(): { home: string; cleanup: () => void } {
@@ -24,6 +33,201 @@ function freshHome(): { home: string; cleanup: () => void } {
 }
 
 describe('pendingReminders', () => {
+  it('uses sorted refs in an agent/surface semantic key', () => {
+    const a = buildPendingSemanticKey({ agent: 'claude', surface: 'stop', refs: [{ source: 'own', id: 'b' }, { source: 'own', id: 'a' }], stopSignalDigest: 'x' });
+    const b = buildPendingSemanticKey({ agent: 'claude', surface: 'stop', refs: [{ source: 'own', id: 'a' }, { source: 'own', id: 'b' }], stopSignalDigest: 'x' });
+    expect(a).toBe(b);
+    expect(a).not.toBe(buildPendingSemanticKey({ agent: 'codex', surface: 'stop', refs: [{ source: 'own', id: 'a' }, { source: 'own', id: 'b' }], stopSignalDigest: 'x' }));
+    expect(a).toBe(buildPendingSemanticKey({ agent: 'claude', surface: 'stop', refs: [{ source: 'own', id: 'a' }, { source: 'own', id: 'a' }, { source: 'own', id: 'b' }], stopSignalDigest: 'x' }));
+  });
+
+  it('atomically coalesces a hundred same-key publishes and ignores torn files', async () => {
+    const { home, cleanup } = freshHome();
+    try {
+      const key = buildPendingSemanticKey({ agent: 'claude', surface: 'tool_error', refs: [{ source: 'own', id: 'a' }] });
+      const barrier = join(home, 'barrier');
+      const fixture = fileURLToPath(new URL('./fixtures/pendingPublisher.mjs', import.meta.url));
+      const moduleUrl = pathToFileURL(fileURLToPath(new URL('../src/pendingReminders.ts', import.meta.url))).href;
+      const children = Array.from({ length: 100 }, () => new Promise<void>((resolve, reject) => {
+        const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '--experimental-strip-types', fixture, moduleUrl, home, 's1', key, barrier], { stdio: 'ignore' });
+        const timer = setTimeout(() => { child.kill(); reject(new Error('publisher child timeout')); }, 15_000);
+        child.once('error', reject);
+        child.once('exit', (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`publisher child exited ${code}`)); });
+      }));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      writeFileSync(barrier, '', 'utf-8');
+      await Promise.all(children);
+      const dir = pendingDirFor(home, 's1');
+      writeFileSync(join(dir, '.torn.tmp'), 'partial', 'utf-8');
+      expect(drainPendingReminders(home, 's1')).toEqual(['only once']);
+    } finally { cleanup(); }
+  });
+
+  it('runs a pre-publish builder exactly once across one hundred OS processes', async () => {
+    const { home, cleanup } = freshHome();
+    try {
+      const key = buildPendingSemanticKey({ agent: 'claude', surface: 'stop', refs: [], stopSignalDigest: 'signal' });
+      const barrier = join(home, 'builder-barrier'); const counter = join(home, 'builder-counter');
+      const fixture = fileURLToPath(new URL('./fixtures/pendingBuilder.mjs', import.meta.url));
+      const moduleUrl = pathToFileURL(fileURLToPath(new URL('../src/pendingReminders.ts', import.meta.url))).href;
+      const children = Array.from({ length: 100 }, () => new Promise<void>((resolve, reject) => {
+        const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '--experimental-strip-types', fixture, moduleUrl, home, 's1', key, barrier, counter], { stdio: 'ignore' });
+        const timer = setTimeout(() => { child.kill(); reject(new Error('builder child timeout')); }, 15_000);
+        child.once('error', reject); child.once('exit', (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`builder child exited ${code}`)); });
+      }));
+      await new Promise((resolve) => setTimeout(resolve, 50)); writeFileSync(barrier, '', 'utf8'); await Promise.all(children);
+      expect(readFileSync(counter, 'utf8').trim().split('\n')).toEqual(['1']);
+      expect(drainPendingReminders(home, 's1')).toEqual(['built once']);
+    } finally { cleanup(); }
+  });
+
+  it('reclaims one expired claim without an ABA double-builder across one hundred OS processes', async () => {
+    const { home, cleanup } = freshHome();
+    try {
+      const key = buildPendingSemanticKey({ agent: 'claude', surface: 'stop', refs: [], stopSignalDigest: 'expired-signal' });
+      expect(acquirePendingClaim(home, 's1', key, { now: Date.now() - 10 * 60 * 1_000 })).not.toBeNull();
+      const barrier = join(home, 'expired-builder-barrier'); const counter = join(home, 'expired-builder-counter');
+      const fixture = fileURLToPath(new URL('./fixtures/pendingBuilder.mjs', import.meta.url));
+      const moduleUrl = pathToFileURL(fileURLToPath(new URL('../src/pendingReminders.ts', import.meta.url))).href;
+      const children = Array.from({ length: 100 }, () => new Promise<void>((resolve, reject) => {
+        const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '--experimental-strip-types', fixture, moduleUrl, home, 's1', key, barrier, counter], { stdio: 'ignore' });
+        const timer = setTimeout(() => { child.kill(); reject(new Error('expired builder child timeout')); }, 20_000);
+        child.once('error', reject); child.once('exit', (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`expired builder child exited ${code}`)); });
+      }));
+      await new Promise((resolve) => setTimeout(resolve, 50)); writeFileSync(barrier, '', 'utf8'); await Promise.all(children);
+      expect(readFileSync(counter, 'utf8').trim().split('\n')).toEqual(['1']);
+      expect(drainPendingReminders(home, 's1')).toEqual(['built once']);
+    } finally { cleanup(); }
+  });
+
+  it('does not let stale sweeping delete a concurrent fresh publish', async () => {
+    const { home, cleanup } = freshHome();
+    try {
+      const publisher = fileURLToPath(new URL('./fixtures/pendingPublisher.mjs', import.meta.url));
+      const sweeper = fileURLToPath(new URL('./fixtures/pendingSweeper.mjs', import.meta.url));
+      const moduleUrl = pathToFileURL(fileURLToPath(new URL('../src/pendingReminders.ts', import.meta.url))).href;
+      for (let index = 0; index < 12; index += 1) {
+        const sessionId = `sweep-${index}`;
+        const old = appendPendingReminder(home, sessionId, 'stale');
+        const oldTime = (Date.now() - 30 * 24 * 60 * 60 * 1_000) / 1_000;
+        utimesSync(old, oldTime, oldTime);
+        utimesSync(pendingDirFor(home, sessionId), oldTime, oldTime);
+        const key = buildPendingSemanticKey({ agent: 'claude', surface: 'tool_error', refs: [{ source: 'own', id: String(index) }] });
+        const barrier = join(home, `sweep-barrier-${index}`);
+        const children = [
+          spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '--experimental-strip-types', publisher, moduleUrl, home, sessionId, key, barrier], { stdio: 'ignore' }),
+          spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '--experimental-strip-types', sweeper, moduleUrl, home, barrier], { stdio: 'ignore' }),
+        ];
+        const exits = children.map((child) => new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => { child.kill(); reject(new Error('sweep race child timeout')); }, 15_000);
+          child.once('error', reject); child.once('exit', (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`sweep race child exited ${code}`)); });
+        }));
+        await new Promise((resolve) => setTimeout(resolve, 20)); writeFileSync(barrier, '', 'utf8'); await Promise.all(exits);
+        const reminders = drainPendingReminders(home, sessionId);
+        expect(reminders.filter((text) => text === 'only once')).toHaveLength(1);
+      }
+    } finally { cleanup(); }
+  });
+
+  it('keeps a live builder claim when staleDays is zero', async () => {
+    const { home, cleanup } = freshHome();
+    try {
+      const key = buildPendingSemanticKey({ agent: 'claude', surface: 'stop', refs: [], stopSignalDigest: 'live-zero' });
+      const started = join(home, 'blocking-builder-started');
+      const release = join(home, 'blocking-builder-release');
+      const fixture = fileURLToPath(new URL('./fixtures/pendingBlockingBuilder.mjs', import.meta.url));
+      const moduleUrl = pathToFileURL(fileURLToPath(new URL('../src/pendingReminders.ts', import.meta.url))).href;
+      const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '--experimental-strip-types', fixture, moduleUrl, home, 's1', key, started, release], { stdio: 'ignore' });
+      const exit = new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => { child.kill(); reject(new Error('blocking builder child timeout')); }, 15_000);
+        child.once('error', reject); child.once('exit', (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`blocking builder child exited ${code}`)); });
+      });
+      const deadline = Date.now() + 5_000;
+      while (!existsSync(started) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 5));
+      expect(existsSync(started)).toBe(true);
+      const swept = cleanupStalePendingDirs(home, { staleDays: 0, now: new Date(Date.now() + 1) });
+      expect(swept.removed).toEqual([]);
+      expect(swept.kept).toBe(1);
+      writeFileSync(release, '', 'utf8');
+      await exit;
+      expect(drainPendingReminders(home, 's1')).toEqual(['built after sweep']);
+    } finally { cleanup(); }
+  });
+
+  it('reclaims expired claims and reports cleanup failures through the detailed API', () => {
+    const { home, cleanup } = freshHome();
+    try {
+      const key = buildPendingSemanticKey({ agent: 'claude', surface: 'tool_error', refs: [] });
+      const first = acquirePendingClaim(home, 's1', key, { now: 1000, ttlMs: 10 });
+      expect(first).not.toBeNull();
+      expect(acquirePendingClaim(home, 's1', key, { now: 1005, ttlMs: 10 })).toBeNull();
+      const second = acquirePendingClaim(home, 's1', key, { now: 2000, ttlMs: 10 });
+      expect(second).not.toBeNull();
+      releasePendingClaim(second!);
+      expect(drainPendingRemindersDetailed(home, 's1')).toEqual({ reminders: [], cleanupFailures: [] });
+    } finally { cleanup(); }
+  });
+
+  it('does not suppress a different semantic key in the same session', () => {
+    const { home, cleanup } = freshHome();
+    try {
+      const firstKey = buildPendingSemanticKey({ agent: 'claude', surface: 'tool_error', refs: [{ source: 'own', id: 'a' }] });
+      const secondKey = buildPendingSemanticKey({ agent: 'claude', surface: 'tool_error', refs: [{ source: 'own', id: 'b' }] });
+      const first = acquirePendingClaim(home, 's1', firstKey);
+      const second = acquirePendingClaim(home, 's1', secondKey);
+      expect(first).not.toBeNull();
+      expect(second).not.toBeNull();
+      releasePendingClaim(first!);
+      releasePendingClaim(second!);
+    } finally { cleanup(); }
+  });
+
+  it('does not claim a semantic request after its ready payload exists', () => {
+    const { home, cleanup } = freshHome();
+    try {
+      const key = buildPendingSemanticKey({ agent: 'claude', surface: 'tool_error', refs: [] });
+      publishPendingReminder(home, 's1', key, 'done');
+      expect(acquirePendingClaim(home, 's1', key)).toBeNull();
+    } finally { cleanup(); }
+  });
+
+  it('exposes read and unlink failures while retaining content for retry', () => {
+    const { home, cleanup } = freshHome();
+    try {
+      appendPendingReminder(home, 's1', 'visible');
+      const readFailure = drainPendingRemindersDetailed(home, 's1', { read: () => { throw new Error('read fail'); } });
+      expect(readFailure).toEqual({ reminders: [], cleanupFailures: expect.any(Array) });
+      expect(readFailure.cleanupFailures).toHaveLength(1);
+      const unlinkFailure = drainPendingRemindersDetailed(home, 's1', { unlink: () => { throw new Error('unlink fail'); } });
+      expect(unlinkFailure).toEqual({ reminders: ['visible'], cleanupFailures: expect.any(Array) });
+      expect(unlinkFailure.cleanupFailures).toHaveLength(1);
+      expect(drainPendingReminders(home, 's1')).toEqual(['visible']);
+      expect(drainPendingReminders(home, 's1')).toEqual([]);
+    } finally { cleanup(); }
+  });
+
+  it('fails a contended drain quickly and retains the reminder for retry', () => {
+    const { home, cleanup } = freshHome();
+    let lockDb: DatabaseSync | undefined;
+    try {
+      appendPendingReminder(home, 's1', 'retry after busy');
+      lockDb = new DatabaseSync(join(home, 'pending', '.queue-lock.sqlite'));
+      lockDb.exec('BEGIN IMMEDIATE');
+      const startedAt = Date.now();
+      const blocked = drainPendingRemindersDetailed(home, 's1');
+      expect(Date.now() - startedAt).toBeLessThan(2_000);
+      expect(blocked).toEqual({ reminders: [], cleanupFailures: ['pending queue lock unavailable'] });
+      lockDb.exec('ROLLBACK');
+      lockDb.close();
+      lockDb = undefined;
+      expect(drainPendingReminders(home, 's1')).toEqual(['retry after busy']);
+    } finally {
+      try { lockDb?.exec('ROLLBACK'); } catch { /* already released */ }
+      try { lockDb?.close(); } catch { /* already closed */ }
+      cleanup();
+    }
+  });
+
   it('drains nothing when no pending dir exists', () => {
     const { home, cleanup } = freshHome();
     try {
@@ -53,6 +257,20 @@ describe('pendingReminders', () => {
       appendPendingReminder(home, 's1', 'second');
       const drained = drainPendingReminders(home, 's1');
       expect(drained).toEqual(['first', 'second']);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('orders ready and legacy txt reminders together by mtime', () => {
+    const { home, cleanup } = freshHome();
+    try {
+      const key = buildPendingSemanticKey({ agent: 'claude', surface: 'tool_error', refs: [{ source: 'own', id: 'ready' }] });
+      const ready = publishPendingReminder(home, 's1', key, 'ready-first').path;
+      const legacy = appendPendingReminder(home, 's1', 'legacy-second');
+      utimesSync(ready, 1_000, 1_000);
+      utimesSync(legacy, 2_000, 2_000);
+      expect(drainPendingReminders(home, 's1')).toEqual(['ready-first', 'legacy-second']);
     } finally {
       cleanup();
     }

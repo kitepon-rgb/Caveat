@@ -5,11 +5,12 @@ import { join } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import {
-  appendPendingReminder,
+  buildAndPublishPendingReminder,
+  buildPendingSemanticKey,
   defaultSelfIdentityTokens,
-  drainGlobalPendingReminders,
-  drainPendingReminders,
-  findCaveatsForPrompt,
+  drainPendingRemindersDetailed,
+  findCaveatsForHook,
+  findCaveatsForHookSegments,
   hasAnyStruggleSignal,
   logHookQueryMiss,
   markHit,
@@ -21,7 +22,7 @@ import {
   toolErrorReminderText,
   userPromptSubmitReminderText,
   type Logger,
-  type HookQuerySurface,
+  type HookSearchInput,
   type SearchResult,
   type SessionSignals,
 } from '@caveat/core';
@@ -50,7 +51,8 @@ const CODEX_STOP_STATE_DIR = 'codex-stop-state';
 
 interface CodexWorkerJob {
   sessionId: string;
-  searchText: string;
+  topicText: string;
+  failureText: string;
   knownError?: boolean;
   allowSymptomOnly?: boolean;
   transcriptPath?: string;
@@ -86,8 +88,12 @@ function buildContextSafely(): CliContext | null {
   }
 }
 
-function searchCaveatsFromTextSafely(text: string, surface: HookQuerySurface): SearchResult[] {
-  if (!text) return [];
+function searchCaveatsSafely(input: HookSearchInput | readonly HookSearchInput[]): SearchResult[] {
+  const inputs: readonly HookSearchInput[] = Array.isArray(input) ? input : [input as HookSearchInput];
+  const queryForLog = inputs.map((item) => item.surface === 'user_prompt'
+    ? (item.topicText || item.failureText)
+    : item.failureText).filter(Boolean).join('\n');
+  if (inputs.length === 0 || inputs.every((item) => !item.topicText && !item.failureText)) return [];
   let db: DatabaseSync | undefined;
   let caveatHome: string | undefined;
   let hits: SearchResult[];
@@ -96,9 +102,12 @@ function searchCaveatsFromTextSafely(text: string, surface: HookQuerySurface): S
     if (!ctx || !existsSync(ctx.paths.dbPath)) return [];
     caveatHome = ctx.caveatHome;
     db = openDb({ path: ctx.paths.dbPath });
-    hits = findCaveatsForPrompt(db, text, {
+    const searchOptions = {
       selfIdentity: defaultSelfIdentityTokens(),
-    });
+    };
+    hits = inputs.length === 1
+      ? findCaveatsForHook(db, inputs[0]!, searchOptions)
+      : findCaveatsForHookSegments(db, inputs, searchOptions);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[caveat:codex-hook] search error: ${msg}\n`);
@@ -113,7 +122,7 @@ function searchCaveatsFromTextSafely(text: string, surface: HookQuerySurface): S
     }
   } else {
     try {
-      logHookQueryMiss({ caveatHome: caveatHome!, agent: 'codex', surface, query: text });
+      logHookQueryMiss({ caveatHome: caveatHome!, agent: 'codex', surface: inputs[0]!.surface, query: queryForLog });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       process.stderr.write(`[caveat:codex-hook] query log error: ${msg}\n`);
@@ -262,20 +271,22 @@ export function buildCodexPostToolUseWorkerJob(
   const inputText = toolInputText(payload.tool_input);
   const transcriptOutput =
     transcriptPath && toolUseId ? transcriptToolOutput(transcriptPath, toolUseId) : null;
-  const searchText = [inputText, responseText, transcriptOutput ?? '']
+  const topicText = inputText.trim();
+  const failureText = [responseText, transcriptOutput ?? '']
     .map((s) => s.trim())
     .filter(Boolean)
     .join('\n');
 
   const knownError = isCodexToolError(payload);
   if (knownError) {
-    return { sessionId, searchText, knownError: true, transcriptPath, toolUseId };
+    return { sessionId, topicText, failureText, knownError: true, transcriptPath, toolUseId };
   }
 
-  if (transcriptPath && toolUseId && isShellLikeTool(payload) && searchText) {
+  if (transcriptPath && toolUseId && isShellLikeTool(payload) && (topicText || failureText)) {
     return {
       sessionId,
-      searchText,
+      topicText,
+      failureText,
       knownError: false,
       allowSymptomOnly: true,
       transcriptPath,
@@ -295,13 +306,19 @@ export function codexContextOutput(text: string, eventName = 'UserPromptSubmit')
   });
 }
 
+export function codexPendingCleanupFailureText(): string {
+  return '[caveat:codex-hook] pending reminder cleanup failed';
+}
+
 function drainForSession(sessionId: string): string[] {
   const ctx = buildContextSafely();
   if (!ctx) return [];
-  return [
-    ...drainPendingReminders(ctx.caveatHome, sessionId),
-    ...drainGlobalPendingReminders(ctx.caveatHome),
-  ];
+  const local = drainPendingRemindersDetailed(ctx.caveatHome, sessionId);
+  const global = drainPendingRemindersDetailed(ctx.caveatHome, '_global');
+  for (const _failure of [...local.cleanupFailures, ...global.cleanupFailures]) {
+    process.stderr.write(`${codexPendingCleanupFailureText()}\n`);
+  }
+  return [...local.reminders, ...global.reminders];
 }
 
 function codexContextDedupeKey(text: string): string {
@@ -322,7 +339,7 @@ function compactCodexContexts(contexts: string[]): string[] {
   }
   selected.reverse();
   const limited = selected.slice(-CODEX_MAX_CONTEXT_BLOCKS);
-  const omitted = contexts.filter((t) => t.trim().length > 0).length - limited.length;
+  const omitted = selected.length - limited.length;
   if (omitted > 0) {
     limited.push(`[caveat] pending reminder ${omitted} 件を重複または上限により省略しました。`);
   }
@@ -371,8 +388,17 @@ function queueStopForSession(sessionId: string, signals: SessionSignals, related
   if (!ctx) return;
   const key = stopSignalKey(signals, related);
   if (wasStopReminderQueued(ctx.caveatHome, sessionId, key)) return;
+  let result: ReturnType<typeof buildAndPublishPendingReminder>;
   try {
-    appendPendingReminder(ctx.caveatHome, sessionId, stopReminderText(signals, related));
+    result = buildAndPublishPendingReminder(ctx.caveatHome, sessionId, buildPendingSemanticKey({
+      agent: 'codex', surface: 'stop', refs: related, stopSignalDigest: key,
+    }), () => stopReminderText(signals, related));
+  } catch {
+    process.stderr.write('[caveat:codex-hook] pending reminder build or publish failed\n');
+    return;
+  }
+  if (!result.ran) return;
+  try {
     markStopReminderQueued(ctx.caveatHome, sessionId, key);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -386,7 +412,11 @@ function spawnCodexWorker(job: CodexWorkerJob): void {
     `caveat-codex-worker-${Date.now()}-${randomBytes(4).toString('hex')}.json`,
   );
   try {
-    writeFileSync(workFile, JSON.stringify(job), 'utf-8');
+    writeFileSync(workFile, JSON.stringify(job), {
+      encoding: 'utf-8',
+      mode: 0o600,
+      flag: 'wx',
+    });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[caveat:codex-hook] worker writefile error: ${msg}\n`);
@@ -430,8 +460,8 @@ async function processCodexWorkerJob(
   job: CodexWorkerJob,
   opts: { waitForTranscript: boolean } = { waitForTranscript: true },
 ): Promise<void> {
-  if (!job.searchText || !job.sessionId) return;
-  let searchText = job.searchText;
+  if ((!job.topicText && !job.failureText) || !job.sessionId) return;
+  let failureText = job.failureText;
   let knownError = job.knownError === true;
   if (opts.waitForTranscript && job.transcriptPath && job.toolUseId) {
     const transcriptOutput = await waitForTranscriptOutput(job.transcriptPath, job.toolUseId);
@@ -441,23 +471,31 @@ async function processCodexWorkerJob(
         if (exit === 0) return;
         knownError = true;
       }
-      searchText = [searchText, transcriptOutput].filter(Boolean).join('\n');
+      failureText = [failureText, transcriptOutput].filter(Boolean).join('\n');
     }
   }
 
   if (!knownError && job.allowSymptomOnly !== true) return;
 
-  const hits = searchCaveatsFromTextSafely(searchText, 'tool_error');
+  const hits = searchCaveatsSafely({
+    topicText: job.topicText,
+    failureText,
+    surface: 'tool_error',
+  });
   if (hits.length === 0) return;
 
   const ctx = buildContextSafely();
   if (!ctx) return;
-
+  let result: ReturnType<typeof buildAndPublishPendingReminder>;
   try {
-    appendPendingReminder(ctx.caveatHome, job.sessionId, toolErrorReminderText(hits));
+    result = buildAndPublishPendingReminder(ctx.caveatHome, job.sessionId, buildPendingSemanticKey({
+      agent: 'codex', surface: 'tool_error', refs: hits,
+    }), () => toolErrorReminderText(hits));
   } catch {
-    // best-effort
+    process.stderr.write('[caveat:codex-hook] pending reminder build or publish failed\n');
+    return;
   }
+  if (!result.ran) return;
 }
 
 async function runCodexWorker(workFile: string): Promise<void> {
@@ -540,7 +578,7 @@ export async function runCodexHook(name: CodexHookName, arg?: string): Promise<v
   if (name === 'user-prompt-submit') {
     const contexts = sessionId ? drainForSession(sessionId) : [];
     const prompt = typeof payload.prompt === 'string' ? payload.prompt : '';
-    const hits = searchCaveatsFromTextSafely(prompt, 'user_prompt');
+    const hits = searchCaveatsSafely({ topicText: prompt, failureText: prompt, surface: 'user_prompt' });
     if (hits.length > 0) {
       contexts.push(userPromptSubmitReminderText(hits));
     }
@@ -584,7 +622,11 @@ export async function runCodexHook(name: CodexHookName, arg?: string): Promise<v
       typeof payload.transcript_path === 'string' ? payload.transcript_path : '';
     const signals = transcriptPath ? loadSignalsSafely(transcriptPath) : null;
     if (!signals || !hasAnyStruggleSignal(signals)) process.exit(0);
-    const related = searchCaveatsFromTextSafely(struggleSearchText(signals), 'stop');
+    const related = searchCaveatsSafely(signals.errorSnippets.map((failureText) => ({
+      topicText: '',
+      failureText,
+      surface: 'stop' as const,
+    })));
     if (sessionId) queueStopForSession(sessionId, signals, related);
     process.exit(0);
   }

@@ -17,12 +17,13 @@ import { basename, dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { createHash, randomBytes } from 'node:crypto';
 import {
-  appendPendingReminder,
+  buildAndPublishPendingReminder,
+  buildPendingSemanticKey,
   CAVEAT_AUTO_SYNC_ENV,
   defaultSelfIdentityTokens,
-  drainGlobalPendingReminders,
-  drainPendingReminders,
-  findCaveatsForPrompt,
+  drainPendingRemindersDetailed,
+  findCaveatsForHook,
+  findCaveatsForHookSegments,
   hasAnyStruggleSignal,
   logHookQueryMiss,
   markHit,
@@ -44,7 +45,7 @@ import {
   buildHookSignalSidecarContextBlock,
   type CaveatHookSignalSidecarContextBlock,
   type Logger,
-  type HookQuerySurface,
+  type HookSearchInput,
   type SearchResult,
   type SessionSignals,
 } from '@caveat/core';
@@ -100,8 +101,12 @@ function buildContextSafely(): CliContext | null {
   }
 }
 
-function searchCaveatsFromTextSafely(text: string, surface: HookQuerySurface): SearchResult[] {
-  if (!text) return [];
+function searchCaveatsSafely(input: HookSearchInput | readonly HookSearchInput[]): SearchResult[] {
+  const inputs: readonly HookSearchInput[] = Array.isArray(input) ? input : [input as HookSearchInput];
+  const queryForLog = inputs.map((item) => item.surface === 'user_prompt'
+    ? (item.topicText || item.failureText)
+    : item.failureText).filter(Boolean).join('\n');
+  if (inputs.length === 0 || inputs.every((item) => !item.topicText && !item.failureText)) return [];
   let db: DatabaseSync | undefined;
   let caveatHome: string | undefined;
   let hits: SearchResult[];
@@ -110,9 +115,12 @@ function searchCaveatsFromTextSafely(text: string, surface: HookQuerySurface): S
     if (!ctx || !existsSync(ctx.paths.dbPath)) return [];
     caveatHome = ctx.caveatHome;
     db = openDb({ path: ctx.paths.dbPath });
-    hits = findCaveatsForPrompt(db, text, {
+    const searchOptions = {
       selfIdentity: defaultSelfIdentityTokens(),
-    });
+    };
+    hits = inputs.length === 1
+      ? findCaveatsForHook(db, inputs[0]!, searchOptions)
+      : findCaveatsForHookSegments(db, inputs, searchOptions);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[caveat:hook] search error: ${msg}\n`);
@@ -127,7 +135,7 @@ function searchCaveatsFromTextSafely(text: string, surface: HookQuerySurface): S
     }
   } else {
     try {
-      logHookQueryMiss({ caveatHome: caveatHome!, agent: 'claude', surface, query: text });
+      logHookQueryMiss({ caveatHome: caveatHome!, agent: 'claude', surface: inputs[0]!.surface, query: queryForLog });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       process.stderr.write(`[caveat:hook] query log error: ${msg}\n`);
@@ -154,13 +162,19 @@ function systemReminderOutput(text: string): string {
   return `<system-reminder>${text.replace(/</g, '‹').replace(/>/g, '›')}</system-reminder>`;
 }
 
+export function claudePendingCleanupFailureText(): string {
+  return '[caveat:hook] pending reminder cleanup failed';
+}
+
 function drainForSession(sessionId: string): string[] {
   const ctx = buildContextSafely();
   if (!ctx) return [];
-  return [
-    ...drainPendingReminders(ctx.caveatHome, sessionId),
-    ...drainGlobalPendingReminders(ctx.caveatHome),
-  ];
+  const local = drainPendingRemindersDetailed(ctx.caveatHome, sessionId);
+  const global = drainPendingRemindersDetailed(ctx.caveatHome, '_global');
+  for (const _failure of [...local.cleanupFailures, ...global.cleanupFailures]) {
+    process.stderr.write(`${claudePendingCleanupFailureText()}\n`);
+  }
+  return [...local.reminders, ...global.reminders];
 }
 
 function claudeContextDedupeKey(text: string): string {
@@ -181,8 +195,7 @@ function compactClaudeContexts(contexts: string[]): string[] {
   }
   selected.reverse();
   const limited = selected.slice(-CLAUDE_MAX_CONTEXT_BLOCKS);
-  const omitted =
-    contexts.filter((t) => t.trim().length > 0).length - limited.length;
+  const omitted = selected.length - limited.length;
   if (omitted > 0) {
     limited.push(
       `[caveat] pending reminder ${omitted} 件を重複または上限により省略しました。`,
@@ -237,8 +250,17 @@ function queueStopForSession(
   if (!ctx) return;
   const key = stopSignalKey(signals, related);
   if (wasStopReminderQueued(ctx.caveatHome, sessionId, key)) return;
+  let result: ReturnType<typeof buildAndPublishPendingReminder>;
   try {
-    appendPendingReminder(ctx.caveatHome, sessionId, buildStopReminder(signals, related));
+    result = buildAndPublishPendingReminder(ctx.caveatHome, sessionId, buildPendingSemanticKey({
+      agent: 'claude', surface: 'stop', refs: related, stopSignalDigest: key,
+    }), () => buildStopReminder(signals, related));
+  } catch {
+    process.stderr.write('[caveat:hook] pending reminder build or publish failed\n');
+    return;
+  }
+  if (!result.ran) return;
+  try {
     markStopReminderQueued(ctx.caveatHome, sessionId, key);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -279,6 +301,21 @@ function extractToolResponseText(response: unknown): string {
   return '';
 }
 
+function toolTopicText(payload: Record<string, unknown>): string {
+  const parts: string[] = [];
+  const toolName = payload.tool_name ?? payload.toolName;
+  if (typeof toolName === 'string') parts.push(toolName);
+  const input = payload.tool_input ?? payload.toolInput;
+  if (typeof input === 'string') parts.push(input);
+  if (input !== null && typeof input === 'object' && !Array.isArray(input)) {
+    const record = input as Record<string, unknown>;
+    for (const key of ['command', 'cmd', 'query', 'url']) {
+      if (typeof record[key] === 'string') parts.push(record[key]);
+    }
+  }
+  return parts.join('\n');
+}
+
 function isToolError(payload: Record<string, unknown>): boolean {
   if (payload.hook_event_name === 'PostToolUseFailure') return true;
   const resp = payload.tool_response ?? (payload as Record<string, unknown>).toolResponse;
@@ -292,9 +329,10 @@ function isToolError(payload: Record<string, unknown>): boolean {
 }
 
 interface WorkerJob {
-  schemaVersion: 'caveat-worker-job/v1';
+  schemaVersion: 'caveat-worker-job/v2';
   sessionId: string;
-  searchText: string;
+  topicText: string;
+  failureText: string;
   additionalContext?: CaveatHookSignalSidecarContextBlock;
 }
 
@@ -313,7 +351,7 @@ function spawnWorker(job: Omit<WorkerJob, 'schemaVersion'>): void {
     workDir = mkdtempSync(join(root, 'job-'));
     chmodSync(workDir, 0o700);
     workFile = join(workDir, `${randomBytes(4).toString('hex')}.json`);
-    writeFileSync(workFile, JSON.stringify({ ...job, schemaVersion: 'caveat-worker-job/v1' }), { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
+    writeFileSync(workFile, JSON.stringify({ ...job, schemaVersion: 'caveat-worker-job/v2' }), { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[caveat:hook] worker writefile error: ${msg}\n`);
@@ -362,19 +400,27 @@ async function runWorker(workFile: string): Promise<void> {
   } catch {
     process.exit(0);
   }
-  if (!job.searchText || !job.sessionId) process.exit(0);
+  if (!job.failureText || !job.sessionId) process.exit(0);
 
-  const hits = searchCaveatsFromTextSafely(job.searchText, 'tool_error');
+  const hits = searchCaveatsSafely({
+    topicText: job.topicText,
+    failureText: job.failureText,
+    surface: 'tool_error',
+  });
   if (hits.length === 0) process.exit(0);
 
   const ctx = buildContextSafely();
   if (!ctx) process.exit(0);
-
+  let result: ReturnType<typeof buildAndPublishPendingReminder>;
   try {
-    appendPendingReminder(ctx.caveatHome, job.sessionId, buildToolErrorReminder(job, hits));
+    result = buildAndPublishPendingReminder(ctx.caveatHome, job.sessionId, buildPendingSemanticKey({
+      agent: 'claude', surface: 'tool_error', refs: hits,
+    }), () => buildToolErrorReminder(job, hits));
   } catch {
-    // best-effort; next hook will not drain anything but session continues
+    process.stderr.write('[caveat:hook] pending reminder build or publish failed\n');
+    process.exit(0);
   }
+  if (!result.ran) process.exit(0);
   process.exit(0);
 }
 
@@ -447,7 +493,7 @@ function isStaleWorkerJobDir(path: string): boolean {
   const stat = lstatSync(file);
   const uid = typeof process.getuid === 'function' ? process.getuid() : undefined;
   if (!stat.isFile() || stat.isSymbolicLink() || !hasPrivateOwnership(stat, uid)) return false;
-  return isWorkerJob(JSON.parse(readFileSync(file, 'utf-8')) as unknown);
+  return isKnownStaleWorkerJob(JSON.parse(readFileSync(file, 'utf-8')) as unknown);
 }
 
 function hasPrivateOwnership(stat: Stats, uid: number | undefined): boolean {
@@ -462,8 +508,21 @@ function isWorkerJob(value: unknown): value is WorkerJob {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
   const job = value as Record<string, unknown>;
   const keys = Object.keys(job).sort();
-  if (!(keys.length === 3 && keys.join(',') === 'schemaVersion,searchText,sessionId') && !(keys.length === 4 && keys.join(',') === 'additionalContext,schemaVersion,searchText,sessionId')) return false;
-  return job.schemaVersion === 'caveat-worker-job/v1' && typeof job.sessionId === 'string' && typeof job.searchText === 'string' && (job.additionalContext === undefined || (job.additionalContext !== null && typeof job.additionalContext === 'object' && !Array.isArray(job.additionalContext)));
+  if (!(keys.length === 4 && keys.join(',') === 'failureText,schemaVersion,sessionId,topicText') && !(keys.length === 5 && keys.join(',') === 'additionalContext,failureText,schemaVersion,sessionId,topicText')) return false;
+  return job.schemaVersion === 'caveat-worker-job/v2' && typeof job.sessionId === 'string' && typeof job.topicText === 'string' && typeof job.failureText === 'string' && (job.additionalContext === undefined || (job.additionalContext !== null && typeof job.additionalContext === 'object' && !Array.isArray(job.additionalContext)));
+}
+
+function isKnownStaleWorkerJob(value: unknown): boolean {
+  if (isWorkerJob(value)) return true;
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const job = value as Record<string, unknown>;
+  const keys = Object.keys(job).sort();
+  if (!(keys.length === 3 && keys.join(',') === 'schemaVersion,searchText,sessionId')
+    && !(keys.length === 4 && keys.join(',') === 'additionalContext,schemaVersion,searchText,sessionId')) return false;
+  return job.schemaVersion === 'caveat-worker-job/v1'
+    && typeof job.sessionId === 'string'
+    && typeof job.searchText === 'string'
+    && (job.additionalContext === undefined || (job.additionalContext !== null && typeof job.additionalContext === 'object' && !Array.isArray(job.additionalContext)));
 }
 
 function writeLastReindex(caveatHome: string, value: Record<string, unknown>): void {
@@ -556,7 +615,7 @@ function buildToolErrorReminder(job: WorkerJob, hits: SearchResult[]): string {
   if (mode === 'auto' && !hasSidecarConfig) return base;
 
   const advisory = runCodexSidecarAdvisory({
-    searchText: job.searchText,
+    searchText: job.failureText,
     limit: hits.length,
     projectRoot,
     prompt: [
@@ -669,7 +728,7 @@ export async function runHook(name: HookName, arg?: string): Promise<void> {
 
   if (name === 'user-prompt-submit') {
     const prompt = typeof payload.prompt === 'string' ? payload.prompt : '';
-    const hits = searchCaveatsFromTextSafely(prompt, 'user_prompt');
+    const hits = searchCaveatsSafely({ topicText: prompt, failureText: prompt, surface: 'user_prompt' });
     if (hits.length > 0) {
       contexts.push(userPromptSubmitReminderText(hits));
     }
@@ -699,7 +758,8 @@ export async function runHook(name: HookName, arg?: string): Promise<void> {
         toolName: payload.tool_name ?? payload.toolName,
         failureKind,
       });
-      spawnWorker({ sessionId, searchText: errText, ...(additionalContext ? { additionalContext } : {}) });
+      const topicText = toolTopicText(payload);
+      spawnWorker({ sessionId, topicText, failureText: errText, ...(additionalContext ? { additionalContext } : {}) });
     }
     process.exit(0);
   }
@@ -734,7 +794,11 @@ export async function runHook(name: HookName, arg?: string): Promise<void> {
       typeof payload.transcript_path === 'string' ? payload.transcript_path : '';
     const signals = transcriptPath ? loadSignalsSafely(transcriptPath) : null;
     if (!signals || !hasAnyStruggleSignal(signals)) process.exit(0);
-    const related = searchCaveatsFromTextSafely(struggleSearchText(signals), 'stop');
+    const related = searchCaveatsSafely(signals.errorSnippets.map((failureText) => ({
+      topicText: '',
+      failureText,
+      surface: 'stop' as const,
+    })));
     queueStopForSession(sessionId, signals, related);
     process.exit(0);
   }

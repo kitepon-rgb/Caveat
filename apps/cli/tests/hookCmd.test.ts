@@ -5,7 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { appendPendingReminder, drainPendingReminders, openDb } from '@caveat/core';
-import { sweepStaleWorkerDirs, workerRoot } from '../src/commands/hookCmd.js';
+import { claudePendingCleanupFailureText, sweepStaleWorkerDirs, workerRoot } from '../src/commands/hookCmd.js';
+
+it('formats Claude pending cleanup failures with a fixed stderr prefix', () => {
+  expect(claudePendingCleanupFailureText()).toBe('[caveat:hook] pending reminder cleanup failed');
+});
 
 function runHook(
   name: string,
@@ -39,6 +43,9 @@ describe('Claude hook output', () => {
     const testBase = mkdtempSync(join(tmpdir(), 'caveat-worker-test-'));
     const reserved = workerRoot(testBase);
     const stale = mkdtempSync(join(reserved, 'job-'));
+    const legacyStale = mkdtempSync(join(reserved, 'job-'));
+    const legacyStaleWithContext = mkdtempSync(join(reserved, 'job-'));
+    const legacyInvalidContext = mkdtempSync(join(reserved, 'job-'));
     const fresh = mkdtempSync(join(reserved, 'job-'));
     const invalid = mkdtempSync(join(reserved, 'job-'));
     const symlinkTarget = mkdtempSync(join(tmpdir(), 'caveat-stale-target-'));
@@ -47,13 +54,25 @@ describe('Claude hook output', () => {
     try {
       for (const dir of [stale, fresh, symlinkTarget]) {
         chmodSync(dir, 0o700);
-        writeFileSync(join(dir, 'job.json'), JSON.stringify({ schemaVersion: 'caveat-worker-job/v1', sessionId: 's', searchText: 'q' }), { encoding: 'utf-8', mode: 0o600 });
+        writeFileSync(join(dir, 'job.json'), JSON.stringify({ schemaVersion: 'caveat-worker-job/v2', sessionId: 's', topicText: 'command topic', failureText: 'request failed' }), { encoding: 'utf-8', mode: 0o600 });
       }
+      chmodSync(legacyStale, 0o700);
+      writeFileSync(join(legacyStale, 'job.json'), JSON.stringify({ schemaVersion: 'caveat-worker-job/v1', sessionId: 's', searchText: 'legacy query' }), { encoding: 'utf-8', mode: 0o600 });
+      chmodSync(legacyStaleWithContext, 0o700);
+      writeFileSync(join(legacyStaleWithContext, 'job.json'), JSON.stringify({ schemaVersion: 'caveat-worker-job/v1', sessionId: 's', searchText: 'legacy query', additionalContext: { version: 1 } }), { encoding: 'utf-8', mode: 0o600 });
+      chmodSync(legacyInvalidContext, 0o700);
+      writeFileSync(join(legacyInvalidContext, 'job.json'), JSON.stringify({ schemaVersion: 'caveat-worker-job/v1', sessionId: 's', searchText: 'legacy query', additionalContext: 'invalid' }), { encoding: 'utf-8', mode: 0o600 });
       chmodSync(invalid, 0o700);
       writeFileSync(join(invalid, 'job.json'), JSON.stringify({ unexpected: 'not a worker job' }), { encoding: 'utf-8', mode: 0o600 });
       const old = new Date(Date.now() - 25 * 60 * 60 * 1000);
       utimesSync(join(stale, 'job.json'), old, old);
       utimesSync(stale, old, old);
+      utimesSync(join(legacyStale, 'job.json'), old, old);
+      utimesSync(legacyStale, old, old);
+      utimesSync(join(legacyStaleWithContext, 'job.json'), old, old);
+      utimesSync(legacyStaleWithContext, old, old);
+      utimesSync(join(legacyInvalidContext, 'job.json'), old, old);
+      utimesSync(legacyInvalidContext, old, old);
       utimesSync(join(invalid, 'job.json'), old, old);
       utimesSync(invalid, old, old);
       utimesSync(join(symlinkTarget, 'job.json'), old, old);
@@ -63,6 +82,9 @@ describe('Claude hook output', () => {
       sweepStaleWorkerDirs(Date.now(), reserved);
 
       expect(existsSync(stale)).toBe(false);
+      expect(existsSync(legacyStale)).toBe(false);
+      expect(existsSync(legacyStaleWithContext)).toBe(false);
+      expect(existsSync(legacyInvalidContext)).toBe(true);
       expect(existsSync(fresh)).toBe(true);
       expect(existsSync(invalid)).toBe(true);
       expect(existsSync(unrelated)).toBe(true);
@@ -70,6 +92,9 @@ describe('Claude hook output', () => {
       expect(existsSync(symlinkTarget)).toBe(true);
     } finally {
       rmSync(stale, { recursive: true, force: true });
+      rmSync(legacyStale, { recursive: true, force: true });
+      rmSync(legacyStaleWithContext, { recursive: true, force: true });
+      rmSync(legacyInvalidContext, { recursive: true, force: true });
       rmSync(fresh, { recursive: true, force: true });
       rmSync(invalid, { recursive: true, force: true });
       rmSync(symlinkTarget, { recursive: true, force: true });
