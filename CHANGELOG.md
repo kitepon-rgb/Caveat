@@ -25,7 +25,7 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ### Security
 - Publish performs a fail-closed content scan before sealed output, and the production public repository was purged and recreated as a sealed one-commit mirror. Previously cloned or archived plaintext cannot be retroactively erased.
-- Hook sidecar input excludes raw errors, queries, paths, transcript paths, and session IDs; detached worker jobs use owner-only directories/files and a versioned schema.
+- Hook sidecar input excludes raw errors, queries, paths, transcript paths, and session IDs; detached worker jobs use owner-only directories/files and a versioned schema (POSIX modes or inherited per-user Windows temp ACLs).
 
 ### Migration Notes
 - Existing publishers must deploy the keyserver-lite Worker (or provide an equivalent compatible endpoint), keep the content key in Worker KV, and set `sealedKeyserverUrl` plus the matching `sealedKeyId` in `~/.caveatrc.json`. `caveat publish` fails closed until this is configured; see `keyserver/README.md` and `docs/archive/07_sealed_public_and_autosync.md`.

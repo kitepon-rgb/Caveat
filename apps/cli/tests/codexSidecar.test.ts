@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -25,9 +25,11 @@ describe('hook signal additional context file', () => {
       chmodSync(path, 0o600);
       expect(() => readHookSignalAdditionalContextFile(path)).toThrow('invalid hook signal block');
 
-      chmodSync(path, 0o644);
-      expect(() => readHookSignalAdditionalContextFile(path)).toThrow('owner-only');
-      chmodSync(path, 0o600);
+      if (process.platform !== 'win32') {
+        chmodSync(path, 0o644);
+        expect(() => readHookSignalAdditionalContextFile(path)).toThrow('owner-only');
+        chmodSync(path, 0o600);
+      }
       const link = join(root, 'signal-link.json');
       symlinkSync(path, link);
       expect(() => readHookSignalAdditionalContextFile(link)).toThrow('owner-only');
@@ -56,6 +58,27 @@ describe('hook signal additional context file', () => {
 
       writeFileSync(path, 'x'.repeat(4097), { encoding: 'utf-8', mode: 0o600 });
       expect(() => readHookSignalAdditionalContextFile(path)).toThrow('within 4096 bytes');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('uses a reserved per-user temp container for the Windows ACL boundary', () => {
+    const root = mkdtempSync(join(tmpdir(), 'caveat-sidecar-context-windows-'));
+    const path = join(root, 'signal.json');
+    const outsideDir = join(root, 'nested');
+    const outside = join(outsideDir, 'signal.json');
+    try {
+      const block = buildHookSignalSidecarContextBlock({
+        type: 'tool-error', toolName: 'Bash', failureKind: 'post-tool-use-failure',
+      });
+      writeFileSync(path, JSON.stringify({ context: [block] }), { encoding: 'utf-8', mode: 0o644 });
+      expect(readHookSignalAdditionalContextFile(path, { platform: 'win32' })).toEqual([block]);
+
+      mkdirSync(outsideDir);
+      writeFileSync(outside, JSON.stringify({ context: [block] }), { encoding: 'utf-8', mode: 0o600 });
+      expect(() => readHookSignalAdditionalContextFile(outside, { platform: 'win32' }))
+        .toThrow('reserved per-user Caveat temporary directory');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

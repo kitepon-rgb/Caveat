@@ -352,8 +352,10 @@ kind or bounded Stop counts. Retrieval still uses raw text locally. Existing
 provider boundary and are not newly sanitized by this signal contract. The
 completed contract is archived at `docs/archive/09_sidecar_hook_signal_contract.md`.
 
-The detached tool-error job uses an owner-only reserved temporary root, a
-versioned job schema, `0700` directories, and `0600` files. Every Claude hook
+The detached tool-error job uses an owner-only reserved temporary root and a
+versioned job schema. POSIX uses `0700` directories and `0600` files; Windows
+uses the current user's temporary directory and inherited Windows ACLs because
+Node's POSIX mode/uid fields do not represent Windows DACLs. Every Claude hook
 invocation sweeps structurally valid jobs older than 24 hours. If the machine
 never runs Caveat again after a worker crash, the private orphan remains until
 the next invocation; there is no independent daemon.

@@ -13,7 +13,8 @@ Caveat 検索に使うローカルの生テキストと、sidecar 境界を越�
 - sidecar へ渡す追加文脈は既存の `SidecarContextBlock kind: "manual_note"` を使う。
 - 追加文脈の `source` は `caveat-hook-signal`、`trust` は `local` とする。
 - `summary` と `data` は allowlist 済みの構造情報から決定的に生成する。
-- 追加context fileは 4,096 bytes以下、通常file・非symlink・owner-only mode、block数は1とする。
+- 追加context fileは 4,096 bytes以下、通常file・非symlink、block数は1とする。POSIXはowner-only
+  mode/uidを検証し、Windowsはper-user temp直下のCaveat予約directoryと継承ACLを境界にする。
 - block / `data` はexact keyのみ、toolは閉じたenum（未知値は固定値 `other`）、
   countは0以上10,000以下の整数、`summary` は `data` から再生成したcanonical値との完全一致を要求する。
 - tool-error で渡してよいのは、既知カテゴリへ正規化した tool 種別と失敗イベント種別だけ。
@@ -49,7 +50,8 @@ title / Symptom / environment / reference path等をsidecar providerへ渡す別
 - [x] Stop の数値シグナルから path・error snippet・search query を除外するテストを追加する。
 - [x] Caveat CLI に strict / bounded な追加context file入力を加え、retrieval contextと分離して結合する。
 - [x] advisory runner が private temporary fileを生成・引き渡し・削除し、失敗を明示するようにする。
-- [x] detached tool-error workerの生job fileをreserved root・versioned schema・0700 dir・0600 file・失敗時cleanup・24h stale回収で硬化する。
+- [x] detached tool-error workerの生job fileをreserved root・versioned schema・POSIX 0700/0600または
+  Windows per-user temp ACL・失敗時cleanup・24h stale回収で硬化する。
 - [x] Claude tool-error worker と Stop reminder から構造シグナルを渡す。
 - [x] fake sidecar Stop試験と両surfaceの実hook smokeで、許可フィールドの到達と禁止sentinelの非到達を確認する。
 - [x] Caveat の unit / typecheck / build を通す。
@@ -87,6 +89,7 @@ title / Symptom / environment / reference path等をsidecar providerへ渡す別
 
 - A/Bはsynthetic paired n=4/conditionで、候補選択feasibilityだけを示す。実incidentの誤提案率へ一般化しない。
 - 既存`caveat_entry`（privateを含む）のprovider境界は本変更のprivacy保証外。
-- worker crash後にCaveatが二度と起動しなければ、0600のraw job orphanは次回sweepまで残る。
+- worker crash後にCaveatが二度と起動しなければ、POSIXでは0600、Windowsではper-user temp ACLを
+  継承したraw job orphanが次回sweepまで残る。
 - codex-sidecar正規scriptを妨げていた環境の`corepack`不在は、Corepack 0.35.0導入後に解消した。
   pin済み`pnpm 10.10.0`で正規のtest / typecheck / buildを再実行し、すべてgreenを確認した。

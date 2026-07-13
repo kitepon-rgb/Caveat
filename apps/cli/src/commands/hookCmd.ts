@@ -11,6 +11,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import type { Stats } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
@@ -398,8 +399,7 @@ function isOwnedWorkerDir(path: string, root = workerRoot()): boolean {
       && basename(resolved).startsWith('job-')
       && stat.isDirectory()
       && !stat.isSymbolicLink()
-      && (stat.mode & 0o077) === 0
-      && (uid === undefined || stat.uid === uid);
+      && hasPrivateOwnership(stat, uid);
   } catch {
     return false;
   }
@@ -432,11 +432,11 @@ export function workerRoot(base = tmpdir()): string {
   mkdirSync(root, { recursive: true, mode: 0o700 });
   const stat = lstatSync(root);
   const uid = typeof process.getuid === 'function' ? process.getuid() : undefined;
-  if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 || (uid !== undefined && stat.uid !== uid)) throw new Error('worker root is unsafe');
+  if (!stat.isDirectory() || stat.isSymbolicLink() || !hasPrivateOwnership(stat, uid)) throw new Error('worker root is unsafe');
   const marker = join(root, WORKER_MARKER);
   try { writeFileSync(marker, 'caveat-worker/v1\n', { mode: 0o600, flag: 'wx' }); } catch (error) { if (!(error && typeof error === 'object' && 'code' in error && error.code === 'EEXIST')) throw error; }
   const markerStat = lstatSync(marker);
-  if (!markerStat.isFile() || markerStat.isSymbolicLink() || (markerStat.mode & 0o077) !== 0 || (uid !== undefined && markerStat.uid !== uid) || readFileSync(marker, 'utf-8') !== 'caveat-worker/v1\n') throw new Error('worker root marker is invalid');
+  if (!markerStat.isFile() || markerStat.isSymbolicLink() || !hasPrivateOwnership(markerStat, uid) || readFileSync(marker, 'utf-8') !== 'caveat-worker/v1\n') throw new Error('worker root marker is invalid');
   return root;
 }
 
@@ -446,8 +446,16 @@ function isStaleWorkerJobDir(path: string): boolean {
   const file = join(path, entries[0]!);
   const stat = lstatSync(file);
   const uid = typeof process.getuid === 'function' ? process.getuid() : undefined;
-  if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 || (uid !== undefined && stat.uid !== uid)) return false;
+  if (!stat.isFile() || stat.isSymbolicLink() || !hasPrivateOwnership(stat, uid)) return false;
   return isWorkerJob(JSON.parse(readFileSync(file, 'utf-8')) as unknown);
+}
+
+function hasPrivateOwnership(stat: Stats, uid: number | undefined): boolean {
+  // Node's POSIX mode/uid fields are not an ACL view on Windows. There the
+  // reserved root lives below the current user's temp directory and inherits
+  // its Windows ACL; structural marker/schema checks remain mandatory.
+  return process.platform === 'win32'
+    || ((stat.mode & 0o077) === 0 && (uid === undefined || stat.uid === uid));
 }
 
 function isWorkerJob(value: unknown): value is WorkerJob {

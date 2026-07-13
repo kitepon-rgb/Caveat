@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
-import { closeSync, constants, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { cwd, exit } from 'node:process';
 import type { Stats } from 'node:fs';
 import {
@@ -128,11 +128,13 @@ const MAX_ADDITIONAL_CONTEXT_BYTES = 4096;
 
 export function readHookSignalAdditionalContextFile(
   path: string,
-  testProbe?: { afterLstat?: () => void },
+  testProbe?: { afterLstat?: () => void; platform?: NodeJS.Platform },
 ): CaveatHookSignalSidecarContextBlock[] {
+  const platform = testProbe?.platform ?? process.platform;
+  assertWindowsPrivateTempContainer(path, platform);
   const before = lstatSync(path);
   const uid = typeof process.getuid === 'function' ? process.getuid() : undefined;
-  assertPrivateRegular(before, uid);
+  assertPrivateRegular(before, uid, platform);
   // Test-only scheduling seam for deterministic inode/FIFO replacement tests.
   // Production callers never pass it; the actual trust decision still binds
   // the opened fd to `before.dev` + `before.ino` below.
@@ -141,7 +143,7 @@ export function readHookSignalAdditionalContextFile(
   let raw: string;
   try {
     const opened = fstatSync(fd);
-    assertPrivateRegular(opened, uid);
+    assertPrivateRegular(opened, uid, platform);
     if (opened.dev !== before.dev || opened.ino !== before.ino) throw new Error('additional context file changed during open');
     const bytes = Buffer.alloc(MAX_ADDITIONAL_CONTEXT_BYTES + 1);
     let count = 0;
@@ -152,7 +154,7 @@ export function readHookSignalAdditionalContextFile(
     }
     if (count > MAX_ADDITIONAL_CONTEXT_BYTES) throw new Error(`additional context file exceeds ${MAX_ADDITIONAL_CONTEXT_BYTES} bytes`);
     const after = fstatSync(fd);
-    assertPrivateRegular(after, uid);
+    assertPrivateRegular(after, uid, platform);
     if (after.dev !== opened.dev || after.ino !== opened.ino || after.dev !== before.dev || after.ino !== before.ino) throw new Error('additional context file changed during read');
     raw = bytes.subarray(0, count).toString('utf-8');
   } finally { closeSync(fd); }
@@ -167,8 +169,24 @@ export function readHookSignalAdditionalContextFile(
   return [block];
 }
 
-function assertPrivateRegular(stat: Stats, uid: number | undefined): void {
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_ADDITIONAL_CONTEXT_BYTES || (stat.mode & 0o077) !== 0 || (uid !== undefined && stat.uid !== uid)) throw new Error('additional context file must be a private owner-only regular file within 4096 bytes');
+function assertPrivateRegular(stat: Stats, uid: number | undefined, platform: NodeJS.Platform): void {
+  const privateOwner = platform === 'win32'
+    || ((stat.mode & 0o077) === 0 && (uid === undefined || stat.uid === uid));
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_ADDITIONAL_CONTEXT_BYTES || !privateOwner) throw new Error('additional context file must be a private owner-only regular file within 4096 bytes');
+}
+
+function assertWindowsPrivateTempContainer(path: string, platform: NodeJS.Platform): void {
+  if (platform !== 'win32') return;
+  const parent = dirname(path);
+  const parentStat = lstatSync(parent);
+  const resolvedParent = realpathSync(parent);
+  const resolvedTemp = realpathSync(tmpdir());
+  if (parentStat.isSymbolicLink()
+    || !parentStat.isDirectory()
+    || dirname(resolvedParent) !== resolvedTemp
+    || !basename(resolvedParent).startsWith('caveat-')) {
+    throw new Error('additional context file must be inside a reserved per-user Caveat temporary directory');
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

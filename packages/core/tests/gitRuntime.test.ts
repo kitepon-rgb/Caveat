@@ -26,7 +26,7 @@ function makeTmpDir(): string {
 
 async function startLocalServer(
   handler: (res: ServerResponse) => void,
-): Promise<{ url: string; close: () => Promise<void> }> {
+): Promise<{ url: string; activeSocketCount: () => number; close: () => Promise<void> }> {
   const sockets = new Set<Socket>();
   const server: Server = createServer((_req, res) => handler(res));
   server.on('connection', (socket) => {
@@ -50,6 +50,7 @@ async function startLocalServer(
   const { port } = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${port}/x.git`,
+    activeSocketCount: () => sockets.size,
     close: async () => {
       for (const socket of sockets) socket.destroy();
       await new Promise<void>((resolve, reject) => {
@@ -60,31 +61,30 @@ async function startLocalServer(
 }
 
 describe('createGit runtime policy', { timeout: GIT_RUNTIME_TEST_TIMEOUT_MS }, () => {
-  it('kills a silent git child after the configured inactivity timeout', async () => {
+  it('reports a silent git child and bounds its HTTP helper despite conflicting inherited low-speed env', async () => {
     const root = makeTmpDir();
+    vi.stubEnv('GIT_HTTP_LOW_SPEED_LIMIT', '0');
+    vi.stubEnv('GIT_HTTP_LOW_SPEED_TIME', '999');
     const server = await startLocalServer(() => {
-      // Accept the connection but never write stdout/stderr-producing response
-      // data back to git; simple-git's timeout.block should kill the child.
+      // Accept the connection but never write response data. simple-git's
+      // timeout rejects the task, while Caveat's Git env must override the
+      // inherited disabling values and terminate git-remote-http as well.
     });
 
     try {
-      const error = await createGit(root, { timeoutMs: 500 })
-        .clone(server.url, join(root, 'clone'))
+      const git = createGit(root, { timeoutMs: 500 });
+      await git.init();
+      const error = await git.clone(server.url, join(root, 'clone'))
         .catch((err: unknown) => err);
       expect(error).toBeInstanceOf(GitPluginError);
       expect(error).toMatchObject({
         plugin: 'timeout',
         message: expect.stringContaining('block timeout reached'),
       });
+      await waitForNoSockets(server.activeSocketCount, 3_000);
+      expect(server.activeSocketCount()).toBe(0);
     } finally {
       await server.close();
-      // Windows can retain the terminated git process' directory handle briefly
-      // after simple-git has already reported the timeout. Keep the timeout
-      // assertion strict, but let the OS finish releasing that handle before
-      // the shared afterEach cleanup removes the fixture.
-      if (process.platform === 'win32') {
-        await new Promise<void>((resolve) => setTimeout(resolve, 2_000));
-      }
     }
   });
 
@@ -104,6 +104,13 @@ describe('createGit runtime policy', { timeout: GIT_RUNTIME_TEST_TIMEOUT_MS }, (
     }
   });
 
+  it('passes the inactivity bound to the git HTTP helper', async () => {
+    const git = createGit(makeTmpDir(), { timeoutMs: 1_500 });
+
+    await expect(git.raw(['config', '--get', 'http.lowSpeedLimit'])).resolves.toBe('1\n');
+    await expect(git.raw(['config', '--get', 'http.lowSpeedTime'])).resolves.toBe('2\n');
+  });
+
   it('allows inherited pager environment variables even when their value is empty', async () => {
     vi.stubEnv('PAGER', '');
 
@@ -116,3 +123,10 @@ describe('createGit runtime policy', { timeout: GIT_RUNTIME_TEST_TIMEOUT_MS }, (
     await expect(createGit(makeTmpDir()).init()).resolves.toBeDefined();
   });
 });
+
+async function waitForNoSockets(activeSocketCount: () => number, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (activeSocketCount() > 0 && Date.now() < deadline) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+  }
+}

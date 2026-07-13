@@ -12,13 +12,29 @@ export const FOREGROUND_GIT_TIMEOUT_MS = 300_000;
 export const BACKGROUND_GIT_TIMEOUT_MS = 30_000;
 
 export function createGit(baseDir?: string, opts?: { timeoutMs?: number }): SimpleGit {
+  const timeoutMs = opts?.timeoutMs ?? FOREGROUND_GIT_TIMEOUT_MS;
+  const lowSpeedTimeSeconds = Math.max(1, Math.ceil(timeoutMs / 1_000));
   const env = {
     ...process.env,
     GIT_TERMINAL_PROMPT: '0',
     GCM_INTERACTIVE: 'Never',
+    // Git's GIT_HTTP_LOW_SPEED_* environment variables override the matching
+    // config keys. Set both after inherited env so a caller cannot silently
+    // disable the helper-side no-response bound.
+    GIT_HTTP_LOW_SPEED_LIMIT: '1',
+    GIT_HTTP_LOW_SPEED_TIME: String(lowSpeedTimeSeconds),
   };
   const options: Partial<SimpleGitOptions> = {
-    timeout: { block: opts?.timeoutMs ?? FOREGROUND_GIT_TIMEOUT_MS },
+    maxConcurrentProcesses: 1,
+    timeout: { block: timeoutMs },
+    // On Windows, killing the direct `git` child does not necessarily kill its
+    // `git-remote-http` descendant. This HTTP transfer-rate bound is a
+    // helper-side supplement for a server that stops responding; it is not a
+    // general process-tree or total elapsed-time guarantee.
+    config: [
+      'http.lowSpeedLimit=1',
+      `http.lowSpeedTime=${lowSpeedTimeSeconds}`,
+    ],
     unsafe: unsafeAllowancesForInheritedEnv(env),
   };
   const git = baseDir === undefined ? simpleGit(options) : simpleGit(baseDir, options);
