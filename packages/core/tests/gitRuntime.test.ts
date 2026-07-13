@@ -11,10 +11,10 @@ const GIT_RUNTIME_TEST_TIMEOUT_MS = 15_000;
 
 let tmpDir: string | undefined;
 
-afterEach(() => {
+afterEach(async () => {
   vi.unstubAllEnvs();
   if (tmpDir) {
-    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    await removeTmpDirAfterWindowsHandleRelease(tmpDir, 10_000);
     tmpDir = undefined;
   }
 });
@@ -128,5 +128,21 @@ async function waitForNoSockets(activeSocketCount: () => number, timeoutMs: numb
   const deadline = Date.now() + timeoutMs;
   while (activeSocketCount() > 0 && Date.now() < deadline) {
     await new Promise<void>((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+async function removeTmpDirAfterWindowsHandleRelease(path: string, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    try {
+      rmSync(path, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
+      if (!['EBUSY', 'EPERM', 'ENOTEMPTY'].includes(String(code)) || Date.now() >= deadline) throw error;
+      // Node 22 on Windows can report the task before git has released its cwd
+      // handle. Keep this bounded so a genuinely orphaned process still fails.
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    }
   }
 }
