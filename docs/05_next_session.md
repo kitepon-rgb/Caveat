@@ -1,137 +1,72 @@
 # Next Session Handoff
 
-Last updated: 2026-05-08.
+Last updated: 2026-07-13.
 
 ## Status
 
-All release work for `caveat-cli@0.14.7` and `codex-sidecar@0.3.0` is closed
-out. No outstanding tasks at this time.
+Precision and runtime reliability work is complete and released. There are no
+remaining release tasks for `caveat-cli@0.16.2` or codex-sidecar 0.3.6.
 
-## 2026-05-08 Claude Smoke Rerun Result
+BugHub/dotagents integration was intentionally excluded. Caveat did not add a
+duplicate diagnostics store, error reporter, outbox, acknowledgement, or
+notification path.
 
-The Claude generated-response smoke that was blocked by the 2026-05-06 rate
-limit was rerun on 2026-05-08 18:27 JST and passed.
+## Released Artifacts
 
-- Fresh global install of `caveat-cli@0.14.7` into a temporary `npm prefix`.
-- `caveat init` wrote MCP + 4 hooks (`UserPromptSubmit`, `PostToolUse`,
-  `PostToolUseFailure`, `Stop`) into the temp `$home/.claude/`.
-- `claude -p` was run with the real `HOME` (so account auth resolved) but
-  with `--settings` and `--mcp-config` pointing at the temp files. The temp
-  HOME isolation in the original recipe broke auth (`Not logged in`); using
-  real HOME plus explicit `--settings` / `--mcp-config` overrides keeps the
-  isolation intent (no writes into real `~/.claude/`) while letting Claude
-  read its credentials. This is the procedure to use for future reruns.
-- `claude` exit code: `0`. Final stream `result.subtype: success`,
-  `is_error: false`, `result: "caveat-claude-session-ok"`.
-- Stream contained `caveat-claude-session-ok` (5 token occurrences across
-  partial-message and final result frames).
-- MCP `caveat` reported `status: "connected"` in the `system/init` frame
-  with all 6 caveat tools listed.
-- No `caveat.*(error|invalid|failed)` or `invalid.*caveat` lines in the
-  stream.
-- Closeout: `caveat-cli` latest tag = `0.14.7`, `codex-sidecar-cli` latest
-  tag = `0.3.0`, latest two CI runs green, worktree clean.
+- `caveat-cli@0.16.2` is npm `latest`, globally installed, and available from
+  <https://github.com/kitepon-rgb/Caveat/releases/tag/v0.16.2>.
+- `codex-sidecar-core@0.3.6`, `codex-sidecar-cli@0.3.6`, and
+  `codex-sidecar-mcp@0.3.6` are npm `latest`; CLI/MCP 0.3.6 are installed.
+- codex-sidecar release:
+  <https://github.com/kitepon-rgb/codex-sidecar/releases/tag/v0.3.6>.
+- Caveat release tag `v0.16.2` resolves to exact green commit
+  `fb059b82e0f1ce24dd20665fe6bfc71b643b17cc`.
+- codex-sidecar release tag `v0.3.6` resolves to
+  `581e81dd2bf9656adc71d2988ae089e1fb6b96a3`.
 
-## Original Current State (pre-smoke, retained for history)
+## Verification
 
-Codex support is complete and released.
+- Caveat local gate: build, typecheck, release pack/install smoke, diff-check,
+  and all 545 tests green (core 419 / CLI 88 / MCP 12 / Web 17 / hooks 9).
+- Hook-search evaluation: all 410 cases and corpus/golden digests unchanged from
+  the recorded baseline. Primary precision remained 155/257 (0.6031128405),
+  positive recall 151/269 (0.56133829), and negative any-hit 52/141
+  (0.3687943262).
+- Consecutive six-job CI runs `29227144416` and `29227427125` are green across
+  Ubuntu 24.04, Windows 2022/2025, and Node 22/24.
+- codex-sidecar CI run `29226366326` is green; Luna low structured advisory was
+  8/8 valid before release.
+- Fresh registry install verified package version 0.16.2, executable mode 755,
+  manifest bin, `caveat init`, Codex hook install idempotence, diagnostics,
+  generated Claude/Codex config, and uninstall leaving zero Caveat Codex hooks.
+- New Codex session returned `caveat-new-session-ok` with `gpt-5.6-luna` and no
+  Caveat hook failure. Codex separately emitted one model-catalog refresh child
+  timeout; the explicit Luna turn completed.
+- Published sidecar advisory smoke passed independently for Stop and tool-error
+  with `gpt-5.6-luna` low, `status: ok`, output schema, raw log, and matched
+  thread/turn binding verified.
+- Published-package Claude smoke passed with Haiku, budget cap `$0.05`,
+  UserPromptSubmit/Stop success, and `caveat-claude-session-ok`.
 
-- `caveat-cli@0.14.7` is published to npm and tagged as `latest`.
-- `codex-sidecar-core@0.3.0`, `codex-sidecar-cli@0.3.0`, and
-  `codex-sidecar-mcp@0.3.0` are published to npm and tagged as `latest`.
-- Caveat GitHub Release: <https://github.com/kitepon-rgb/Caveat/releases/tag/v0.14.7>
-- codex-sidecar GitHub Release:
-  <https://github.com/kitepon-rgb/codex-sidecar/releases/tag/v0.3.0>
-- Caveat CI run `25431661576` is green across Ubuntu 24.04, Windows 2022,
-  Windows 2025 with VS 2026, Node 22, and Node 24.
-- codex-sidecar CI run `25431264843` is green.
+## Operational Notes
 
-The Codex path was verified from published packages:
+- The raw Codex CLI fresh-session smoke may symlink the real `auth.json` into a
+  temporary `CODEX_HOME`.
+- The codex-sidecar advisory smoke must instead receive the canonical real
+  `CODEX_HOME`. Sidecar deliberately opens canonical auth with `O_NOFOLLOW` for
+  durable snapshot/lease safety, so passing the temporary auth symlink fails
+  closed with `ELOOP`. The release checklist records the exact separation.
+- Windows timing evidence is bounded characterization, not a universal latency
+  guarantee: `community.test.ts` n=22 p95 12.905s and
+  `autoSyncHook.test.ts` n=8 p95 14.186s. Both use a 20s child timeout with
+  longer setup/cleanup/suite bounds and phase-labelled failures.
+- Six open Dependabot PRs at closeout are distinct current dependency updates,
+  not superseded duplicates. They were left untouched.
 
-- Fresh npm global install of `caveat-cli@0.14.7`.
-- `caveat codex-hook install` and `caveat codex-hook diagnostics`.
-- New `codex exec` session with Caveat hooks installed.
-- Published `codex-sidecar-cli@0.3.0` advisory smoke from Caveat.
-- Raw Codex App Server log verified `model="gpt-5.4-mini"` and
-  `model_reasoning_effort="low"`.
+## Canonical References
 
-## Only Remaining Task (resolved 2026-05-08)
-
-Rerun the Claude generated-response smoke after the Claude account rate limit
-resets. This is not a Caveat failure. **Resolved on 2026-05-08 — see "2026-05-08
-Claude Smoke Rerun Result" above.**
-
-Observed blocker on 2026-05-06:
-
-- Claude returned API status `429`.
-- Message: `You've hit your limit`.
-- Reset time reported by Claude: 2026-05-08 17:00 Asia/Tokyo.
-- Before the rate-limit response, Caveat `UserPromptSubmit` hook exited `0`,
-  and the Caveat MCP server was connected.
-
-Do not redo the Codex release or codex-sidecar release unless new code changes
-land. The next session should only rerun the Claude smoke and record the result.
-
-## Rerun Command
-
-Use a temporary home so the user's real Claude/Codex settings are not modified.
-
-```bash
-VERSION=0.14.7
-root=$(mktemp -d)
-prefix="$root/npm"
-home="$root/home"
-mkdir -p "$prefix" "$home"
-export HOME="$home"
-export PATH="$prefix/bin:$PATH"
-
-rtk proxy npm install -g "caveat-cli@$VERSION" --prefix "$prefix" --no-audit --no-fund
-rtk caveat init
-
-out="$root/claude-stream.jsonl"
-cd /tmp
-rtk proxy claude -p \
-  --verbose \
-  --output-format=stream-json \
-  --include-hook-events \
-  --setting-sources project \
-  --settings "$home/.claude/settings.json" \
-  --mcp-config "$home/.claude.json" \
-  --strict-mcp-config \
-  --model haiku \
-  --max-budget-usd 0.05 \
-  --permission-mode dontAsk \
-  --no-session-persistence \
-  "Reply exactly: caveat-claude-session-ok" >"$out"
-
-rtk rg 'caveat-claude-session-ok' "$out"
-if rtk rg -i "caveat.*(error|invalid|failed)|invalid.*caveat" "$out"; then
-  exit 1
-fi
-```
-
-Expected:
-
-- Claude exits `0`.
-- The stream contains `caveat-claude-session-ok`.
-- Caveat `UserPromptSubmit` and `Stop` hook events have `exit_code: 0` and
-  `outcome: "success"`.
-- MCP server `caveat` is connected.
-- No Caveat invalid/failure lines are present.
-
-## Useful Closeout Checks
-
-```bash
-rtk npm view caveat-cli version
-rtk npm dist-tag ls caveat-cli
-rtk npm dist-tag ls codex-sidecar-cli
-rtk gh run list --limit 5
-rtk git status --short --branch
-```
-
-Expected:
-
-- `caveat-cli` latest is `0.14.7`.
-- `codex-sidecar-cli` latest is `0.3.0`.
-- Latest Caveat CI is green.
-- Caveat worktree is clean.
+- Release procedure: [`04_release_checklist.md`](04_release_checklist.md)
+- Claude/Codex and sidecar contract:
+  [`03_dual_agent_support.md`](03_dual_agent_support.md)
+- Completed implementation, audit, timing, and release ledger:
+  [`archive/11_precision_and_runtime_reliability.md`](archive/11_precision_and_runtime_reliability.md)

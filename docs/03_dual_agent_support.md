@@ -187,12 +187,12 @@ post-publish path for proving the published npm package can install hooks and
 start fresh Claude/Codex sessions. The commands below are sidecar-specific
 diagnostics and do not replace release smoke.
 
-Current release execution is tracked in
-[`11_precision_and_runtime_reliability.md`](11_precision_and_runtime_reliability.md).
-`codex-sidecar-core`, `codex-sidecar-cli`, and `codex-sidecar-mcp` 0.3.6 are
-published and installed. Caveat 0.16.2 remains in release execution until its
-published-package Codex/Claude smokes pass; [`05_next_session.md`](05_next_session.md)
-is updated as the closeout handoff after that gate.
+Current release status is tracked in [`05_next_session.md`](05_next_session.md).
+`caveat-cli` 0.16.2 and `codex-sidecar-core`, `codex-sidecar-cli`, and
+`codex-sidecar-mcp` 0.3.6 are published and installed. The published-package
+Codex/Claude and sidecar advisory smokes are complete; the implementation and
+adversarial-audit ledger is archived in
+[`archive/11_precision_and_runtime_reliability.md`](archive/11_precision_and_runtime_reliability.md).
 
 CI runs `corepack pnpm check:release-smoke` to keep release-smoke scripts
 syntactically valid, verify the packed npm manifest has no `workspace:`

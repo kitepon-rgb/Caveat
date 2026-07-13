@@ -12,7 +12,6 @@ specific document for the task.
 
 ## Active Reference Docs
 
-- [11_precision_and_runtime_reliability.md](11_precision_and_runtime_reliability.md) - active implementation plan for hook precision, pending dedupe, sidecar structured output, and release-smoke reliability; BugHub integration is explicitly excluded.
 - [03_dual_agent_support.md](03_dual_agent_support.md) - Claude/Codex contract, adapter policy, sidecar behavior, and smoke notes.
 - [04_release_checklist.md](04_release_checklist.md) - required publish and post-publish verification checklist.
 - [05_next_session.md](05_next_session.md) - current handoff and release closeout notes.
@@ -24,6 +23,7 @@ specific document for the task.
 - [CODEX_HOOK_SUPPORT_PLAN.md](CODEX_HOOK_SUPPORT_PLAN.md) and [CAVEAT_CODEX_DUAL_SUPPORT.md](CAVEAT_CODEX_DUAL_SUPPORT.md) - Codex support planning records; current contract lives in [03_dual_agent_support.md](03_dual_agent_support.md).
 - [announcements-v0.12.0.md](announcements-v0.12.0.md) - release announcement drafts.
 - [archive/](archive/) - superseded drafts and historical design notes.
+- [archive/11_precision_and_runtime_reliability.md](archive/11_precision_and_runtime_reliability.md) - completed 0.16.2 implementation, adversarial audit, Windows timing, and release ledger; BugHub integration was explicitly excluded.
 
 ## Repository Areas
 

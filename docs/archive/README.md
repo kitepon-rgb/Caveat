@@ -11,3 +11,9 @@
 - **却下**: A-2 `version` 単純化（現行 `environment` オブジェクトの方が豊か）、A-4 概要返し（既実装）、C-1 secret scrub（多層防御）、C-2 author/verified_by（既存 `source` で代替）
 
 反映済み・却下済みなので現役資料としては参照不要。設計の経緯を追うときの史料として保存。
+
+### [11_precision_and_runtime_reliability.md](11_precision_and_runtime_reliability.md)
+
+2026-07-13完了。hook検索precision、pending reminderのprocess間single-flight、
+codex-sidecar構造化出力、Windows実Git fixture、Claude/Codex published-package smokeを実装・監査し、
+`caveat-cli@0.16.2`とcodex-sidecar 0.3.6をreleaseした完了台帳。BugHub/dotagents連携は対象外。

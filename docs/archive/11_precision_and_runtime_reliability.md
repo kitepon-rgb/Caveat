@@ -1,7 +1,7 @@
-# Caveat 提案精度・実行信頼性の改善計画
+# Caveat 提案精度・実行信頼性の改善 完了台帳
 
 作成: 2026-07-13
-状態: 実装・ローカル検証完了、release gate実行中
+状態: 実装・敵対的検証・release完了
 対象: Caveat本体と、構造化出力契約を所有するcodex-sidecar
 
 ## 1. 目的
@@ -142,7 +142,7 @@ Caveatは製品挙動と製品所有のテストを直す。dotagentsは後か�
 - [x] setup/cleanup/test timeoutを実Git用の命名定数へ分離する。値はWindows 2025実測p95と
   明示的なprocess timeoutより長くし、Vitest既定5秒を偶然の契約にしない。
 - [x] timeout時はどのgit phaseで止まったかをfixture名付きで失敗させる。
-- [ ] Ubuntu 24.04、Windows 2022/2025、Node 22/24を2連続greenにする。
+- [x] Ubuntu 24.04、Windows 2022/2025、Node 22/24を2連続greenにする。
 - [x] p95、採用timeout、根拠run IDを本書の実績節へ保存する。単なる2連続greenをprocess boundの証明にしない。
 
 ### Lane F — 公開packageのClaude fresh-session smoke（A＋H）
@@ -168,11 +168,11 @@ Caveatは製品挙動と製品所有のテストを直す。dotagentsは後か�
 5. [x] Lane Dをcodex-sidecar repoで独立実装・releaseする。
 6. [x] Lane EをCaveatのtest-only commitとして実装する。
 7. [x] Lane Fをfake CI→実Claude smokeの順で実装する。
-8. [ ] Caveat full gate、npm pack、published-package smoke、全6 CI jobを通す。
+8. [x] Caveat full gate、npm pack、published-package smoke、全6 CI jobを通す。
 9. [x] 独立反証でprecision退行、silent fallback、BugHub責務混入がないことを確認する。
-10. [ ] `docs/05_next_session.md`のcurrent handoffと`docs/03_dual_agent_support.md`のstatusを実績へ同期する。
-11. [ ] オーナーのrelease承認後だけversion/tag/npm publish/global installを行う。
-12. [ ] 実績と残余リスクを記録し、本書を`docs/archive/`へ移す。
+10. [x] `docs/05_next_session.md`のcurrent handoffと`docs/03_dual_agent_support.md`のstatusを実績へ同期する。
+11. [x] オーナーのrelease承認後だけversion/tag/npm publish/global installを行う。
+12. [x] 実績と残余リスクを記録し、本書を`docs/archive/`へ移す。
 
 ## 6. 配置
 
@@ -193,12 +193,12 @@ Caveatは製品挙動と製品所有のテストを直す。dotagentsは後か�
 - [x] raw重複だけを理由に省略行が出ない。
 - [x] sidecar Luna low 8/8がschema-validかつ`status: ok`でCaveat advisory成功となり、失敗runを分母から除外していない。
 - [x] Caveatはsidecar failure時に引き続きfail-closedし、誤ったadvisoryを表示しない。
-- [ ] Windows 6 matrixが2連続greenで、実Git processには明示timeoutがある。
+- [x] Windows 6 matrixが2連続greenで、実Git processには明示timeoutがある。
 - [x] Windowsのcommunity/autosync全child processにphase付きtimeoutがあり、p95根拠を保存している。
 - [x] fake Claude hook stream parserが6 matrixのCIでgreenである。
-- [ ] published-packageのnew Codex/Claude session、hook install二回、diagnostics、uninstallがgreen。
+- [x] published-packageのnew Codex/Claude session、hook install二回、diagnostics、uninstallがgreen。
 - [x] BugHub/dotagentsのdiagnostics・error store・reporter・outbox・ack・通知を変更していない。
-- [ ] worktree clean、remote同期、計画archiveまで完了する。
+- [x] worktree clean、remote同期、計画archiveまで完了する。
 
 ## 8. rollback
 
@@ -314,7 +314,8 @@ Caveatは製品挙動と製品所有のテストを直す。dotagentsは後か�
 - 別途、過去green 20 runのWindows 2025 full `Test` step 40 sampleはnearest-rank p95 74秒だった。
   これはmatrix全体のstep時間であり、個別process timeoutの根拠には使用していない。
 - run `29227144416`はUbuntu 24.04、Windows 2022/2025、Node 22/24の全6 jobがgreen。
-  release gateの2連続greenは、次の独立run成功まで未完のまま維持する。
+  続くrun `29227427125`（commit `fb059b82e0f1ce24dd20665fe6bfc71b643b17cc`）も同じ
+  全6 jobがgreenとなり、release gateの2連続greenを満たした。
 
 ### Lane F Claude fresh-session smoke
 
@@ -331,7 +332,8 @@ Caveatは製品挙動と製品所有のテストを直す。dotagentsは後か�
   （core 419 / CLI 88 / MCP 12 / Web 17 / hooks 9）green。
 - `eval:hook-search`は410 casesの全指標、corpus digest、golden digestが実装前baselineから不変。
 - `corepack pnpm publish --dry-run --no-git-checks`は`caveat-cli@0.16.2`の14 files、
-  tarball 1.2 MBを生成し、workspace protocol漏洩なしでgreen。registry公開とpublished smokeは未実施。
+  tarball 1.2 MBを生成し、workspace protocol漏洩なしでgreen。このpre-publish gate後のregistry公開と
+  published smokeの実績は次節に記録する。
 
 ### CI・release実績
 
@@ -342,6 +344,26 @@ Caveatは製品挙動と製品所有のテストを直す。dotagentsは後か�
 - CaveatではWindowsの実時間超過を隠さず、CI run `29226452914`、`29226627736`、
   `29226806696`、`29226986587`の各失敗をphase別timeoutへ反映した。修正後のrun
   `29227144416`はexact commit `6dd3429f5e185ba53766fc58afb6f8985859f36d`で全6 job green。
-  これはrelease gateの連続green 1本目であり、2本目は本書の証跡同期commitで検証する。
+  続く証跡同期commit `fb059b82e0f1ce24dd20665fe6bfc71b643b17cc`のrun `29227427125`も
+  全6 job greenで、release gateの2連続成功を確定した。
 - fake Claude fresh-session smokeは同runの全6 jobでgreen。実Claude Code 2.1.207 / Haikuの
-  development smokeも予算上限`$0.05`でgreenだが、published packageによる再実行は未完。
+  development smokeとpublished `caveat-cli@0.16.2` smokeを予算上限`$0.05`で各1回実行し、
+  UserPromptSubmit / Stop、terminal sentinel、実効Haiku modelがgreen。
+- exact green commit `fb059b82e0f1ce24dd20665fe6bfc71b643b17cc`へannotated tag `v0.16.2`を付け、
+  npm `latest`、global install、GitHub Releaseを0.16.2へ更新した。
+- registryからfresh prefixへ0.16.2をinstallし、755のbin、manifest、`init`、Codex hook install 2回目の
+  `unchanged`、diagnostics、Claude 4 hooks、Codex 3 hooksのtimeout/async、uninstall後0件を確認した。
+  new Codex sessionは`gpt-5.6-luna`でsentinelを返した。hook errorは0だが、Codex自身のmodel catalog
+  refreshがchild timeoutをstderrへ1件出したため、hook成功とは分けて記録する。
+- published `codex-sidecar-cli@0.3.6` advisoryはStop / tool-errorの2 surfaceで、Luna low、
+  schema-valid `status: ok`、raw log/turn bindingをgreenにした。初回は一時`CODEX_HOME/auth.json`
+  symlinkをsidecarへ渡して`O_NOFOLLOW`の`ELOOP`で正しくfail-closedした。canonical real
+  `CODEX_HOME`をsidecarの認証元にする正規手順へchecklistを修正し、認証bytesはcopy・表示していない。
+
+### 残余リスク
+
+- Windows file timingのsampleは`community` n=22、`autoSync` n=8であり、将来のrunner負荷分布を
+  保証するものではない。timeout時はphase名を保ったまま失敗し、新しい観測を本数付きで再評価する。
+- 新規Codex sessionで観測したmodel catalog refresh timeoutは明示Luna turnとCaveat hookを阻害しなかった。
+  再発してmodel選択またはturn開始を阻害する場合はCodex側の独立障害として調査する。
+- BugHub/dotagents連携は計画どおり対象外で、diagnostics/error store/reporting責務をCaveatへ重複実装していない。

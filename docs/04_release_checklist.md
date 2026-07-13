@@ -104,6 +104,7 @@ user-level Codex auth files into the temporary Codex home and remove the whole
 temporary directory after the smoke.
 
 ```bash
+REAL_CODEX_HOME=${REAL_CODEX_HOME:-$original_home/.codex}
 ln -sfn "$REAL_CODEX_HOME/auth.json" "$CODEX_HOME/auth.json"
 ln -sfn "$REAL_CODEX_HOME/installation_id" "$CODEX_HOME/installation_id"
 
@@ -131,24 +132,29 @@ Expected:
 
 ## Codex Sidecar Advisory Smoke
 
-Run this after the new Codex session smoke, using the same temporary `HOME`,
-`PATH`, and authenticated `CODEX_HOME`. This proves the Caveat hook advisory
-path reaches `codex-sidecar`, starts Codex App Server with the `advisory`
-preset, and binds the exact bounded hook-signal block to the matched
-`turn/start` request and completed turn in the raw App Server log.
+Run this after the new Codex session smoke, using the same temporary `HOME` and
+`PATH`, but set `CODEX_HOME` to the canonical real Codex home. The temporary
+`auth.json` symlink above is accepted by the raw Codex CLI smoke, while
+`codex-sidecar` intentionally opens its canonical auth source with
+`O_NOFOLLOW` before taking a durable snapshot. Passing the symlinked temporary
+home must fail closed with `ELOOP`; do not work around that check by copying
+auth material. This proves the Caveat hook advisory path reaches
+`codex-sidecar`, starts Codex App Server with the `advisory` preset, and binds
+the exact bounded hook-signal block to the matched `turn/start` request and
+completed turn in the raw App Server log.
 
 `codex-sidecar` must be installed on `PATH`, or `CAVEAT_CODEX_SIDECAR_COMMAND`
 must point at the command to use.
 
 ```bash
 repo=$(rtk git rev-parse --show-toplevel)
-rtk node "$repo/scripts/codex-sidecar-advisory-smoke.mjs" \
+CODEX_HOME="$REAL_CODEX_HOME" rtk node "$repo/scripts/codex-sidecar-advisory-smoke.mjs" \
   --repo "$repo" \
   --surface stop \
   --caveat-command caveat \
   --codex-sidecar-command "${CAVEAT_CODEX_SIDECAR_COMMAND:-codex-sidecar}"
 
-rtk node "$repo/scripts/codex-sidecar-advisory-smoke.mjs" \
+CODEX_HOME="$REAL_CODEX_HOME" rtk node "$repo/scripts/codex-sidecar-advisory-smoke.mjs" \
   --repo "$repo" \
   --surface tool-error \
   --caveat-command caveat \
