@@ -27,6 +27,8 @@ import {
   releasePendingClaim,
 } from '../src/pendingReminders.js';
 
+const OS_PROCESS_STRESS_TIMEOUT_MS = 30_000;
+
 function freshHome(): { home: string; cleanup: () => void } {
   const home = mkdtempSync(join(tmpdir(), 'caveat-pending-'));
   return { home, cleanup: () => rmSync(home, { recursive: true, force: true }) };
@@ -61,7 +63,7 @@ describe('pendingReminders', () => {
       writeFileSync(join(dir, '.torn.tmp'), 'partial', 'utf-8');
       expect(drainPendingReminders(home, 's1')).toEqual(['only once']);
     } finally { cleanup(); }
-  });
+  }, OS_PROCESS_STRESS_TIMEOUT_MS);
 
   it('runs a pre-publish builder exactly once across one hundred OS processes', async () => {
     const { home, cleanup } = freshHome();
@@ -79,7 +81,7 @@ describe('pendingReminders', () => {
       expect(readFileSync(counter, 'utf8').trim().split('\n')).toEqual(['1']);
       expect(drainPendingReminders(home, 's1')).toEqual(['built once']);
     } finally { cleanup(); }
-  });
+  }, OS_PROCESS_STRESS_TIMEOUT_MS);
 
   it('reclaims one expired claim without an ABA double-builder across one hundred OS processes', async () => {
     const { home, cleanup } = freshHome();
@@ -98,7 +100,7 @@ describe('pendingReminders', () => {
       expect(readFileSync(counter, 'utf8').trim().split('\n')).toEqual(['1']);
       expect(drainPendingReminders(home, 's1')).toEqual(['built once']);
     } finally { cleanup(); }
-  });
+  }, OS_PROCESS_STRESS_TIMEOUT_MS);
 
   it('does not let stale sweeping delete a concurrent fresh publish', async () => {
     const { home, cleanup } = freshHome();
