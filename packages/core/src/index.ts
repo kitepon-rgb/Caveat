@@ -31,3 +31,6 @@ export * from './codexSidecar.js';
 export * from './sealedBundle.js';
 export * from './sealedKeys.js';
 export * from './sealedIndex.js';
+export * from './proposalEval.js';
+export * from './proposalExecution.js';
+export * from './proposalExecutionCompiler.js';

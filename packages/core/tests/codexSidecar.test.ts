@@ -4,6 +4,7 @@ import {
   buildCodexSidecarDiagnosticsCommand,
   buildCodexSidecarReadOnlySmokeCommand,
   buildCodexSidecarRunCommand,
+  buildHookSignalSidecarContextBlock,
   caveatEntriesToSidecarContextBlocks,
   caveatEntryReferencePath,
   caveatEntryToSidecarContextBlock,
@@ -32,6 +33,61 @@ describe('codex-sidecar context adapter', () => {
 
   it('converts multiple entries into context blocks', () => {
     expect(caveatEntriesToSidecarContextBlocks([fixtureEntry()])).toHaveLength(1);
+  });
+
+  it('builds a bounded manual_note for an allowlisted tool-error signal only', () => {
+    expect(
+      buildHookSignalSidecarContextBlock({
+        type: 'tool-error',
+        toolName: 'Bash',
+        failureKind: 'post-tool-use-failure',
+      }),
+    ).toEqual({
+      kind: 'manual_note',
+      source: 'caveat-hook-signal',
+      trust: 'local',
+      summary: 'Hook signal: Bash tool error (post-tool-use-failure).',
+      data: { type: 'tool-error', tool: 'bash', failure_kind: 'post-tool-use-failure' },
+    });
+    expect(
+      buildHookSignalSidecarContextBlock({
+        type: 'tool-error',
+        toolName: 'SECRET_UNKNOWN_TOOL',
+        failureKind: 'post-tool-use-failure',
+      }),
+    ).toMatchObject({
+      summary: 'Hook signal: Other tool error (post-tool-use-failure).',
+      data: { type: 'tool-error', tool: 'other' },
+    });
+  });
+
+  it('excludes raw stop data and paths from its bounded manual_note', () => {
+    const block = buildHookSignalSidecarContextBlock({
+      type: 'stop',
+      toolFailureCount: 2,
+      reeditedFileCount: 1,
+      webSearchCount: 3,
+      webFetchCount: 4,
+      bashRetryCount: 5,
+      durationMinutes: 6,
+    });
+    expect(block).toEqual({
+      kind: 'manual_note',
+      source: 'caveat-hook-signal',
+      trust: 'local',
+      summary: 'Hook signal: 2 tool failures, 1 re-edited files, 3 web searches, 4 web fetches, 5 Bash retries, 6 elapsed minutes.',
+      data: {
+        type: 'stop',
+        tool_failure_count: 2,
+        reedited_file_count: 1,
+        web_search_count: 3,
+        web_fetch_count: 4,
+        bash_retry_count: 5,
+        duration_minutes: 6,
+      },
+    });
+    expect(JSON.stringify(block)).not.toContain('SECRET_ERROR');
+    expect(JSON.stringify(block)).not.toContain('/private/path');
   });
 });
 

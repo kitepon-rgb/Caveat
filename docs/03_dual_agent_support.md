@@ -158,6 +158,26 @@ Availability levels:
 `codex_work` requires `work-capable`. Read-only review/explore/opinion/risk-check
 requires `operational` or `work-capable`.
 
+## Proposal Artifact Evaluation Boundary
+
+Claude と Codex の検索器は共通でも、reminder の配送契約とタイミングは同一ではない。
+したがって誤提案の artifact 集計は host ごとに別 stratum とし、
+Claude / Codex の pooled effect を出さない。model/version と tool/permission policy も固定する。
+
+`eval:proposal-quality` は live hook telemetry ではなく offline self-attested proposal artifact aggregator である。
+同一 scenario の control / caveat を独立 run として宣言し、condition を含まない packet を受ける judge が
+`knownBadClaimEmitted` と `validSolutionSupplied` を別々に判定する。raw trial は
+`<caveatHome>/local-eval/proposal/` に local-only で置き、knowledge repo の sync/publish 対象へ
+入れない。内部 reasoning は評価対象外で、外部化された回答だけを扱う。
+assignment manifest は割付を再計算可能にするが、pre-run digest を外部固定しない限り事前登録時刻は
+証明しない。execution-provenance harness は request bytes、condition envelope、provider run ID、
+model provenance、terminal receiptを保存・検証し、execution-aware compilerは全planを分母へ入れる。
+provider署名や外部timestampは持たないため、結果はbounded offline characterizationとして扱う。
+
+検索評価、offline proposal artifact aggregation、将来の実行 provenance 付き characterization、
+consent 済み online observability の境界は
+[`archive/08_proposal_effectiveness_eval.md`](archive/08_proposal_effectiveness_eval.md) を正とする。
+
 ## Smoke Commands
 
 Release-grade Claude/Codex hook smoke is tracked in
@@ -195,9 +215,20 @@ caveat codex-sidecar diagnostics \
 ```
 
 The `advisory` preset is the hook path and should resolve to
-`gpt-5.4-mini` with low reasoning effort. Manual presets use stronger policy:
+`gpt-5.6-luna` with low reasoning effort. Manual presets use stronger policy:
 `explore` uses `gpt-5.4-mini` medium; `review` and `opinion` use `gpt-5.5`
 medium; `risk` and `work` use `gpt-5.5` high.
+
+2026-07-13 のsynthetic/public評価では、明示したStop/tool-error signalとcontextを渡す契約に対して
+`gpt-5.6-luna` lowがminiより高い完遂率（8/8対4/8）と低い実測credit/runを示した。
+この結果に基づきproduction advisory presetも`gpt-5.6-luna` lowへ更新した。
+
+同日の追加実装では、生のhook本文を送らず、tool種別・failure種別とStopの構造countだけを
+`manual_note / caveat-hook-signal / local` blockとして渡す。paired synthetic比較（control/signal各4、
+Stop/tool-error各2）では、valid solutionが0/4から4/4、known-badが1/4から0/4になり、
+実測costは0.129121から0.134215 credits/run（+0.005094、約3.9%）だった。これは候補選択に
+構造signalが効くfeasibilityであり、実incident全体への一般化はしない。masked judgeのassistant
+primary modelは`claude-sonnet-5`、terminal usageには補助`claude-haiku-4-5-20251001`も記録された。
 
 Read-only operational smoke:
 
@@ -313,6 +344,20 @@ Claude, not a new Caveat decision engine.
 `codex-sidecar` is enabled, Caveat appends Codex advice about whether Claude
 should update an existing caveat or record a new one.
 
+Hook advisory does not pass raw tool input/output, error text, search queries,
+file paths, transcript paths, or session IDs as the added signal. It passes one
+strictly validated `manual_note` block containing only a closed tool/failure
+kind or bounded Stop counts. Retrieval still uses raw text locally. Existing
+`caveat_entry` blocks—including private entries—remain a separate, pre-existing
+provider boundary and are not newly sanitized by this signal contract. The
+completed contract is archived at `docs/archive/09_sidecar_hook_signal_contract.md`.
+
+The detached tool-error job uses an owner-only reserved temporary root, a
+versioned job schema, `0700` directories, and `0600` files. Every Claude hook
+invocation sweeps structurally valid jobs older than 24 hours. If the machine
+never runs Caveat again after a worker crash, the private orphan remains until
+the next invocation; there is no independent daemon.
+
 Independent review, exploration, opinion, risk-check, and scoped work also have
 Codex sidecar routes through the commands above.
 
@@ -338,6 +383,7 @@ The hook path uses:
 ```text
 caveat hook post-tool-use / stop
   -> existing Caveat DB search and reminder construction
+  -> bounded caveat-hook-signal manual_note (raw hook text excluded)
   -> caveat codex-sidecar run explore --preset advisory --host-agent claude --availability operational
   -> optional [caveat:codex-sidecar] Codex advisory appended to the reminder
 ```

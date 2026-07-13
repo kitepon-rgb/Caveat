@@ -87,6 +87,96 @@ export interface CaveatSidecarContextBlock {
   };
 }
 
+export type CaveatHookToolKind =
+  | 'bash'
+  | 'edit'
+  | 'write'
+  | 'read'
+  | 'glob'
+  | 'grep'
+  | 'web-search'
+  | 'web-fetch'
+  | 'notebook-edit'
+  | 'other';
+
+export type CaveatHookFailureKind =
+  | 'post-tool-use-failure'
+  | 'error-bearing-post-tool-use';
+
+export type CaveatHookSignal =
+  | { type: 'tool-error'; toolName: unknown; failureKind: CaveatHookFailureKind }
+  | {
+      type: 'stop';
+      toolFailureCount: number;
+      reeditedFileCount: number;
+      webSearchCount: number;
+      webFetchCount: number;
+      bashRetryCount: number;
+      durationMinutes: number;
+    };
+
+export interface CaveatHookSignalSidecarContextBlock {
+  kind: 'manual_note';
+  source: 'caveat-hook-signal';
+  trust: 'local';
+  summary: string;
+  data:
+    | { type: 'tool-error'; tool: CaveatHookToolKind; failure_kind: CaveatHookFailureKind }
+    | {
+        type: 'stop';
+        tool_failure_count: number;
+        reedited_file_count: number;
+        web_search_count: number;
+        web_fetch_count: number;
+        bash_retry_count: number;
+        duration_minutes: number;
+      };
+}
+
+/**
+ * Convert only structural hook observations into a sidecar manual note.
+ * This intentionally has no fields for tool payloads, errors, paths, queries,
+ * transcripts, sessions, or unknown tool names.
+ */
+export function buildHookSignalSidecarContextBlock(
+  signal: CaveatHookSignal,
+): CaveatHookSignalSidecarContextBlock {
+  if (signal.type === 'tool-error') {
+    const tool = normalizeHookToolName(signal.toolName);
+    return {
+      kind: 'manual_note',
+      source: 'caveat-hook-signal',
+      trust: 'local',
+      summary: `Hook signal: ${hookToolLabel(tool)} tool error (${signal.failureKind}).`,
+      data: { type: 'tool-error', tool, failure_kind: signal.failureKind },
+    };
+  }
+
+  const counts = {
+    toolFailureCount: boundedCount(signal.toolFailureCount),
+    reeditedFileCount: boundedCount(signal.reeditedFileCount),
+    webSearchCount: boundedCount(signal.webSearchCount),
+    webFetchCount: boundedCount(signal.webFetchCount),
+    bashRetryCount: boundedCount(signal.bashRetryCount),
+    durationMinutes: boundedCount(signal.durationMinutes),
+  };
+  return {
+    kind: 'manual_note',
+    source: 'caveat-hook-signal',
+    trust: 'local',
+    summary: `Hook signal: ${counts.toolFailureCount} tool failures, ${counts.reeditedFileCount} re-edited files, ${counts.webSearchCount} web searches, ${counts.webFetchCount} web fetches, ${counts.bashRetryCount} Bash retries, ${counts.durationMinutes} elapsed minutes.`,
+    data: {
+      type: 'stop',
+      tool_failure_count: counts.toolFailureCount,
+      reedited_file_count: counts.reeditedFileCount,
+      web_search_count: counts.webSearchCount,
+      web_fetch_count: counts.webFetchCount,
+      bash_retry_count: counts.bashRetryCount,
+      duration_minutes: counts.durationMinutes,
+    },
+  };
+}
+
 export function caveatEntryToSidecarContextBlock(
   entry: GetResult,
 ): CaveatSidecarContextBlock {
@@ -292,4 +382,29 @@ function prefixPath(prefix: string, path: string): string {
 function truncate(value: string, maxLength: number): string {
   if (value.length <= maxLength) return value;
   return `${value.slice(0, maxLength - 1).trimEnd()}...`;
+}
+
+function normalizeHookToolName(value: unknown): CaveatHookToolKind {
+  if (typeof value !== 'string') return 'other';
+  const tools: Record<string, CaveatHookToolKind> = {
+    Bash: 'bash',
+    Edit: 'edit',
+    Write: 'write',
+    Read: 'read',
+    Glob: 'glob',
+    Grep: 'grep',
+    WebSearch: 'web-search',
+    WebFetch: 'web-fetch',
+    NotebookEdit: 'notebook-edit',
+  };
+  return tools[value] ?? 'other';
+}
+
+function hookToolLabel(tool: CaveatHookToolKind): string {
+  return tool === 'web-search' ? 'WebSearch' : tool === 'web-fetch' ? 'WebFetch' : tool === 'notebook-edit' ? 'NotebookEdit' : tool === 'other' ? 'Other' : tool[0]!.toUpperCase() + tool.slice(1);
+}
+
+function boundedCount(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(10000, Math.max(0, Math.floor(value)));
 }

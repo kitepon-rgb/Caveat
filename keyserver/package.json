@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "keyserver-lite — Cloudflare Worker that serves sealed content keys to Caveat community-bundle subscribers (docs/07 Track B). Independent of the pnpm workspace by design.",
+  "description": "keyserver-lite — Cloudflare Worker that serves sealed content keys to Caveat community-bundle subscribers (docs/archive/07 Track B). Independent of the pnpm workspace by design.",
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

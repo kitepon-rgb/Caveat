@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { appendPendingReminder, drainPendingReminders, openDb } from '@caveat/core';
+import { sweepStaleWorkerDirs, workerRoot } from '../src/commands/hookCmd.js';
 
 function runHook(
   name: string,
@@ -34,6 +35,50 @@ function runHook(
 }
 
 describe('Claude hook output', () => {
+  it('sweeps only stale, private worker job directories', () => {
+    const testBase = mkdtempSync(join(tmpdir(), 'caveat-worker-test-'));
+    const reserved = workerRoot(testBase);
+    const stale = mkdtempSync(join(reserved, 'job-'));
+    const fresh = mkdtempSync(join(reserved, 'job-'));
+    const invalid = mkdtempSync(join(reserved, 'job-'));
+    const symlinkTarget = mkdtempSync(join(tmpdir(), 'caveat-stale-target-'));
+    const unrelated = mkdtempSync(join(tmpdir(), 'caveat-unrelated-'));
+    const link = join(reserved, `job-link-${Date.now()}`);
+    try {
+      for (const dir of [stale, fresh, symlinkTarget]) {
+        chmodSync(dir, 0o700);
+        writeFileSync(join(dir, 'job.json'), JSON.stringify({ schemaVersion: 'caveat-worker-job/v1', sessionId: 's', searchText: 'q' }), { encoding: 'utf-8', mode: 0o600 });
+      }
+      chmodSync(invalid, 0o700);
+      writeFileSync(join(invalid, 'job.json'), JSON.stringify({ unexpected: 'not a worker job' }), { encoding: 'utf-8', mode: 0o600 });
+      const old = new Date(Date.now() - 25 * 60 * 60 * 1000);
+      utimesSync(join(stale, 'job.json'), old, old);
+      utimesSync(stale, old, old);
+      utimesSync(join(invalid, 'job.json'), old, old);
+      utimesSync(invalid, old, old);
+      utimesSync(join(symlinkTarget, 'job.json'), old, old);
+      utimesSync(symlinkTarget, old, old);
+      symlinkSync(symlinkTarget, link);
+
+      sweepStaleWorkerDirs(Date.now(), reserved);
+
+      expect(existsSync(stale)).toBe(false);
+      expect(existsSync(fresh)).toBe(true);
+      expect(existsSync(invalid)).toBe(true);
+      expect(existsSync(unrelated)).toBe(true);
+      expect(existsSync(link)).toBe(true);
+      expect(existsSync(symlinkTarget)).toBe(true);
+    } finally {
+      rmSync(stale, { recursive: true, force: true });
+      rmSync(fresh, { recursive: true, force: true });
+      rmSync(invalid, { recursive: true, force: true });
+      rmSync(symlinkTarget, { recursive: true, force: true });
+      rmSync(unrelated, { recursive: true, force: true });
+      rmSync(link, { force: true });
+      rmSync(testBase, { recursive: true, force: true });
+    }
+  });
+
   it('reports query-log failures without interrupting a successful zero-hit search', () => {
     const root = mkdtempSync(join(tmpdir(), 'caveat-claude-query-log-error-'));
     const caveatHome = join(root, 'caveat-home');
@@ -325,6 +370,8 @@ describe('Claude hook output', () => {
         [
           "import { writeFileSync } from 'node:fs';",
           "writeFileSync(process.env.CAVEAT_FAKE_SIDECAR_ARGV, JSON.stringify(process.argv.slice(2)));",
+          "const contextPath = process.argv[process.argv.indexOf('--context-file') + 1];",
+          "writeFileSync(process.env.CAVEAT_FAKE_SIDECAR_CONTEXT, contextPath ? await (await import('node:fs/promises')).readFile(contextPath, 'utf8') : '');",
           "console.log(JSON.stringify({ status: 'ok', summary: 'advisory ok' }));",
         ].join('\n'),
         'utf-8',
@@ -342,6 +389,7 @@ describe('Claude hook output', () => {
           ...process.env,
           CAVEAT_HOME: caveatHome,
           CAVEAT_FAKE_SIDECAR_ARGV: argvFile,
+          CAVEAT_FAKE_SIDECAR_CONTEXT: join(root, 'fake-sidecar-context.json'),
           CAVEAT_CODEX_SIDECAR_NODE_CLI: fakeSidecar,
           CAVEAT_HOOK_CODEX_SIDECAR: 'require',
           HOME: userHome,
@@ -352,6 +400,12 @@ describe('Claude hook output', () => {
       const reminders = drainPendingReminders(caveatHome, 'sess-1');
       expect(reminders.join('\n')).toContain('[caveat:codex-sidecar] Codex advisory:');
       expect(JSON.parse(readFileSync(argvFile, 'utf-8'))).toContain('advisory');
+      const context = readFileSync(join(root, 'fake-sidecar-context.json'), 'utf-8');
+      expect(context).toContain('caveat-hook-signal');
+      expect(context).toContain('tool_failure_count');
+      expect(context).not.toContain('failed');
+      expect(context).not.toContain(transcript);
+      expect(context).not.toContain('sess-1');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

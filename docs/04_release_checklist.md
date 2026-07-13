@@ -130,7 +130,8 @@ Expected:
 Run this after the new Codex session smoke, using the same temporary `HOME`,
 `PATH`, and authenticated `CODEX_HOME`. This proves the Caveat hook advisory
 path reaches `codex-sidecar`, starts Codex App Server with the `advisory`
-preset, and records the intended model policy in the raw App Server log.
+preset, and binds the exact bounded hook-signal block to the matched
+`turn/start` request and completed turn in the raw App Server log.
 
 `codex-sidecar` must be installed on `PATH`, or `CAVEAT_CODEX_SIDECAR_COMMAND`
 must point at the command to use.
@@ -139,6 +140,13 @@ must point at the command to use.
 repo=$(rtk git rev-parse --show-toplevel)
 rtk node "$repo/scripts/codex-sidecar-advisory-smoke.mjs" \
   --repo "$repo" \
+  --surface stop \
+  --caveat-command caveat \
+  --codex-sidecar-command "${CAVEAT_CODEX_SIDECAR_COMMAND:-codex-sidecar}"
+
+rtk node "$repo/scripts/codex-sidecar-advisory-smoke.mjs" \
+  --repo "$repo" \
+  --surface tool-error \
   --caveat-command caveat \
   --codex-sidecar-command "${CAVEAT_CODEX_SIDECAR_COMMAND:-codex-sidecar}"
 ```
@@ -149,6 +157,13 @@ Development path equivalent:
 repo=$(rtk git rev-parse --show-toplevel)
 rtk corepack pnpm smoke:codex-sidecar-advisory -- \
   --repo "$repo" \
+  --surface stop \
+  --caveat-node-cli "$repo/apps/cli/dist/index.js" \
+  --codex-sidecar-node-cli /home/kite/projects/codex-sidecar/packages/cli/dist/index.js
+
+rtk corepack pnpm smoke:codex-sidecar-advisory -- \
+  --repo "$repo" \
+  --surface tool-error \
   --caveat-node-cli "$repo/apps/cli/dist/index.js" \
   --codex-sidecar-node-cli /home/kite/projects/codex-sidecar/packages/cli/dist/index.js
 ```
@@ -160,14 +175,21 @@ diagnostics and pending reminder files are removed after success unless
 Expected:
 
 - Diagnostics report `modelPolicy.source: "explicit"`.
-- `normalizedRequest.model` is `gpt-5.4-mini`.
+- `normalizedRequest.model` is `gpt-5.6-luna`.
 - `normalizedRequest.modelReasoningEffort` is `low`.
 - The hook pending reminder contains `[caveat:codex-sidecar] Codex advisory:`.
+- Both `stop` and `tool-error` surfaces complete independently.
 - The hook pending reminder does not contain `advisory unavailable`.
-- The raw App Server log contains startup args for `model="gpt-5.4-mini"` and
+- The raw App Server log contains startup args for `model="gpt-5.6-luna"` and
   `model_reasoning_effort="low"`.
-- The raw App Server `thread/start` response reports `model: "gpt-5.4-mini"`
+- The raw App Server `thread/start` response reports `model: "gpt-5.6-luna"`
   and `reasoningEffort: "low"`.
+- The matched outbound `turn/start` text contains exactly one canonical
+  `caveat-hook-signal` block for the selected surface.
+- The matched `turn/start` text contains none of the raw error/transcript
+  sentinels or the synthetic session ID.
+- The `turn/start` response and retained `turn/completed` event bind to the
+  same thread and turn IDs.
 
 ## New Claude Session Smoke
 

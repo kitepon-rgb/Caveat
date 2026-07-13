@@ -1,13 +1,18 @@
 import { spawn } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
+  lstatSync,
+  mkdtempSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
-  unlinkSync,
+  realpathSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { createHash, randomBytes } from 'node:crypto';
 import {
@@ -35,6 +40,8 @@ import {
   struggleSearchText,
   toolErrorReminderText,
   userPromptSubmitReminderText,
+  buildHookSignalSidecarContextBlock,
+  type CaveatHookSignalSidecarContextBlock,
   type Logger,
   type HookQuerySurface,
   type SearchResult,
@@ -284,33 +291,46 @@ function isToolError(payload: Record<string, unknown>): boolean {
 }
 
 interface WorkerJob {
+  schemaVersion: 'caveat-worker-job/v1';
   sessionId: string;
   searchText: string;
+  additionalContext?: CaveatHookSignalSidecarContextBlock;
 }
 
 type HookCodexSidecarMode = 'off' | 'auto' | 'require';
+const WORKER_STALE_MS = 24 * 60 * 60 * 1000;
+const WORKER_ROOT = 'caveat-worker-v1';
+const WORKER_MARKER = '.caveat-worker-schema-v1';
 
-function spawnWorker(job: WorkerJob): void {
-  const workFile = join(
-    tmpdir(),
-    `caveat-worker-${Date.now()}-${randomBytes(4).toString('hex')}.json`,
-  );
+function spawnWorker(job: Omit<WorkerJob, 'schemaVersion'>): void {
+  let root: string | undefined;
+  let workDir: string | undefined;
+  let workFile: string | undefined;
   try {
-    writeFileSync(workFile, JSON.stringify(job), 'utf-8');
+    root = workerRoot();
+    sweepStaleWorkerDirs(Date.now(), root);
+    workDir = mkdtempSync(join(root, 'job-'));
+    chmodSync(workDir, 0o700);
+    workFile = join(workDir, `${randomBytes(4).toString('hex')}.json`);
+    writeFileSync(workFile, JSON.stringify({ ...job, schemaVersion: 'caveat-worker-job/v1' }), { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[caveat:hook] worker writefile error: ${msg}\n`);
+    cleanupWorkerDir(workDir, workDir ? dirname(workDir) : undefined);
     return;
   }
   // process.argv[1] is the CLI script path (dist/caveat.js bootstrap).
   // Detached + ignored stdio so parent exits immediately and the worker
   // outlives it without blocking Claude Code.
   const cliScript = process.argv[1];
-  if (!cliScript) return;
+  if (!cliScript) {
+    cleanupWorkerDir(workDir, root);
+    return;
+  }
   try {
     const child = spawn(
       process.execPath,
-      ['--disable-warning=ExperimentalWarning', cliScript, 'hook', 'worker', workFile],
+      ['--disable-warning=ExperimentalWarning', cliScript, 'hook', 'worker', workFile!],
       { detached: true, stdio: 'ignore', windowsHide: true },
     );
     child.unref();
@@ -318,7 +338,7 @@ function spawnWorker(job: WorkerJob): void {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[caveat:hook] worker spawn error: ${msg}\n`);
     try {
-      unlinkSync(workFile);
+      cleanupWorkerDir(workDir, root);
     } catch {
       // ignore
     }
@@ -334,11 +354,7 @@ async function runWorker(workFile: string): Promise<void> {
   } catch {
     process.exit(0);
   }
-  try {
-    unlinkSync(workFile);
-  } catch {
-    // best-effort
-  }
+  cleanupWorkerDir(dirname(workFile), dirname(dirname(workFile)));
   let job: WorkerJob;
   try {
     job = JSON.parse(raw) as WorkerJob;
@@ -359,6 +375,87 @@ async function runWorker(workFile: string): Promise<void> {
     // best-effort; next hook will not drain anything but session continues
   }
   process.exit(0);
+}
+
+function cleanupWorkerDir(workDir: string | undefined, root: string | undefined): void {
+  if (!workDir || !root || !isOwnedWorkerDir(workDir, root)) return;
+  try {
+    rmSync(workDir, { recursive: true, force: true });
+  } catch {
+    // The hook still must not fail when its detached-worker cleanup fails.
+  }
+}
+
+function isOwnedWorkerDir(path: string, root = workerRoot()): boolean {
+  try {
+    const inputStat = lstatSync(path);
+    if (inputStat.isSymbolicLink()) return false;
+    const tmpRoot = realpathSync(root);
+    const resolved = realpathSync(path);
+    const stat = lstatSync(resolved);
+    const uid = typeof process.getuid === 'function' ? process.getuid() : undefined;
+    return dirname(resolved) === tmpRoot
+      && basename(resolved).startsWith('job-')
+      && stat.isDirectory()
+      && !stat.isSymbolicLink()
+      && (stat.mode & 0o077) === 0
+      && (uid === undefined || stat.uid === uid);
+  } catch {
+    return false;
+  }
+}
+
+export function sweepStaleWorkerDirs(now = Date.now(), root = workerRoot()): void {
+  let entries: string[];
+  try {
+    entries = readdirSync(root);
+  } catch {
+    process.stderr.write('[caveat:hook] worker stale cleanup failed\n');
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.startsWith('job-')) continue;
+    const path = join(root, entry);
+    try {
+      if (!isOwnedWorkerDir(path, root)) continue;
+      const stat = lstatSync(path);
+      if (now - stat.mtimeMs <= WORKER_STALE_MS || !isStaleWorkerJobDir(path)) continue;
+      rmSync(path, { recursive: true, force: true });
+    } catch {
+      process.stderr.write('[caveat:hook] worker stale cleanup failed\n');
+    }
+  }
+}
+
+export function workerRoot(base = tmpdir()): string {
+  const root = join(base, WORKER_ROOT);
+  mkdirSync(root, { recursive: true, mode: 0o700 });
+  const stat = lstatSync(root);
+  const uid = typeof process.getuid === 'function' ? process.getuid() : undefined;
+  if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 || (uid !== undefined && stat.uid !== uid)) throw new Error('worker root is unsafe');
+  const marker = join(root, WORKER_MARKER);
+  try { writeFileSync(marker, 'caveat-worker/v1\n', { mode: 0o600, flag: 'wx' }); } catch (error) { if (!(error && typeof error === 'object' && 'code' in error && error.code === 'EEXIST')) throw error; }
+  const markerStat = lstatSync(marker);
+  if (!markerStat.isFile() || markerStat.isSymbolicLink() || (markerStat.mode & 0o077) !== 0 || (uid !== undefined && markerStat.uid !== uid) || readFileSync(marker, 'utf-8') !== 'caveat-worker/v1\n') throw new Error('worker root marker is invalid');
+  return root;
+}
+
+function isStaleWorkerJobDir(path: string): boolean {
+  const entries = readdirSync(path);
+  if (entries.length !== 1 || !entries[0]!.endsWith('.json')) return false;
+  const file = join(path, entries[0]!);
+  const stat = lstatSync(file);
+  const uid = typeof process.getuid === 'function' ? process.getuid() : undefined;
+  if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 || (uid !== undefined && stat.uid !== uid)) return false;
+  return isWorkerJob(JSON.parse(readFileSync(file, 'utf-8')) as unknown);
+}
+
+function isWorkerJob(value: unknown): value is WorkerJob {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const job = value as Record<string, unknown>;
+  const keys = Object.keys(job).sort();
+  if (!(keys.length === 3 && keys.join(',') === 'schemaVersion,searchText,sessionId') && !(keys.length === 4 && keys.join(',') === 'additionalContext,schemaVersion,searchText,sessionId')) return false;
+  return job.schemaVersion === 'caveat-worker-job/v1' && typeof job.sessionId === 'string' && typeof job.searchText === 'string' && (job.additionalContext === undefined || (job.additionalContext !== null && typeof job.additionalContext === 'object' && !Array.isArray(job.additionalContext)));
 }
 
 function writeLastReindex(caveatHome: string, value: Record<string, unknown>): void {
@@ -459,6 +556,7 @@ function buildToolErrorReminder(job: WorkerJob, hits: SearchResult[]): string {
       'Use the provided Caveat context to give concise next-step advice.',
       'Do not tell Claude to search Caveat again unless the context is insufficient.',
     ].join(' '),
+    additionalContext: job.additionalContext,
   });
   if (advisory.status === 'ok') {
     return [
@@ -501,9 +599,18 @@ function buildStopReminder(
     projectRoot,
     prompt: [
       'A Claude Code session is ending after objective struggle signals.',
-      'Use the provided Caveat context and the signal text to advise whether Claude should update an existing caveat or record a new one.',
+      'Use the provided Caveat context and structured hook signal context to advise whether Claude should update an existing caveat or record a new one.',
       'Be concise and preserve Caveat visibility rules.',
     ].join(' '),
+    additionalContext: buildHookSignalSidecarContextBlock({
+      type: 'stop',
+      toolFailureCount: signals.toolFailureCount,
+      reeditedFileCount: signals.fileEditCounts.length,
+      webSearchCount: signals.webSearchCount,
+      webFetchCount: signals.webFetchCount,
+      bashRetryCount: signals.bashRetryCount,
+      durationMinutes: signals.durationMinutes,
+    }),
   });
 
   if (advisory.status === 'ok') {
@@ -524,6 +631,7 @@ function buildStopReminder(
 }
 
 export async function runHook(name: HookName, arg?: string): Promise<void> {
+  try { sweepStaleWorkerDirs(); } catch { process.stderr.write('[caveat:hook] worker stale cleanup failed\n'); }
   if (name === 'reindex') {
     await runReindexWorker();
     process.exit(0);
@@ -575,7 +683,15 @@ export async function runHook(name: HookName, arg?: string): Promise<void> {
       payload.tool_response ?? payload.toolResponse ?? payload.error ?? payload,
     );
     if (errText) {
-      spawnWorker({ sessionId, searchText: errText });
+      const failureKind = payload.hook_event_name === 'PostToolUseFailure'
+        ? 'post-tool-use-failure'
+        : 'error-bearing-post-tool-use';
+      const additionalContext = buildHookSignalSidecarContextBlock({
+        type: 'tool-error',
+        toolName: payload.tool_name ?? payload.toolName,
+        failureKind,
+      });
+      spawnWorker({ sessionId, searchText: errText, ...(additionalContext ? { additionalContext } : {}) });
     }
     process.exit(0);
   }

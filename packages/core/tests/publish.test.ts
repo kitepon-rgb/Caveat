@@ -390,7 +390,7 @@ describe('publishOwn (sealed local bare mirror)', { timeout: GIT_TEST_TIMEOUT_MS
     await expect(publishOwn({
       ...publishArgs(),
       config: { ...fixture.config, sealedKeyserverUrl: null },
-    })).rejects.toThrow(/sealedKeyserverUrl is not configured.*keyserver.*docs\/07/i);
+    })).rejects.toThrow(/sealedKeyserverUrl is not configured.*keyserver.*docs\/archive\/07/i);
   });
 
   it('normalizes keyserverUrl before sealing so a trailing-slash-only config diff stays a no-op', async () => {

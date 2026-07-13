@@ -304,7 +304,7 @@ function readExistingMirror(mirrorDir: string): { readme: string | null; bundle:
 export async function publishOwn(opts: PublishOwnOptions): Promise<PublishResult> {
   if (!opts.config.publishTarget) throw new Error('publishTarget is not configured');
   if (!opts.config.sealedKeyserverUrl) {
-    throw new Error('sealedKeyserverUrl is not configured; deploy a keyserver and set sealedKeyserverUrl in ~/.caveatrc.json. See docs/07 Track B.');
+    throw new Error('sealedKeyserverUrl is not configured; deploy a keyserver and set sealedKeyserverUrl in ~/.caveatrc.json. See docs/archive/07 Track B.');
   }
   const collected = collectPublishSet(opts.paths.entriesDir);
   if (collected.invalid.length) throw new Error(`cannot publish invalid entries:\n${collected.invalid.map((x) => `${x.relPath}: ${x.reason}`).join('\n')}`);

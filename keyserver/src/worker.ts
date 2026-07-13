@@ -1,7 +1,7 @@
 /**
  * keyserver-lite — Cloudflare Worker
  *
- * docs/07 Track B の実装。クライアント契約は
+ * docs/archive/07 Track B の実装。クライアント契約は
  * packages/core/src/sealedKeys.ts の `fetchKey`（同ファイル L137-165）に厳密に従う:
  *
  *   - リクエスト: GET <keyserverUrl>/v1/keys/<encodeURIComponent(bareId)>

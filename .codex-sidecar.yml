@@ -44,7 +44,7 @@ presets:
   advisory:
     workflow: explore
     readonly: true
-    model: gpt-5.4-mini
+    model: gpt-5.6-luna
     model_reasoning_effort: low
     prompt: "Return concise Caveat hook advisory with concrete next steps."
   review:

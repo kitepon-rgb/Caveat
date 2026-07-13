@@ -382,6 +382,7 @@ codexSidecar
   .option('--command <command>', 'codex-sidecar executable', 'codex-sidecar')
   .option('--node-cli <path>', 'development path to codex-sidecar CLI JS')
   .option('--save-result <path>', 'write structured SidecarResult JSON to this path')
+  .option('--additional-context-file <path>', 'strictly validated bounded hook-signal context file')
   .action(
     (
       workflow: string,
@@ -402,6 +403,7 @@ codexSidecar
         command?: string;
         nodeCli?: string;
         saveResult?: string;
+        additionalContextFile?: string;
       },
     ) => {
       const normalized =

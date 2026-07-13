@@ -1,7 +1,7 @@
 # keyserver-lite
 
 Caveat の封緘公開層（sealed public tier）向け、鍵配布専用の最小 Cloudflare Worker。
-設計は [docs/07_sealed_public_and_autosync.md](../docs/07_sealed_public_and_autosync.md) の
+設計は [docs/archive/07_sealed_public_and_autosync.md](../docs/archive/07_sealed_public_and_autosync.md) の
 Track B。**このディレクトリは repo ルートの pnpm workspace（`pnpm-workspace.yaml`）に含まれない
 独立パッケージ**。`corepack pnpm -r test` / `-r build` の対象外で、依存も本体側 `@caveat/*` を
 一切持たない。
@@ -71,7 +71,7 @@ publish されたもの）の読み取りを壊さない。
 
 守らないもの: **動機ある人間の解析**。この Worker は無認証で誰でも鍵を取得できる。
 Caveat の手順（`GET /v1/keys/<id>`）を再現すれば、人間は封緘バンドルを復号できる。
-これは意図した設計であり、バグではない（詳細は docs/07 の「脅威モデル」節）。
+これは意図した設計であり、バグではない（詳細は `docs/archive/07_sealed_public_and_autosync.md` の「脅威モデル」節）。
 
 本物のアクセス制御が必要になった場合は、下記「将来の昇格経路」でトークン制へ移行できる。
 それまでは、この Worker は「静的コンテンツを平文で置かない」ための最小限の摩擦として機能する。

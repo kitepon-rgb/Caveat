@@ -4,6 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクトの状態
 
+**未リリース（2026-07-13）**。Codex sidecar advisoryのproduction presetを、synthetic/publicの
+Stop・tool-error各4 independent runsで8/8完遂、known-bad 0、有効解8/8、miniより低い
+実測credits/runを示した`gpt-5.6-luna` lowへ更新。hookからは生error/search/path/sessionを送らず、
+閉じたtool/failure種別とStop countだけをstrictな`caveat-hook-signal` blockとして渡す。
+paired synthetic比較（control/signal各4）では有効解0/4→4/4、known-bad 1/4→0/4、
+追加cost +0.005094 credits/run（約3.9%）。実incident一般への外挿はしない（正典:
+[docs/archive/09_sidecar_hook_signal_contract.md](docs/archive/09_sidecar_hook_signal_contract.md)）。初回behavioral
+characterizationはbounded authorization scenario 1件を`gpt-5.6-sol` / `claude-sonnet-5`で
+control/caveat各2 run実行し、両hostともcontrol時点からsafe-and-useful 2/2、known-bad 0/2で
+差0。天井効果のため害も増分効果も未観測で、一般化はしない。
+
 **v0.15.0**（2026-07-11、272 tests passing、全 workspace typecheck passing）。**共有を製品化し、索引を自己修復にした（設計正典は [docs/06_sharing_and_reindex.md](docs/06_sharing_and_reindex.md)）**。(1) **visibility の定義を「配布範囲の上限」に更新** — `private` = 保有境界内（個人の全端末・組織 = 同じ private remote を push/pull できる人たち）、`public` = 世界。core の未指定フォールバックは `public` → `private` に変更（MCP は依然 zod 必須）。(2) **`caveat sync`** — own を private remote と同期。実効 push URL（`get-url --push --all`、insteadOf 適用後）を匿名可読 probe（credential 無しで smart-HTTP info/refs を GET）し、**anonymous-readable なら無条件拒否**（多重 pushurl・credential 埋め込み URL・403 の WAF 誤検知まで敵対的検証で塞いだ）。未設定時は `gh` で `<user>/Caveat-Private` を確認 1 回で自動作成。(3) **`caveat publish`** — `visibility: public` のみを `<user>/Caveat-Public` へ一方向全置換ミラー（`.git` 以外を全消し → public のみ再配置 → ミラー全ツリーを再検証、invalid 1 件で全体中止、TOCTOU 排除で検査済み bytes を持ち回り）。(4) **自動再索引** — Stop hook が entries ツリーの (source, relpath, mtime, size) ダイジェスト変化を検知し detached worker で全 source 再走査（他端末から git 同期されたエントリが hook・検索に載らなかった問題の恒久対策。`CAVEAT_INDEX_AUTOSYNC=off` で無効化）。(5) `caveat community add <username>` が裸ユーザー名を `<name>/Caveat-Public` に展開。source_project は引き続き null 固定（01_plan の cwd 自動推定は廃案として清算済み）。
 
 **v0.14.8**（2026-05-08 公開、259 tests passing、全 workspace typecheck passing）。**`<caveatHome>/pending/<sessionId>/` の自動掃除を追加**。Stop hook 冒頭で `maybeSweepPendingDirs` を 1 日デバウンスで呼び、最新 mtime が 7 日以上前のサブツリーを丸ごと削除する。マーカー `<caveatHome>/pending/.last-sweep` で同日中の連続発火をスキップ、`CAVEAT_PENDING_SWEEP=off` で完全停止。`caveat init` も belt-and-suspenders で同じ sweep を呼ぶ（`--pending-stale-days <n>` で閾値上書き、dry-run は予告ログのみ）。アクティブセッションは append/drain で mtime が更新されるため回収されない。
@@ -76,6 +87,14 @@ corepack pnpm --filter caveat-cli build            # CLI ビルド（bundle + wo
 corepack pnpm --filter @caveat/mcp test            # MCP tool-handler tests（8 tests）
 corepack pnpm --filter @caveat/web test            # Web tests（17 tests）
 corepack pnpm -r build                             # 全 workspace パッケージをビルド
+node scripts/pnpm.mjs eval:hook-search             # private golden による hook 検索 characterization
+node scripts/pnpm.mjs prepare:proposal-review      # local-only masked review packet を生成
+node scripts/pnpm.mjs prepare:proposal-execution   # local-only execution plan を生成（モデル未呼出し）
+node scripts/pnpm.mjs run:proposal-execution       # 承認済み plan を実行し terminal receipt を生成
+node scripts/pnpm.mjs test:proposal-execution      # fake CLI だけで execution harness をE2E検証
+node scripts/pnpm.mjs prepare:proposal-execution-review # completed outcomeだけのmasked review packetを生成
+node scripts/pnpm.mjs eval:proposal-execution      # 全plan分母のexecution-aware評価を集計
+node scripts/pnpm.mjs eval:proposal-quality        # local-only masked judgment artifact を検証・集計
 
 # ローカルで配布形態をテスト:
 cd apps/cli && corepack pnpm pack                  # caveat-cli-0.x.y.tgz を生成
@@ -91,6 +110,26 @@ node apps/cli/dist/caveat.js mcp-server            # MCP stdio（手動テスト
 
 単一テストファイル: `corepack pnpm --filter @caveat/core test -- tests/env.test.ts`
 単一 describe/it: `corepack pnpm --filter @caveat/core test -- -t "envMatch"`
+
+### 評価レーンの分離
+
+検索精度とモデル行動を同じ指標へ混ぜない。`eval:hook-search` は query から関連 entry を
+返せるかを測る offline retrieval characterization、`eval:proposal-quality` は固定 scenario と
+固定 reminder の control / caveat 成果物を masked review で検証・集計する
+offline self-attested proposal artifact aggregator である。
+後者は host / model / policy ごとに分離し、known-bad claim rate と valid solution rate を同時に
+測る。live task の warning holdout や raw transcript の常時保存は行わず、online effectiveness は
+提示・回答・訂正・結果を結ぶ同意済み観測が実装されるまで名乗らない。
+assignment manifest は割付の内部整合性を再計算するが事前登録時刻までは証明しないため、
+pre-run digest を外部固定していない値を因果効果とは呼ばない。execution-provenance harness は
+request bytes、condition envelope、provider run ID、model provenance、terminal receiptを保存・検証し、
+execution-aware compilerは全planを分母へ入れる。ただしprovider署名や外部timestampは持たないため、
+結果はbounded offline characterizationとして扱い、実利用全体へ一般化しない。
+
+proposal evaluation artifact は knowledge repo ではなく
+`<caveatHome>/local-eval/proposal/{scenarios,policies,assignments,trials,review-packets,judgments}.jsonl` に置く。runner は親 directory `0700`、
+file `0600` を fail-closed で要求し、stdout へは digest と集計だけを出す。契約と非目標は
+[docs/archive/08_proposal_effectiveness_eval.md](docs/archive/08_proposal_effectiveness_eval.md) を正とする。
 
 Project-local `.claude/settings.json` は端末固有の permission allowlist なので repo には作らない。必要な場合は Claude Code の fewer-permission-prompts 生成手順でローカル作成し、既存の `**/.claude/` ignore のまま管理する。
 

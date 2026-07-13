@@ -4,8 +4,32 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ## Unreleased
 
+## [0.16.0] — 2026-07-13
+
+### Added
+- **Sealed public bundles.** `caveat publish` now emits a deterministic AES-256-GCM bundle instead of a plaintext entry tree; community indexing decrypts in memory without materializing plaintext files. A separately deployed keyserver-lite Worker supplies versioned content keys.
+- **Stop-triggered automatic sync.** Detached autosync pulls community sources, syncs the private own repository, and reindexes without blocking the agent. Repeated own-sync failures pause automatic retries until a successful manual sync.
+- **One-step initialization.** `caveat init` can configure the own repository, sync/publish targets, Claude integration, and Codex hooks while reporting the resulting environment.
+- **Outbound publish inspection and retrieval measurement.** Public publishing scans for identifiers before release, and repository tooling can characterize hook-search quality against local-only golden data.
+- Repository-local proposal evaluation and execution-provenance tooling, including synthetic evaluation coverage.
+- Luna low-effort sidecar advisory policy with advisory smoke coverage.
+
+### Changed
+- Public mirrors are rebuilt as a one-commit sealed snapshot; community pull follows orphan force-push replacements safely.
+- Git operations use bounded inactivity timeouts and non-interactive credential behavior.
+- Bounded hook signal handling and worker temporary-file/context handling were strengthened.
+
+### Fixed
+- Community entries cannot be modified through the own-entry update path, and sidecar context no longer claims a plaintext file path for sealed community entries.
+- Codex Stop hooks receive the same pending-directory maintenance and autosync triggers as the Claude path.
+
+### Security
+- Publish performs a fail-closed content scan before sealed output, and the production public repository was purged and recreated as a sealed one-commit mirror. Previously cloned or archived plaintext cannot be retroactively erased.
+- Hook sidecar input excludes raw errors, queries, paths, transcript paths, and session IDs; detached worker jobs use owner-only directories/files and a versioned schema.
+
 ### Migration Notes
-- v0.15 and older clients can permanently fail `community pull` against sealed public repos after an orphan force-push, often as `unrelated histories`; upgrade `caveat-cli` before subscribing to sealed community bundles.
+- Existing publishers must deploy the keyserver-lite Worker (or provide an equivalent compatible endpoint), keep the content key in Worker KV, and set `sealedKeyserverUrl` plus the matching `sealedKeyId` in `~/.caveatrc.json`. `caveat publish` fails closed until this is configured; see `keyserver/README.md` and `docs/archive/07_sealed_public_and_autosync.md`.
+- v0.15 and older clients can permanently fail `community pull` against sealed public repos after an orphan force-push, often as `unrelated histories`; upgrade to v0.16 before subscribing to sealed community bundles.
 
 ## [0.15.0] — 2026-07-11
 

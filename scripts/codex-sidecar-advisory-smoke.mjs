@@ -13,9 +13,12 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-const DEFAULT_MODEL = 'gpt-5.4-mini';
+const DEFAULT_MODEL = 'gpt-5.6-luna';
 const DEFAULT_REASONING_EFFORT = 'low';
 const SESSION_ID = 'sidecar-smoke';
+const TOOL_ERROR_SEARCH_TEXT = 'Codex sidecar tool error smoke command failed with exit code 77 sentinel';
+const RAW_STOP_SENTINEL = 'RAW_STOP_PRIVATE_SENTINEL_DO_NOT_FORWARD';
+const RAW_TOOL_SENTINEL = 'RAW_TOOL_PRIVATE_SENTINEL_DO_NOT_FORWARD';
 
 const options = parseArgs(process.argv.slice(2));
 const root = mkdtempSync(`${tmpdir()}/caveat-sidecar-advisory-smoke-`);
@@ -37,7 +40,7 @@ try {
             {
               type: 'tool_result',
               is_error: true,
-              content: 'release smoke failure for Caveat Codex sidecar advisory',
+              content: `release smoke failure for Caveat Codex sidecar advisory ${RAW_STOP_SENTINEL}`,
             },
           ],
         },
@@ -73,23 +76,8 @@ try {
     'normalizedRequest.modelReasoningEffort',
   );
 
-  runCaveat(
-    ['hook', 'stop'],
-    {
-      input: JSON.stringify({
-        session_id: SESSION_ID,
-        transcript_path: transcript,
-        hook_event_name: 'Stop',
-        stop_hook_active: false,
-      }),
-      env: {
-        ...sidecarEnv(),
-        CAVEAT_HOME: caveatHome,
-        CAVEAT_HOOK_CODEX_SIDECAR: 'require',
-        CAVEAT_HOOK_CODEX_SIDECAR_TIMEOUT_MS: String(options.timeoutMs),
-      },
-    },
-  );
+  if (options.surface === 'stop') runStopSmoke();
+  else runToolErrorSmoke();
 
   const pending = findPendingReminder(caveatHome);
   const reminder = readFileSync(pending, 'utf8');
@@ -110,6 +98,7 @@ try {
     JSON.stringify(
       {
         status: 'ok',
+        surface: options.surface,
         repo: options.repo,
         model: DEFAULT_MODEL,
         modelReasoningEffort: DEFAULT_REASONING_EFFORT,
@@ -145,6 +134,7 @@ function parseArgs(args) {
       'CAVEAT_HOOK_CODEX_SIDECAR_TIMEOUT_MS',
     ),
     keepTemp: false,
+    surface: 'stop',
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -163,6 +153,11 @@ function parseArgs(args) {
       parsed.codexSidecarNodeCli = resolve(requireValue(args, (index += 1), arg));
     } else if (arg === '--timeout-ms') {
       parsed.timeoutMs = positiveInteger(requireValue(args, (index += 1), arg), arg);
+    } else if (arg === '--surface') {
+      parsed.surface = requireValue(args, (index += 1), arg);
+      if (!['stop', 'tool-error'].includes(parsed.surface)) {
+        throw new Error('--surface must be stop or tool-error');
+      }
     } else if (arg === '--keep-temp') {
       parsed.keepTemp = true;
     } else if (arg === '--help' || arg === '-h') {
@@ -174,6 +169,80 @@ function parseArgs(args) {
   }
 
   return parsed;
+}
+
+function hookEnv() {
+  return {
+    ...sidecarEnv(),
+    CAVEAT_HOME: caveatHome,
+    CAVEAT_HOOK_CODEX_SIDECAR: 'require',
+    CAVEAT_HOOK_CODEX_SIDECAR_TIMEOUT_MS: String(options.timeoutMs),
+    CAVEAT_INDEX_AUTOSYNC: 'off',
+    CAVEAT_AUTO_SYNC: 'off',
+  };
+}
+
+function runStopSmoke() {
+  runCaveat(
+    ['hook', 'stop'],
+    {
+      input: JSON.stringify({
+        session_id: SESSION_ID,
+        transcript_path: transcript,
+        hook_event_name: 'Stop',
+        stop_hook_active: false,
+      }),
+      env: hookEnv(),
+    },
+  );
+}
+
+function runToolErrorSmoke() {
+  const own = join(caveatHome, 'own', 'entries');
+  mkdirSync(own, { recursive: true });
+  writeFileSync(
+    join(own, 'codex-sidecar-tool-error-smoke.md'),
+    `---
+id: codex-sidecar-tool-error-smoke
+title: 'Codex sidecar tool error smoke command exits 77'
+visibility: private
+confidence: reproduced
+outcome: resolved
+tags: [codex-sidecar, tool-error, smoke]
+environment:
+  caveat: synthetic-smoke
+source_project: null
+source_session: synthetic-smoke
+created_at: 2026-07-13
+updated_at: 2026-07-13
+last_verified: 2026-07-13
+---
+
+## Symptom
+The synthetic Codex sidecar tool error smoke command failed with exit code 77 sentinel.
+
+## Resolution
+Inspect the failing command and its exact error before retrying.
+`,
+    'utf8',
+  );
+  runCaveat(['index', '--full'], { env: hookEnv() });
+  runCaveat(
+    ['hook', 'post-tool-use'],
+    {
+      input: JSON.stringify({
+        session_id: SESSION_ID,
+        hook_event_name: 'PostToolUseFailure',
+        tool_name: 'Bash',
+        tool_input: { command: 'synthetic command is local-only' },
+        tool_response: {
+          is_error: true,
+          stderr: `${TOOL_ERROR_SEARCH_TEXT} ${RAW_TOOL_SENTINEL}`,
+        },
+      }),
+      env: hookEnv(),
+    },
+  );
 }
 
 function runCaveat(args, runOptions = {}) {
@@ -222,14 +291,17 @@ function sidecarCliArgs() {
 
 function findPendingReminder(home) {
   const pendingDir = `${home}/pending/${SESSION_ID}`;
-  if (!existsSync(pendingDir)) {
-    throw new Error(`pending reminder directory does not exist: ${pendingDir}`);
+  const deadline = Date.now() + options.timeoutMs;
+  while (Date.now() < deadline) {
+    if (existsSync(pendingDir)) {
+      const [first] = listFiles(pendingDir)
+        .filter((path) => path.endsWith('.txt'))
+        .sort();
+      if (first) return first;
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
   }
-  const [first] = listFiles(pendingDir)
-    .filter((path) => path.endsWith('.txt'))
-    .sort();
-  if (!first) throw new Error(`pending reminder file does not exist under ${pendingDir}`);
-  return first;
+  throw new Error(`pending reminder file does not exist under ${pendingDir}`);
 }
 
 function listFiles(dir) {
@@ -247,9 +319,17 @@ function rawEventLogRef(reminder) {
 }
 
 function verifyRawLog(path) {
+  const raw = readFileSync(path, 'utf8');
   let startupOk = false;
-  let threadOk = false;
-  for (const line of readFileSync(path, 'utf8').trim().split(/\n/)) {
+  let threadRequestId;
+  let threadId;
+  let effectivePolicyOk = false;
+  let turnRequestId;
+  let turnId;
+  let turnInputOk = false;
+  let turnCompleted = false;
+  const expectedBlock = JSON.stringify(expectedHookSignalBlock());
+  for (const line of raw.trim().split(/\n/)) {
     const entry = JSON.parse(line);
     if (entry.event === 'process/start') {
       const args = entry.data?.args ?? [];
@@ -257,13 +337,86 @@ function verifyRawLog(path) {
         args.includes(`model="${DEFAULT_MODEL}"`) &&
         args.includes(`model_reasoning_effort="${DEFAULT_REASONING_EFFORT}"`);
     }
+    if (entry.event === 'request/send' && entry.direction === 'outbound') {
+      if (entry.data?.method === 'thread/start') {
+        threadRequestId = entry.data.id;
+      } else if (entry.data?.method === 'turn/start') {
+        if (!threadId || entry.data?.params?.threadId !== threadId) continue;
+        turnRequestId = entry.data.id;
+        const input = entry.data?.params?.input;
+        const text = Array.isArray(input) && input.length === 1 && input[0]?.type === 'text'
+          ? input[0].text
+          : undefined;
+        if (typeof text === 'string') {
+          turnInputOk = countOccurrences(text, expectedBlock) === 1 &&
+            countOccurrences(text, '"source":"caveat-hook-signal"') === 1 &&
+            ![RAW_STOP_SENTINEL, RAW_TOOL_SENTINEL, SESSION_ID].some((value) => text.includes(value));
+        }
+      }
+    }
     if (entry.event === 'message/receive' && typeof entry.data?.line === 'string') {
-      threadOk ||= entry.data.line.includes(`"model":"${DEFAULT_MODEL}"`) &&
-        entry.data.line.includes(`"reasoningEffort":"${DEFAULT_REASONING_EFFORT}"`);
+      const message = JSON.parse(entry.data.line);
+      if (message.id === threadRequestId) {
+        threadId = message.result?.thread?.id;
+        effectivePolicyOk = typeof threadId === 'string' &&
+          message.result?.model === DEFAULT_MODEL &&
+          message.result?.reasoningEffort === DEFAULT_REASONING_EFFORT;
+      } else if (message.id === turnRequestId) {
+        turnId = message.result?.turn?.id;
+      }
+    }
+    if (entry.event === 'notification/retained' && entry.data?.method === 'turn/completed') {
+      turnCompleted ||= entry.data?.params?.threadId === threadId &&
+        entry.data?.params?.turn?.id === turnId &&
+        entry.data?.params?.turn?.status === 'completed';
     }
   }
   if (!startupOk) throw new Error('raw log does not contain advisory startup model policy');
-  if (!threadOk) throw new Error('raw log does not contain advisory thread model policy');
+  if (!effectivePolicyOk) throw new Error('thread/start response does not confirm effective advisory model policy');
+  if (!turnInputOk) throw new Error('turn/start request does not contain the exact bounded hook signal context');
+  if (!turnId || !turnCompleted) throw new Error('hook signal turn did not complete on the matched thread and turn');
+}
+
+function countOccurrences(text, needle) {
+  if (needle.length === 0) return 0;
+  let count = 0;
+  let offset = 0;
+  while ((offset = text.indexOf(needle, offset)) !== -1) {
+    count += 1;
+    offset += needle.length;
+  }
+  return count;
+}
+
+function expectedHookSignalBlock() {
+  if (options.surface === 'tool-error') {
+    return {
+      kind: 'manual_note',
+      source: 'caveat-hook-signal',
+      trust: 'local',
+      summary: 'Hook signal: Bash tool error (post-tool-use-failure).',
+      data: {
+        type: 'tool-error',
+        tool: 'bash',
+        failure_kind: 'post-tool-use-failure',
+      },
+    };
+  }
+  return {
+    kind: 'manual_note',
+    source: 'caveat-hook-signal',
+    trust: 'local',
+    summary: 'Hook signal: 1 tool failures, 0 re-edited files, 0 web searches, 0 web fetches, 0 Bash retries, 0 elapsed minutes.',
+    data: {
+      type: 'stop',
+      tool_failure_count: 1,
+      reedited_file_count: 0,
+      web_search_count: 0,
+      web_fetch_count: 0,
+      bash_retry_count: 0,
+      duration_minutes: 0,
+    },
+  };
 }
 
 function readJson(path) {
@@ -298,6 +451,7 @@ Options:
   --codex-sidecar-command <command>   codex-sidecar command on PATH
   --codex-sidecar-node-cli <path>     development path to codex-sidecar CLI JS
   --timeout-ms <ms>                   hook advisory timeout (default: 240000)
+  --surface <stop|tool-error>         hook surface to verify (default: stop)
   --keep-temp                         keep temporary CAVEAT_HOME files
 `);
 }

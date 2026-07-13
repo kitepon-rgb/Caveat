@@ -1,7 +1,8 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { CaveatHookSignalSidecarContextBlock } from '@caveat/core';
 
 export type CodexSidecarAdvisory =
   | { status: 'ok'; summary: string; rawEventLogRef?: string }
@@ -37,6 +38,7 @@ export function runCodexSidecarAdvisory(input: {
   limit: number;
   projectRoot: string;
   prompt: string;
+  additionalContext?: CaveatHookSignalSidecarContextBlock | null;
 }): CodexSidecarAdvisory {
   const cliScript = process.argv[1];
   if (!cliScript) {
@@ -68,6 +70,11 @@ export function runCodexSidecarAdvisory(input: {
     resultDir = mkdtempSync(join(tmpdir(), 'caveat-codex-advisory-'));
     const resultFile = join(resultDir, 'result.json');
     args.push('--save-result', resultFile);
+    if (input.additionalContext) {
+      const additionalContextFile = join(resultDir, 'hook-signal.json');
+      writeFileSync(additionalContextFile, JSON.stringify({ context: [input.additionalContext] }) + '\n', { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
+      args.push('--additional-context-file', additionalContextFile);
+    }
 
     const nodeCli = process.env.CAVEAT_CODEX_SIDECAR_NODE_CLI;
     if (nodeCli) {
@@ -120,7 +127,7 @@ export function runCodexSidecarAdvisory(input: {
   } finally {
     if (resultDir) {
       try {
-        rmSync(resultDir, { recursive: true, force: true });
+        rmSync(resultDir, { recursive: true });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         advisory = {
