@@ -1,9 +1,9 @@
 # BugHub factory integration
 
 作成: 2026-07-13
-状態: 実装完了・`0.16.3`公開待ち
+状態: 完了・`0.16.3`公開済み（2026-07-13）
 上位計画: `kitepon-rgb/dotagents` の `docs/plan_bughub-factory-integration.md`
-公開予定版: `caveat-cli@0.16.3`
+公開版: `caveat-cli@0.16.3`
 
 ## 目的
 
@@ -25,6 +25,8 @@ dotagents は Caveat の DB や設定を直接解釈せず、この公開入口�
 - [x] telemetry store故障で本来のCaveat処理を止めず、固定stderrとdiagnosticsで故障を観測できる
 - [x] dotagents adapterがCaveat diagnostics/runtime error snapshotを厳密検証し、BugHub accepted後だけackする
 - [x] Caveatとdotagentsのfixture、full gate、独立反証を通し、repo別に独立commit/pushする
+- [x] 公開commit `8f06d17` のCI `29238199765`をgreenにし、npm `latest`、annotated tag / GitHub Releaseを公開する
+- [x] registry由来隔離installで`caveat --version`、`factory-diagnostics --json`の正常な`not_ready`終了、runtime snapshotを確認する
 
 ## 固定する公開契約
 
