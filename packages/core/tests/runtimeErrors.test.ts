@@ -37,7 +37,7 @@ function childExit(childProcess: ReturnType<typeof spawn>) {
   });
 }
 
-describe('runtime errors', () => {
+describe('runtime errors', { timeout: process.platform === 'win32' ? 30_000 : 5_000 }, () => {
   it('is strictly opt-in and creates no state while disabled', () => {
     const root = mkdtempSync(join(tmpdir(), 'caveat-runtime-')); const e = env(root, false);
     expect(runtimeCollectionEnabled(e)).toBe(false); recordRuntimeError(definition, { env: e });
@@ -90,7 +90,7 @@ describe('runtime errors', () => {
     const root = mkdtempSync(join(tmpdir(), 'caveat-runtime-')); expect(() => recordRuntimeError('CAVEAT.NOPE' as any, { env: env(root, true) })).toThrow();
   });
   it('projects unavailable store diagnostics without throwing', () => {
-    const root = mkdtempSync(join(tmpdir(), 'caveat-runtime-')); const e = env(root, true); const path = runtimeErrorsStatePath(e); mkdirSync(join(root, 'state', 'caveat'), { recursive: true }); writeFileSync(path, '{bad');
+    const root = mkdtempSync(join(tmpdir(), 'caveat-runtime-')); const e = env(root, true); const path = runtimeErrorsStatePath(e); mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, '{bad');
     expect(runtimeErrorsDiagnostics({ env: e })).toMatchObject({ collection: 'enabled', status: 'unavailable', total_count: 0 });
   });
   it('keeps unacknowledged/open records during retention compact', () => {
