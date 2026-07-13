@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const POLL_INTERVAL_MS = 25;
 const POLL_TIMEOUT_MS = 3_000;
+const GIT_E2E_TEST_TIMEOUT_MS = 30_000;
 
 function entry(id: string, title: string, symptom: string): string {
   return `---
@@ -102,7 +103,7 @@ function setupCommunityClone(home: string): { source: string; clone: string } {
   return { source, clone };
 }
 
-describe('auto sync hook', () => {
+describe('auto sync hook', { timeout: GIT_E2E_TEST_TIMEOUT_MS }, () => {
   it('pulls community updates and reindexes them while own sync skips non-repos', async () => {
     const { home, cleanup } = fresh();
     try {
