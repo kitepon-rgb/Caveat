@@ -114,7 +114,7 @@ rtk proxy codex exec \
   -C /tmp \
   --skip-git-repo-check \
   -s read-only \
-  -m gpt-5.4-mini \
+  -m gpt-5.6-luna \
   -o "$last" \
   "Reply exactly: caveat-new-session-ok" >"$out"
 

@@ -131,7 +131,7 @@ Caveatは製品挙動と製品所有のテストを直す。dotagentsは後か�
   成功runだけの選別は禁止する。
 - [x] 8 runでprotocol errorが残った場合だけ、費用・重複助言・latencyを測った別計画で
   bounded retryを検討する。本計画では自動retryを入れない。
-- [ ] codex-sidecarを独立commit・full gate・releaseし、その後Caveatのpublished smokeで固定する。
+- [x] codex-sidecarを独立commit・full gate・releaseし、その後Caveatのpublished smokeで固定する。
 
 ### Lane E — Windows実Git fixtureの決定性（A）
 
@@ -143,7 +143,7 @@ Caveatは製品挙動と製品所有のテストを直す。dotagentsは後か�
   明示的なprocess timeoutより長くし、Vitest既定5秒を偶然の契約にしない。
 - [x] timeout時はどのgit phaseで止まったかをfixture名付きで失敗させる。
 - [ ] Ubuntu 24.04、Windows 2022/2025、Node 22/24を2連続greenにする。
-- [ ] p95、採用timeout、根拠run IDを本書の実績節へ保存する。単なる2連続greenをprocess boundの証明にしない。
+- [x] p95、採用timeout、根拠run IDを本書の実績節へ保存する。単なる2連続greenをprocess boundの証明にしない。
 
 ### Lane F — 公開packageのClaude fresh-session smoke（A＋H）
 
@@ -165,7 +165,7 @@ Caveatは製品挙動と製品所有のテストを直す。dotagentsは後か�
 2. [x] Lane Aのcharacterizationを先に追加する。
 3. [x] Lane Bを1挙動変更として実装し、retrieval baselineとpositive fixtureの回帰を確認する。
 4. [x] Lane CをLane Bとの一体runtime commitで実装し、hook E2Eを通す。
-5. [ ] Lane Dをcodex-sidecar repoで独立実装・releaseする。
+5. [x] Lane Dをcodex-sidecar repoで独立実装・releaseする。
 6. [x] Lane EをCaveatのtest-only commitとして実装する。
 7. [x] Lane Fをfake CI→実Claude smokeの順で実装する。
 8. [ ] Caveat full gate、npm pack、published-package smoke、全6 CI jobを通す。
@@ -194,8 +194,8 @@ Caveatは製品挙動と製品所有のテストを直す。dotagentsは後か�
 - [x] sidecar Luna low 8/8がschema-validかつ`status: ok`でCaveat advisory成功となり、失敗runを分母から除外していない。
 - [x] Caveatはsidecar failure時に引き続きfail-closedし、誤ったadvisoryを表示しない。
 - [ ] Windows 6 matrixが2連続greenで、実Git processには明示timeoutがある。
-- [ ] Windowsのcommunity/autosync全child processにphase付きtimeoutがあり、p95根拠を保存している。
-- [ ] fake Claude hook stream parserが6 matrixのCIでgreenである。
+- [x] Windowsのcommunity/autosync全child processにphase付きtimeoutがあり、p95根拠を保存している。
+- [x] fake Claude hook stream parserが6 matrixのCIでgreenである。
 - [ ] published-packageのnew Codex/Claude session、hook install二回、diagnostics、uninstallがgreen。
 - [x] BugHub/dotagentsのdiagnostics・error store・reporter・outbox・ack・通知を変更していない。
 - [ ] worktree clean、remote同期、計画archiveまで完了する。
@@ -302,8 +302,19 @@ Caveatは製品挙動と製品所有のテストを直す。dotagentsは後か�
 - `community.test.ts`と`autoSyncHook.test.ts`の全direct git / child CLIへ20秒process timeout、
   `GIT_TERMINAL_PROMPT=0`、`GCM_INTERACTIVE=Never`、fixture名とphase付き失敗を追加した。
 - setup 45秒、cleanup 30秒、suite 60秒を命名定数化。ローカルtarget testはgreen。
-- Windows 2025の保存済みp95根拠がないため、20秒はprocess boundとして採用しただけでp95由来とは
-  主張しない。remote 6 matrix 2連続とrun ID/p95記録はrelease前の未完gateとして残す。
+- Windows 2025の過去green 10 runからfile単位のreporter timingを抽出し、2026-07-13のgreen run
+  `29227144416`（commit `6dd3429f5e185ba53766fc58afb6f8985859f36d`）を加えた。
+  `community.test.ts`はn=22、nearest-rank p95 12.905秒、`autoSyncHook.test.ts`はn=8、
+  nearest-rank p95 14.186秒。両fixtureのchild process timeout 20秒はこの観測p95を上回り、
+  setup 45秒、cleanup 30秒、suite 60秒もprocess boundより長い。
+- 同runの`pendingReminders.test.ts`における個別OS process stressは最大5.381秒、
+  `codexHookCmd.test.ts`はWindows 2025 Node 22/24の2 sampleで最大10.542秒だった。
+  それぞれchild timeout 15/20秒、test timeout 30秒を採用した。sampleが少ないため、これは
+  process p95の主張ではなく、今回runの観測最大値に対する明示boundとして記録する。
+- 別途、過去green 20 runのWindows 2025 full `Test` step 40 sampleはnearest-rank p95 74秒だった。
+  これはmatrix全体のstep時間であり、個別process timeoutの根拠には使用していない。
+- run `29227144416`はUbuntu 24.04、Windows 2022/2025、Node 22/24の全6 jobがgreen。
+  release gateの2連続greenは、次の独立run成功まで未完のまま維持する。
 
 ### Lane F Claude fresh-session smoke
 
@@ -319,5 +330,18 @@ Caveatは製品挙動と製品所有のテストを直す。dotagentsは後か�
 - Caveat: workspace build / typecheck / release pack smoke / diff-check green、全545 tests
   （core 419 / CLI 88 / MCP 12 / Web 17 / hooks 9）green。
 - `eval:hook-search`は410 casesの全指標、corpus digest、golden digestが実装前baselineから不変。
-- npm registry現行版はCaveat 0.16.1、sidecar 3 packageとも0.3.5。両repoは実装開始時点の
-  `origin/main`に対してahead/behind 0、stashなし。release前にfetchして再確認する。
+- `corepack pnpm publish --dry-run --no-git-checks`は`caveat-cli@0.16.2`の14 files、
+  tarball 1.2 MBを生成し、workspace protocol漏洩なしでgreen。registry公開とpublished smokeは未実施。
+
+### CI・release実績
+
+- codex-sidecarはcommit `581e81dd2bf9656adc71d2988ae089e1fb6b96a3`、CI run
+  `29226366326`をgreenにし、GitHub Release `v0.3.6`と`codex-sidecar-core` / `cli` / `mcp`
+  3 packageの0.3.6を公開した。fresh npm prefix、Docker MCP initialize、global CLI/MCPの
+  installed-path smokeをすべて0.3.6で通した。
+- CaveatではWindowsの実時間超過を隠さず、CI run `29226452914`、`29226627736`、
+  `29226806696`、`29226986587`の各失敗をphase別timeoutへ反映した。修正後のrun
+  `29227144416`はexact commit `6dd3429f5e185ba53766fc58afb6f8985859f36d`で全6 job green。
+  これはrelease gateの連続green 1本目であり、2本目は本書の証跡同期commitで検証する。
+- fake Claude fresh-session smokeは同runの全6 jobでgreen。実Claude Code 2.1.207 / Haikuの
+  development smokeも予算上限`$0.05`でgreenだが、published packageによる再実行は未完。
