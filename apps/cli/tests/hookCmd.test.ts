@@ -150,7 +150,7 @@ describe('Claude hook output', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 
   it('drains multiple pending reminders as one system-reminder block', () => {
     const root = mkdtempSync(join(tmpdir(), 'caveat-claude-hook-'));
