@@ -60,7 +60,7 @@ describe('installCodexHooks', () => {
     cleanup(fx);
   });
 
-  it('creates hooks.json and enables codex_hooks', () => {
+  it('creates hooks.json and enables the canonical hooks feature', () => {
     const result = installCodexHooks({
       codexHome: fx.codexHome,
       cliScriptPath: fx.cliScriptPath,
@@ -84,7 +84,7 @@ describe('installCodexHooks', () => {
       'codex-hook post-tool-use',
     );
     expect(hooks.hooks.Stop[0]?.hooks[0]?.command).toContain('codex-hook stop');
-    expect(readFileSync(fx.configPath, 'utf-8')).toContain('codex_hooks = true');
+    expect(readFileSync(fx.configPath, 'utf-8')).toContain('hooks = true');
   });
 
   it('preserves unrelated hooks and is idempotent', () => {
@@ -130,13 +130,13 @@ describe('installCodexHooks', () => {
     expect(hooks.hooks.UserPromptSubmit[0]?.hooks[0]?.command).toBe(
       'throughline prompt-submit',
     );
-    expect(readFileSync(fx.configPath, 'utf-8')).toContain('[features]\ncodex_hooks = true\nother = true');
+    expect(readFileSync(fx.configPath, 'utf-8')).toContain('[features]\nhooks = true\nother = true');
     expect(findBackup(fx.codexHome, 'hooks.json.caveat-backup-')).toBeDefined();
     expect(findBackup(fx.codexHome, 'config.toml.caveat-backup-')).toBeDefined();
   });
 
   it('respects an explicit false feature as consent and skips all hook writes', () => {
-    const original = 'model = "gpt-5.5"\n[features]\ncodex_hooks = false\nother = true\n';
+    const original = 'model = "gpt-5.5"\n[features]\nhooks = false\nother = true\n';
     writeFileSync(fx.configPath, original, 'utf-8');
 
     const result = installCodexHooks({
@@ -155,8 +155,58 @@ describe('installCodexHooks', () => {
     expect(findBackup(fx.codexHome, 'config.toml.caveat-backup-')).toBeUndefined();
   });
 
+  it('respects false in a whitespace-padded valid TOML features header', () => {
+    const original = '[ features ]\nhooks = false\n';
+    writeFileSync(fx.configPath, original, 'utf-8');
+
+    const result = installCodexHooks({
+      codexHome: fx.codexHome,
+      cliScriptPath: fx.cliScriptPath,
+      nodePath: fx.nodePath,
+      dryRun: false,
+      logger: silentLogger,
+    });
+
+    expect(result.feature).toBe('blocked');
+    expect(readFileSync(fx.configPath, 'utf-8')).toBe(original);
+    expect(existsSync(fx.hooksPath)).toBe(false);
+  });
+
+  it('does not expose an invalid TOML source line in the blocked reason', () => {
+    const secret = 'TOPSECRET-CAVEAT-TEST';
+    writeFileSync(fx.configPath, `x = { token = "${secret}", } garbage\n`, 'utf-8');
+
+    const result = installCodexHooks({
+      codexHome: fx.codexHome,
+      cliScriptPath: fx.cliScriptPath,
+      nodePath: fx.nodePath,
+      dryRun: false,
+      logger: silentLogger,
+    });
+
+    expect(result.feature).toBe('blocked');
+    expect(result.blockedReason).toBe('config.toml is invalid TOML; fix it before installing Caveat hooks');
+    expect(result.blockedReason).not.toContain(secret);
+  });
+
+  it('does not rewrite feature-like text inside a multiline TOML string', () => {
+    const original = 'developer_instructions = """\n[features]\ncodex_hooks = true # example\n"""\n';
+    writeFileSync(fx.configPath, original, 'utf-8');
+
+    const result = installCodexHooks({
+      codexHome: fx.codexHome,
+      cliScriptPath: fx.cliScriptPath,
+      nodePath: fx.nodePath,
+      dryRun: false,
+      logger: silentLogger,
+    });
+
+    expect(result.feature).toBe('enabled');
+    expect(readFileSync(fx.configPath, 'utf-8')).toBe(`${original}\n[features]\nhooks = true\n`);
+  });
+
   it('leaves an existing true feature unchanged', () => {
-    writeFileSync(fx.configPath, '[features]\ncodex_hooks = true\n', 'utf-8');
+    writeFileSync(fx.configPath, '[features]\nhooks = true\n', 'utf-8');
     const result = installCodexHooks({
       codexHome: fx.codexHome,
       cliScriptPath: fx.cliScriptPath,
@@ -165,12 +215,12 @@ describe('installCodexHooks', () => {
       logger: silentLogger,
     });
     expect(result.feature).toBe('unchanged');
-    expect(readFileSync(fx.configPath, 'utf-8')).toBe('[features]\ncodex_hooks = true\n');
+    expect(readFileSync(fx.configPath, 'utf-8')).toBe('[features]\nhooks = true\n');
     expect(findBackup(fx.codexHome, 'config.toml.caveat-backup-')).toBeUndefined();
   });
 
   it('blocks dotted feature syntax instead of creating a duplicate TOML definition', () => {
-    const original = 'features.codex_hooks = false\n';
+    const original = 'features.hooks = false\n';
     writeFileSync(fx.configPath, original, 'utf-8');
     const result = installCodexHooks({
       codexHome: fx.codexHome,
@@ -196,8 +246,57 @@ describe('installCodexHooks', () => {
     const config = readFileSync(fx.configPath, 'utf-8');
     expect(result.feature).toBe('enabled');
     expect(config).toContain('[projects."/tmp/x"]\ntrust_level = "trusted"');
-    expect(config).toContain('[features]\ncodex_hooks = true');
+    expect(config).toContain('[features]\nhooks = true');
     expect(findBackup(fx.codexHome, 'config.toml.caveat-backup-')).toBeDefined();
+  });
+
+  it('migrates the deprecated true alias without leaving a Codex warning', () => {
+    writeFileSync(fx.configPath, '[features]\ncodex_hooks = true # old Caveat\nother = true\n', 'utf-8');
+
+    const result = installCodexHooks({
+      codexHome: fx.codexHome,
+      cliScriptPath: fx.cliScriptPath,
+      nodePath: fx.nodePath,
+      dryRun: false,
+      logger: silentLogger,
+    });
+
+    expect(result.feature).toBe('enabled');
+    expect(readFileSync(fx.configPath, 'utf-8')).toBe('[features]\nhooks = true # old Caveat\nother = true\n');
+    expect(findBackup(fx.codexHome, 'config.toml.caveat-backup-')).toBeDefined();
+  });
+
+  it('removes a redundant true deprecated alias beside the canonical key', () => {
+    writeFileSync(fx.configPath, '[features]\nhooks = true\ncodex_hooks = true#Caveat用の運用メモ\n', 'utf-8');
+
+    const result = installCodexHooks({
+      codexHome: fx.codexHome,
+      cliScriptPath: fx.cliScriptPath,
+      nodePath: fx.nodePath,
+      dryRun: false,
+      logger: silentLogger,
+    });
+
+    expect(result.feature).toBe('enabled');
+    expect(readFileSync(fx.configPath, 'utf-8')).toBe('[features]\nhooks = true\n#Caveat用の運用メモ\n');
+  });
+
+  it('blocks conflicting canonical and deprecated feature values', () => {
+    const original = '[features]\nhooks = true\ncodex_hooks = false\n';
+    writeFileSync(fx.configPath, original, 'utf-8');
+
+    const result = installCodexHooks({
+      codexHome: fx.codexHome,
+      cliScriptPath: fx.cliScriptPath,
+      nodePath: fx.nodePath,
+      dryRun: false,
+      logger: silentLogger,
+    });
+
+    expect(result.feature).toBe('blocked');
+    expect(result.blockedReason).toMatch(/conflicts/);
+    expect(readFileSync(fx.configPath, 'utf-8')).toBe(original);
+    expect(existsSync(fx.hooksPath)).toBe(false);
   });
 
   it('updates existing Caveat hooks when the installed node path changes', () => {

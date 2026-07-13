@@ -6,3 +6,4 @@
 
 - `proposal-execution-provenance/`: Codex / Claude Code 非対話CLIの出力・model・permission固定能力と、execution receipt設計上の限界（取得日 2026-07-13、確度 confirmed）
 - `codex-sidecar-model-policy/`: GPT-5.6 Sol/Terra/Lunaの用途区分、Codex subscription/credit費用、Luna採用実測とbounded hook-signal paired A/B（取得日 2026-07-13、確度 confirmed / synthetic feasibility）
+- `codex-hooks-feature/`: 正規`features.hooks`、deprecated alias移行、Codex 0.144.1実測（取得日 2026-07-13、確度: 高）

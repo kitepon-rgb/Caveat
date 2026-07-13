@@ -1,11 +1,10 @@
-# caveat-cli 0.16.0 release plan
+# caveat-cli 0.16.1 release plan
 
 ## 目的
 
-`v0.15.0`以後の封緘公開層、community復号索引、autosync、init統合、公開検閲・検索計測、
-repository-local proposal evaluation基盤、Luna sidecar advisory、bounded hook signal、worker tempfile
-hardeningを`caveat-cli@0.16.0`としてGitHubとnpmへ公開し、公開tarballからのfresh installと
-Claude/Codex hook動作を確認する。
+`caveat-cli@0.16.0`のfresh new-session smokeで発見したCodex feature key互換性不良を修正し、
+同じ機能一式を`caveat-cli@0.16.1`として公開する。現行Codexの正規`[features].hooks`をinstallerと
+diagnosticsが一貫して扱い、公開tarballからのClaude/Codex hook動作を確認する。
 
 ## 非目標
 
@@ -17,7 +16,7 @@ Claude/Codex hook動作を確認する。
 
 ## リスクとrollback
 
-- npm versionはimmutable。publish後の欠陥は`npm deprecate`または修正版`0.16.1`で対応する。
+- npm versionはimmutable。`0.16.0`はdeprecated済みで、修正版`0.16.1`をforward fixとして公開する。
 - push前はcommitを追加修正できる。push後はforceせずforward fixする。
 - global install smokeは一時prefix/HOMEを使い、実ユーザー設定を変更しない。
 - repository全体のdirty差分を1 releaseへ含めるため、pathspecを明示してstage内容を監査する。
@@ -33,10 +32,15 @@ Claude/Codex hook動作を確認する。
 - [x] packed tarballのmanifest、bin mode、workspace protocol不在、内容一覧を確認する。
 - [x] 独立refuter監査で公開blockerがないことを確認する。
 - [x] release対象だけをpathspec付きでstageし、stage diffを再監査する。
-- [ ] 日本語commitを作成し、`main`をpushする。
-- [ ] GitHub Actionsのpush CIがgreenになるまで確認する。
-- [ ] annotated tag `v0.16.0`を作成・pushする。
-- [ ] `caveat-cli@0.16.0`をnpm publishする。
+- [x] 日本語commitを作成し、`main`をpushする。
+- [x] GitHub Actionsのpush CIがgreenになるまで確認する。
+- [x] annotated tag `v0.16.0`を作成・pushする。
+- [x] `caveat-cli@0.16.0`をnpm publishし、fresh new-sessionでdeprecated feature keyを検出する。
+- [x] `caveat-cli@0.16.0`をnpm deprecateする。
+- [x] installer / diagnosticsを正規`features.hooks`へ移行し、install時に旧aliasを安全に除去する。
+- [x] version / CHANGELOGを`0.16.1`へ更新し、全gate・refuter監査を通す。
+- [ ] 修正版commitをpushし、全6 CI job greenを確認する。
+- [ ] annotated tag `v0.16.1`を作成・pushし、`caveat-cli@0.16.1`をnpm publishする。
 - [ ] npm registryのversion / dist-tag / integrityを確認する。
 - [ ] 公開packageを一時prefixへfresh installし、version / manifest / executable modeを確認する。
 - [ ] 一時HOMEでinit二回、Claude/Codex hook diagnostics、uninstall cleanupを確認する。
@@ -59,3 +63,17 @@ Claude/Codex hook動作を確認する。
 - standalone proposal / sidecar synthetic E2E 5本、release smoke、npm pack install、publish dry-runがgreen。
 - 実Luna low sidecar smokeはStop / tool-error両surfaceでgreen。canonical hook-signal blockがexactly one、禁止sentinel非到達、matched turn completionを確認。
 - refuter最終裁定はblocker / high / mediumゼロ、release可。
+
+## 0.16.1 forward-fix検証（2026-07-13）
+
+- OpenAI公式config referenceとCodex CLI 0.144.1実測で、正規keyが`features.hooks`、
+  `features.codex_hooks`がdeprecated aliasであることを確認し、RAGへ保存した。
+- 0.16.0が生成した隔離configを0.16.1開発版で再installし、`codex_hooks = true`から
+  `hooks = true`へbackup付きで移行、旧aliasゼロ、diagnostics=`available`、evidence=`hooks stable true`を確認した。
+- 移行後の新Codex sessionは応答成功し、deprecated / invalid hook / hook failureなし。
+- Claude fresh new-sessionは隔離HOMEで認証を再利用できず`Not logged in`のため未実施。
+  Claude hook install二回・uninstall cleanupとCLI unit 80件はgreen。
+- Codex uninstallは共有featureを無効化・移行しない。0.16.0から直接uninstallした場合は旧aliasが
+  残るため、警告解消には0.16.1で一度installしてからuninstallする。
+- workspace build / typecheck、core 395、CLI 80、MCP 12、Web 17、hooks 9の計513 tests、
+  release smoke、npm pack install、publish dry-runがgreen。refuter最終裁定はrelease可。

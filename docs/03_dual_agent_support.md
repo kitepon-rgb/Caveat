@@ -99,7 +99,8 @@ caveat codex-hook stop
 ```
 
 `install` writes Caveat-owned entries to user-level `~/.codex/hooks.json` and
-ensures `[features].codex_hooks = true` in `~/.codex/config.toml`. Commands in
+ensures `[features].hooks = true` in `~/.codex/config.toml` and migrates the
+deprecated `codex_hooks = true` alias. Commands in
 the hook config use absolute `nodePath` + `cliScriptPath` so Codex App Server
 does not need `caveat` or `node` to be discoverable through `PATH`.
 

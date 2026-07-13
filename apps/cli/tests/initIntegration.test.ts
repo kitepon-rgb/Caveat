@@ -149,7 +149,7 @@ describe('caveat init integrated setup', () => {
     expect(readFileSync(configPath, 'utf-8')).toBe('[features]\ncodex_hooks = false\n');
     expect(existsSync(join(codexHome, 'hooks.json'))).toBe(false);
     expect(fx.messages.join('\n')).toMatch(/preserving explicit consent/);
-    expect(fx.messages.join('\n')).toMatch(/Set `codex_hooks = true`/);
+    expect(fx.messages.join('\n')).toMatch(/Set `hooks = true`/);
     expect(fx.messages.join('\n')).toContain('codex hook: skipped');
   });
 });

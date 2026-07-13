@@ -87,7 +87,8 @@ Verify generated config:
 - `~/.claude.json` contains the `caveat` MCP registration.
 - `~/.codex/hooks.json` contains Caveat `UserPromptSubmit`, `PostToolUse`, and
   `Stop` commands with `timeoutSec: 5` and `async: false`.
-- `~/.codex/config.toml` contains `[features] codex_hooks = true`.
+- `~/.codex/config.toml` contains `[features] hooks = true` and no deprecated
+  `codex_hooks` alias.
 
 Run install twice and require `unchanged` on the second run. Run uninstall and
 require zero remaining Caveat hook entries.

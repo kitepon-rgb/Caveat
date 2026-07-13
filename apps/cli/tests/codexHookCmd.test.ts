@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { appendPendingReminder, drainPendingReminders, openDb } from '@caveat/core';
 import {
   buildCodexPostToolUseWorkerJob,
+  codexFeatureListEnv,
   codexContextOutput,
   isCodexToolError,
 } from '../src/commands/codexHookCmd.js';
@@ -18,6 +19,11 @@ function readFixture(name: string): Record<string, unknown> {
 }
 
 describe('Codex hook output formatting', () => {
+  it('probes features from the requested Codex home', () => {
+    expect(codexFeatureListEnv('/target/codex', { CODEX_HOME: '/wrong/home', KEEP: 'yes' }))
+      .toMatchObject({ CODEX_HOME: '/target/codex', KEEP: 'yes' });
+  });
+
   it('reports query-log failures without interrupting a successful zero-hit search', () => {
     const root = mkdtempSync(join(tmpdir(), 'caveat-codex-query-log-error-'));
     const caveatHome = join(root, 'caveat-home');

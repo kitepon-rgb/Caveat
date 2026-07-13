@@ -1,6 +1,6 @@
 {
   "name": "caveat-cli",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "description": "Long-term memory CLI for Claude Code and Codex (markdown + SQLite FTS5 + MCP + hooks)",
   "keywords": [
     "caveat",
@@ -45,7 +45,8 @@
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
-    "commander": "^14.0.3"
+    "commander": "^14.0.3",
+    "smol-toml": "1.7.0"
   },
   "devDependencies": {
     "@caveat/core": "workspace:*",

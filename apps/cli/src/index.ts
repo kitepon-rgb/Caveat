@@ -245,7 +245,7 @@ const codexHook = program
 
 codexHook
   .command('install')
-  .description('Install Caveat hooks into ~/.codex/hooks.json and enable codex_hooks')
+  .description('Install Caveat hooks into ~/.codex/hooks.json and enable hooks')
   .option('--dry-run', 'show planned changes without writing', false)
   .option('--codex-home <path>', 'Codex home directory', process.env.CODEX_HOME ?? `${process.env.HOME}/.codex`)
   .action((opts: { dryRun: boolean; codexHome: string }) => {
@@ -264,10 +264,10 @@ codexHook
     stdoutLogger.info(`UserPromptSubmit hook: ${result.hooks.userPromptSubmit}`);
     stdoutLogger.info(`PostToolUse hook: ${result.hooks.postToolUse}`);
     stdoutLogger.info(`Stop hook: ${result.hooks.stop}`);
-    stdoutLogger.info(`codex_hooks feature: ${result.feature}`);
+    stdoutLogger.info(`hooks feature: ${result.feature}`);
     if (result.feature === 'blocked') {
       stdoutLogger.warn(
-        `${result.blockedReason}; preserving explicit consent. Set \`codex_hooks = true\` in ${opts.codexHome}/config.toml, then rerun \`caveat codex-hook install\`.`,
+        `${result.blockedReason}; preserving explicit consent. Set \`hooks = true\` in ${opts.codexHome}/config.toml, then rerun \`caveat codex-hook install\`.`,
       );
     }
     if (result.backupPath) stdoutLogger.info(`hooks.json backed up: ${result.backupPath}`);

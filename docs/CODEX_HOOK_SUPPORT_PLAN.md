@@ -39,7 +39,8 @@ Caveat が Claude で持っている 3 つの hook 発火点と同等の動作�
 
 ## 現時点の根拠
 
-- ローカルの `codex features list` では `codex_hooks` が `stable true`。
+- 現行の `codex features list` では `hooks` が `stable true`。旧
+  `codex_hooks` はdeprecated alias（0.16.1で正規keyへ移行）。
 - ローカル app-server schema 生成結果には、hook event として
   `userPromptSubmit`、`postToolUse`、`stop` が出ている。
 - 同じ schema には追加で `preToolUse`、`permissionRequest`、
@@ -177,7 +178,8 @@ capture TODO 内で明示的に検証対象として扱います。
       必要なら隔離 `CODEX_HOME` 内へ一時 symlink / copy するが、fixture 化せず、
       capture 終了後に削除する。auth material を扱えない環境では manual smoke を
       `skipped: auth unavailable` として明示する。
-- [x] 隔離 `CODEX_HOME/config.toml` で `codex_hooks` を有効化する。
+- [x] 隔離 `CODEX_HOME/config.toml` で`hooks`を有効化する（当時の
+      `codex_hooks` aliasは0.16.1で移行）。
 - [x] 隔離 hook config に `UserPromptSubmit` / `PostToolUse` / `Stop` 形式と
       `userPromptSubmit` / `postToolUse` / `stop` 形式を段階的に登録し、どちらが
       読まれるか確認する。
@@ -331,7 +333,7 @@ capture TODO 内で明示的に検証対象として扱います。
 - `~/.codex/hooks.json` の `Stop` が
   `/usr/bin/node /home/kite/.npm-global/bin/caveat codex-hook stop` を呼ぶ状態で確認した。
 - `rtk proxy /usr/bin/node /home/kite/.npm-global/bin/caveat codex-hook diagnostics` で
-  `codex_hooks: enabled`、`installation: installed`、`stop: true` を確認した。
+  当時の`codex_hooks: enabled`（現行名`hooks`）、`installation: installed`、`stop: true` を確認した。
 - 失敗 tool output を含む transcript で `codex-hook stop` を直接実行し、status 0、
   stdout 0 bytes、stderr 0 bytes を確認した。Stop は
   `{"decision":"block","reason":"..."}` を返さない。
@@ -352,7 +354,7 @@ capture TODO 内で明示的に検証対象として扱います。
 
 - [x] `caveat codex-hook diagnostics` を追加する。
 - [x] `codex` binary が利用可能か確認する。
-- [x] `codex features list` に enabled な `codex_hooks` があるか確認する。
+- [x] `codex features list` に enabled な `hooks` があるか確認する。
       表示形式が安定しない可能性があるため、diagnostics は raw evidence を併記し、
       1 つの brittle string match だけで `operational` 判定しない。
 - [x] 想定 hook config path を確認する。
@@ -386,7 +388,7 @@ Availability:
 
 | 状態 | 意味 |
 |---|---|
-| `unavailable` | `codex` binary がない、`codex_hooks` が使えない、または hook config path を解決/作成できない |
+| `unavailable` | `codex` binary がない、`hooks` featureが使えない、または hook config path を解決/作成できない |
 | `available` | hook config path と command は作れるが、実 hook 発火 smoke は未確認 |
 | `operational` | 隔離環境または明示した実環境で、対象 hook の発火と、その hook が担う Caveat behavior の delivery smoke が成功。`postToolUse` は直接 stdout injection ではなく、後続 context-capable hook での pending drain 成功でもよい |
 

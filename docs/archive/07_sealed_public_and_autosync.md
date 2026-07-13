@@ -142,7 +142,7 @@ Caveat-Public には平文 markdown を置かず、**暗号化バンドル（配
 - [x] `caveat init` に統合: `--sync [url]` / `--publish-target [url]` / `--yes` / `--skip-codex-hook` フラグ（既定 OFF＝既存 smoke テスト 3 件は無変更で green〔refuter F で検証済み〕）
 - [x] **TTY 実行時は対話ナジを既定で出す**（フラグ未指定時のみ）: 「private 同期を今すぐ設定する？ [y/N]」「公開 repo（封緘）も設定する？ [y/N]」各 1 回、Enter=No。非 TTY はナジ自体をスキップ（CI 安全）。gh 不在/未ログインは実行すべきコマンド 2 行を提示して該当項目のみスキップ（silent fallback 禁止・init 全体は完走）— これで「一発で理想環境」をオーナー要求どおり満たしつつ既定の安全を保つ
 - [x] sync 統合は `initOwnSync` 再利用 + `OWN_REPO_EXISTS` を「設定済み・skip」の info に吸収（冪等）。gh 検証ロジックは `ghSetup.ts` に一本化して sync / publish / init から共用
-- [x] codex-hook 自動 install（codex 検出時）: `spawnSync` は **shell:true**（Windows の codex.cmd 解決〔refuter F-2、自 repo の既存規約・既存 caveat エントリどおり〕）、書き込み先は **`ctx.userHome/.codex` を明示**（テスト隔離〔refuter F-1〕）、config.toml の features 編集は**パース安全が確認できる場合のみ**・`codex_hooks = false` が明示されていたら skip + 手動コマンド提示〔refuter F-3: regex 編集で TOML 二重定義 → Codex 起動不能の事故経路と consent 問題〕
+- [x] codex-hook 自動 install（codex 検出時）: `spawnSync` は **shell:true**（Windows の codex.cmd 解決〔refuter F-2、自 repo の既存規約・既存 caveat エントリどおり〕）、書き込み先は **`ctx.userHome/.codex` を明示**（テスト隔離〔refuter F-1〕）、config.toml の features 編集は**パース安全が確認できる場合のみ**・feature falseが明示されていたら skip + 手動コマンド提示〔refuter F-3: regex 編集で TOML 二重定義 → Codex 起動不能の事故経路と consent 問題。正規keyは0.16.1で`hooks`へ移行、旧`codex_hooks`はdeprecated alias〕
 - [x] init 末尾に環境サマリ出力（own git / private remote / publish target / community 数 / codex hook の設定状態一覧）
 - [x] 死にフィールド `communitySources` の削除・`community` サブコマンド説明文の旧パス修正（ついで清算）
 

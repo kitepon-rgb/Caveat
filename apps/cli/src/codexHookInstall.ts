@@ -1,6 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { Logger } from '@caveat/core';
+import { parse as parseToml } from 'smol-toml';
 
 export interface CodexHookInstallOptions {
   codexHome: string;
@@ -157,74 +158,153 @@ function removeHook(
 function enableCodexHooksFeature(raw: string):
   | { status: 'enabled'; text: string; changed: boolean }
   | { status: 'blocked'; text: string; changed: false; reason: string } {
-  const lines = raw.split(/\r?\n/);
-  const unsupportedFeatureShape = lines.find((line) =>
-    /^\s*(?:["']features["']|features)\s*(?:\.|=)/.test(line) ||
-    /^\s*\[\[?\s*(?:["']features["']|features\.)/.test(line),
-  );
-  if (unsupportedFeatureShape) {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = parseToml(raw) as Record<string, unknown>;
+  } catch {
     return {
       status: 'blocked',
       text: raw,
       changed: false,
-      reason: 'config.toml uses a non-canonical features table shape that Caveat will not rewrite safely',
+      reason: 'config.toml is invalid TOML; fix it before installing Caveat hooks',
     };
   }
-  const featureHeaders = lines
-    .map((line, index) => (/^\s*\[features]\s*(?:#.*)?$/.test(line) ? index : -1))
-    .filter((index) => index >= 0);
-  if (featureHeaders.length > 1) {
+  const featureValue = parsed.features;
+  if (featureValue !== undefined && !isPlainRecord(featureValue)) {
     return {
       status: 'blocked',
       text: raw,
       changed: false,
-      reason: 'config.toml contains more than one [features] table',
+      reason: 'config.toml features value is not a table',
     };
   }
-  const featuresStart = featureHeaders[0] ?? -1;
-  if (featuresStart === -1) {
-    const prefix = raw.trimEnd();
-    const text = `${prefix}${prefix ? '\n\n' : ''}[features]\ncodex_hooks = true\n`;
-    return { status: 'enabled', text, changed: true };
+  const features = featureValue as Record<string, unknown> | undefined;
+  const canonicalValue = features?.hooks;
+  const legacyValue = features?.codex_hooks;
+  if (canonicalValue !== undefined && typeof canonicalValue !== 'boolean') {
+    return { status: 'blocked', text: raw, changed: false, reason: '[features].hooks must be boolean' };
+  }
+  if (legacyValue !== undefined && typeof legacyValue !== 'boolean') {
+    return { status: 'blocked', text: raw, changed: false, reason: '[features].codex_hooks must be boolean' };
+  }
+  if (canonicalValue === false) {
+    return { status: 'blocked', text: raw, changed: false, reason: '[features].hooks is explicitly false' };
+  }
+  if (legacyValue === false) {
+    return {
+      status: 'blocked',
+      text: raw,
+      changed: false,
+      reason: canonicalValue === true
+        ? '[features].hooks conflicts with the deprecated codex_hooks alias'
+        : '[features].codex_hooks is explicitly false',
+    };
+  }
+  if (canonicalValue === true && legacyValue === undefined) {
+    return { status: 'enabled', text: raw, changed: false };
   }
 
-  const assignments: Array<{ index: number; value: string }> = [];
+  const lines = raw.split(/\r?\n/);
+  const codeLines = maskTomlStringsAndComments(raw).split(/\r?\n/);
+  const featureHeaders = codeLines
+    .map((line, index) => (/^\s*\[\s*features\s*]\s*$/.test(line) ? index : -1))
+    .filter((index) => index >= 0);
+  if (featureValue === undefined) {
+    const prefix = raw.trimEnd();
+    const text = `${prefix}${prefix ? '\n\n' : ''}[features]\nhooks = true\n`;
+    return { status: 'enabled', text, changed: true };
+  }
+  if (featureHeaders.length !== 1) {
+    return {
+      status: 'blocked',
+      text: raw,
+      changed: false,
+      reason: 'config.toml uses a features table shape that Caveat will not rewrite safely',
+    };
+  }
+  const featuresStart = featureHeaders[0]!;
+
+  const assignments: Array<{ index: number; key: 'hooks' | 'codex_hooks' }> = [];
   for (let i = featuresStart + 1; i < lines.length; i += 1) {
-    if (/^\s*\[\[?.+?\]?]\s*(?:#.*)?$/.test(lines[i]!)) {
+    if (/^\s*\[\[?/.test(codeLines[i]!)) {
       break;
     }
-    const assignment = /^\s*codex_hooks\s*=\s*([^#]*?)\s*(?:#.*)?$/.exec(lines[i]!);
+    const assignment = /^\s*(hooks|codex_hooks)\s*=/.exec(codeLines[i]!);
     if (assignment) {
-      assignments.push({ index: i, value: assignment[1]!.trim() });
-    } else if (/^\s*["']codex_hooks["']\s*=/.test(lines[i]!)) {
-      return {
-        status: 'blocked',
-        text: raw,
-        changed: false,
-        reason: '[features].codex_hooks uses a quoted key that Caveat will not rewrite safely',
-      };
+      assignments.push({ index: i, key: assignment[1]! as 'hooks' | 'codex_hooks' });
     }
   }
-  if (assignments.length > 1) {
+  const canonical = assignments.filter((assignment) => assignment.key === 'hooks');
+  const legacy = assignments.filter((assignment) => assignment.key === 'codex_hooks');
+  if ((canonicalValue !== undefined && canonical.length !== 1)
+    || (legacyValue !== undefined && legacy.length !== 1)) {
     return {
       status: 'blocked',
       text: raw,
       changed: false,
-      reason: '[features].codex_hooks is defined more than once',
+      reason: '[features].hooks uses a key shape that Caveat will not rewrite safely',
     };
   }
-  const existing = assignments[0];
-  if (existing) {
-    if (existing.value === 'true') return { status: 'enabled', text: raw, changed: false };
-    return {
-      status: 'blocked',
-      text: raw,
-      changed: false,
-      reason: `[features].codex_hooks is explicitly ${existing.value || 'set to a non-true value'}`,
-    };
+  const current = canonical[0];
+  const deprecated = legacy[0];
+  if (canonicalValue === true && legacyValue === true && current && deprecated) {
+    const inlineComment = /(#.*)$/.exec(lines[deprecated.index]!)?.[1];
+    lines.splice(deprecated.index, 1);
+    if (inlineComment) {
+      const canonicalIndex = current.index > deprecated.index ? current.index - 1 : current.index;
+      lines.splice(canonicalIndex + 1, 0, inlineComment);
+    }
+    return { status: 'enabled', text: `${lines.join('\n').trimEnd()}\n`, changed: true };
   }
-  lines.splice(featuresStart + 1, 0, 'codex_hooks = true');
+  if (legacyValue === true && canonicalValue === undefined && deprecated) {
+    lines[deprecated.index] = lines[deprecated.index]!.replace(/\bcodex_hooks\b/, 'hooks');
+    return { status: 'enabled', text: `${lines.join('\n').trimEnd()}\n`, changed: true };
+  }
+  lines.splice(featuresStart + 1, 0, 'hooks = true');
   return { status: 'enabled', text: `${lines.join('\n').trimEnd()}\n`, changed: true };
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function maskTomlStringsAndComments(raw: string): string {
+  let state: 'code' | 'basic' | 'literal' | 'multi-basic' | 'multi-literal' | 'comment' = 'code';
+  let output = '';
+  for (let i = 0; i < raw.length; i += 1) {
+    const char = raw[i]!;
+    const triple = raw.slice(i, i + 3);
+    if (char === '\n') {
+      output += '\n';
+      if (state === 'comment') state = 'code';
+      continue;
+    }
+    if (state === 'comment') { output += ' '; continue; }
+    if (state === 'basic') {
+      output += ' ';
+      if (char === '\\' && i + 1 < raw.length) { output += raw[i + 1] === '\n' ? '\n' : ' '; i += 1; }
+      else if (char === '"') state = 'code';
+      continue;
+    }
+    if (state === 'literal') { output += ' '; if (char === "'") state = 'code'; continue; }
+    if (state === 'multi-basic') {
+      if (triple === '"""') { output += '   '; i += 2; state = 'code'; }
+      else { output += ' '; if (char === '\\' && i + 1 < raw.length) { output += raw[i + 1] === '\n' ? '\n' : ' '; i += 1; } }
+      continue;
+    }
+    if (state === 'multi-literal') {
+      if (triple === "'''") { output += '   '; i += 2; state = 'code'; }
+      else output += ' ';
+      continue;
+    }
+    if (char === '#') { output += ' '; state = 'comment'; }
+    else if (triple === '"""') { output += '   '; i += 2; state = 'multi-basic'; }
+    else if (triple === "'''") { output += '   '; i += 2; state = 'multi-literal'; }
+    else if (char === '"') { output += ' '; state = 'basic'; }
+    else if (char === "'") { output += ' '; state = 'literal'; }
+    else output += char;
+  }
+  return output;
 }
 
 function writeConfigWithBackup(path: string, text: string): string {
@@ -280,7 +360,7 @@ export function installCodexHooks(opts: CodexHookInstallOptions): CodexHookInsta
   let configBackupPath: string | undefined;
   if (opts.dryRun) {
     opts.logger.info(`[dry-run] would update ${hooksPath}`);
-    opts.logger.info(`[dry-run] would ensure [features].codex_hooks = true in ${configPath}`);
+    opts.logger.info(`[dry-run] would ensure [features].hooks = true in ${configPath}`);
   } else {
     if (anyHookAdded) {
       const backup = writeJsonWithBackup(hooksPath, hooksJson);

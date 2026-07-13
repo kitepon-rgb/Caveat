@@ -108,7 +108,8 @@ flowchart LR
   - **Stop** (事後発火): parse the session transcript for objective struggle signals (tool failures, repeated file edits, web searches, bash retries). If any are present, queue a compact reminder for the next context-capable hook tick and nudge `caveat_update` or `caveat_record` there. In Claude-hosted sessions, optional Codex advice can challenge or sharpen that nudge without replacing Caveat's trigger logic.
 - **Codex primary hook adapter.** `caveat codex-hook install` registers
   `UserPromptSubmit`, `PostToolUse`, and `Stop` in `~/.codex/hooks.json` and
-  enables `[features].codex_hooks = true`. It reuses Caveat's existing search,
+  enables `[features].hooks = true`. Existing `codex_hooks = true` installs are
+  migrated to the canonical key. It reuses Caveat's existing search,
   pending-reminder, and stop-signal logic with Codex-specific payload parsing
   and stdout formatting. Claude hook stdout is at most one
   `<system-reminder>` block per invocation; Codex hook stdout is a single JSON

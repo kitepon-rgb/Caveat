@@ -486,9 +486,10 @@ function runDiagnostics(codexHome = process.env.CODEX_HOME ?? join(homedir(), '.
   const features = spawnSync('codex', ['features', 'list'], {
     encoding: 'utf-8',
     maxBuffer: 1024 * 1024,
+    env: codexFeatureListEnv(codexHome),
   });
   const featureOutput = [features.stdout, features.stderr].filter(Boolean).join('\n');
-  const hasHooks = /^codex_hooks\s+\S+\s+true\b/m.test(featureOutput);
+  const hasHooks = /^hooks\s+\S+\s+true\b/m.test(featureOutput);
   const installation = detectCodexHookInstallation(codexHome);
   const result = {
     availability:
@@ -501,9 +502,16 @@ function runDiagnostics(codexHome = process.env.CODEX_HOME ?? join(homedir(), '.
     installedHooks: installation.hooks,
     evidence: featureOutput
       .split('\n')
-      .find((line) => line.trim().startsWith('codex_hooks')) ?? null,
+      .find((line) => line.trim().startsWith('hooks')) ?? null,
   };
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+}
+
+export function codexFeatureListEnv(
+  codexHome: string,
+  inherited: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return { ...inherited, CODEX_HOME: codexHome };
 }
 
 export async function runCodexHook(name: CodexHookName, arg?: string): Promise<void> {

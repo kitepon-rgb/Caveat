@@ -241,7 +241,7 @@ export async function runInit(
       if (result.feature === 'blocked') {
         codexHookState = 'skipped';
         ctx.logger.warn(
-          `${result.blockedReason}; preserving explicit consent. Set \`codex_hooks = true\` in ${join(codexHome, 'config.toml')}, then rerun \`caveat init\`.`,
+          `${result.blockedReason}; preserving explicit consent. Set \`hooks = true\` in ${join(codexHome, 'config.toml')}, then rerun \`caveat init\`.`,
         );
       } else if (opts.dryRun) {
         codexHookState = 'skipped';

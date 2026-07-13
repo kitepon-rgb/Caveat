@@ -4,6 +4,11 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ## Unreleased
 
+## [0.16.1] — 2026-07-13
+
+### Fixed
+- Codex hook installation now enables the canonical `[features].hooks` key, migrates the deprecated `codex_hooks = true` alias without leaving a startup warning, and diagnoses the current `hooks` feature reported by Codex.
+
 ## [0.16.0] — 2026-07-13
 
 ### Added

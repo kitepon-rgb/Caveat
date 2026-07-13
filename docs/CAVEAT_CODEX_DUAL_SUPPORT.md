@@ -148,7 +148,7 @@ Availability policy:
 
 これは hidden fallback ではありません。互換モードです。Codex が使えない環境では、現在の Claude-backed behavior を baseline とします。
 
-sidecar 経路で「Codex が使える」の最小実用定義は、単に `codex` binary があることではありません。`codex-sidecar` が存在し、対象 repository で diagnostics を成功させられることです。Codex primary hook 経路の availability は別定義で、`codex` binary、`codex_hooks` feature、hook config path、Caveat hook command、実 hook 発火 smoke を確認します。
+sidecar 経路で「Codex が使える」の最小実用定義は、単に `codex` binary があることではありません。`codex-sidecar` が存在し、対象 repository で diagnostics を成功させられることです。Codex primary hook 経路の availability は別定義で、`codex` binary、`hooks` feature、hook config path、Caveat hook command、実 hook 発火 smoke を確認します。
 
 Preferred health check:
 
