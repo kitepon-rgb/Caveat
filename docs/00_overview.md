@@ -12,6 +12,7 @@ specific document for the task.
 
 ## Active Reference Docs
 
+- [11_precision_and_runtime_reliability.md](11_precision_and_runtime_reliability.md) - active implementation plan for hook precision, pending dedupe, sidecar structured output, and release-smoke reliability; BugHub integration is explicitly excluded.
 - [03_dual_agent_support.md](03_dual_agent_support.md) - Claude/Codex contract, adapter policy, sidecar behavior, and smoke notes.
 - [04_release_checklist.md](04_release_checklist.md) - required publish and post-publish verification checklist.
 - [05_next_session.md](05_next_session.md) - current handoff and release closeout notes.
@@ -32,4 +33,4 @@ specific document for the task.
 - `apps/web/` - read-only Hono web portal.
 - `entries/` - public dogfood caveat entries in markdown.
 - `hooks/` - pre-commit visibility gate wrapper and tests.
-- `rag/` - research asset ledger. It currently has no research entries.
+- `rag/` - research asset ledger. Current primary-source and compiled notes are indexed in [`../rag/INDEX.md`](../rag/INDEX.md).

@@ -4,6 +4,22 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ## Unreleased
 
+## [0.16.2] — 2026-07-13
+
+### Added
+- Provenance-aware Claude/Codex hook evaluation keeps topic and failure evidence separate, with a synthetic per-surface quality evaluator and shared core policy.
+- Pending reminders now use semantic single-flight claims and atomic publication, including process-concurrency and crash-recovery coverage.
+- Release gates now include a deterministic fake Claude fresh-session hook smoke across the CI matrix.
+
+### Changed
+- Codex sidecar advisory validation targets the closed structured-output contract released by codex-sidecar 0.3.6 while preserving fail-closed behavior.
+- Windows real-Git fixtures use named phase timeouts and non-interactive child-process environments.
+
+### Fixed
+- Stop and tool-error hooks no longer combine unrelated query, tool input, and generic failure fragments into false-positive Caveat proposals.
+- Concurrent reminder producers no longer duplicate advisory work or inflate the omitted-context count; queue cleanup failures are explicit and retryable.
+- Claude fresh-session smoke preserves the authenticated keychain identity while isolating project settings, MCP configuration, working directory, and `CAVEAT_HOME`.
+
 ## [0.16.1] — 2026-07-13
 
 ### Fixed

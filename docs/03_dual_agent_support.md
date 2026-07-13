@@ -374,7 +374,7 @@ availability:
 | `CAVEAT_HOOK_CODEX_SIDECAR` | `off`, `auto`, `require` | `auto` | Controls whether hooks ask Codex for a second opinion. |
 | `CAVEAT_CODEX_SIDECAR_NODE_CLI` | path | unset | Development path to a built `codex-sidecar` CLI. |
 | `CAVEAT_CODEX_SIDECAR_COMMAND` | command | unset | Installed command to run instead of the default `codex-sidecar`. |
-| `CAVEAT_HOOK_CODEX_SIDECAR_TIMEOUT_MS` | milliseconds | `120000` | Maximum time for the hook-side advisory call. |
+| `CAVEAT_HOOK_CODEX_SIDECAR_TIMEOUT_MS` | milliseconds | `120000` | Maximum time for the hook-side advisory call; integer range 1–240000 so it remains below the five-minute single-flight claim TTL. |
 
 `auto` only attempts the advisory when the current project has
 `.codex-sidecar.yml`. `off` preserves the pre-Codex hook behavior. `require`
