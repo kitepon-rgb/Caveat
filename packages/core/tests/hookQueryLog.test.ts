@@ -54,8 +54,10 @@ describe('logHookQueryMiss', () => {
       expect(Object.keys(record).sort()).toEqual(['agent', 'at', 'query', 'surface']);
       expect(record).toMatchObject({ agent: 'codex', surface: 'tool_error' });
       expect((record.query as string)).toHaveLength(1000);
-      expect(statSync(metrics).mode & 0o777).toBe(0o700);
-      expect(statSync(path).mode & 0o777).toBe(0o600);
+      if (process.platform !== 'win32') {
+        expect(statSync(metrics).mode & 0o777).toBe(0o700);
+        expect(statSync(path).mode & 0o777).toBe(0o600);
+      }
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -98,14 +100,18 @@ describe('logHookQueryMiss', () => {
       withQueryLogEnv('on', () => logHookQueryMiss(miss(root, 'after rotation')));
       expect(readFileSync(`${path}.1`, 'utf8')).toHaveLength(HOOK_QUERY_LOG_MAX_BYTES);
       expect(readFileSync(path, 'utf8')).toContain('after rotation');
-      expect(statSync(`${path}.1`).mode & 0o777).toBe(0o600);
-      expect(statSync(path).mode & 0o777).toBe(0o600);
+      if (process.platform !== 'win32') {
+        expect(statSync(`${path}.1`).mode & 0o777).toBe(0o600);
+        expect(statSync(path).mode & 0o777).toBe(0o600);
+      }
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it('does not append when pre-chmod of an existing small active file fails', () => {
+  const itWithPosixModes = process.platform === 'win32' ? it.skip : it;
+
+  itWithPosixModes('does not append when pre-chmod of an existing small active file fails', () => {
     const root = mkdtempSync(join(tmpdir(), 'caveat-query-log-'));
     const metrics = join(root, 'metrics');
     const activePath = join(metrics, 'hook-search-misses.jsonl');

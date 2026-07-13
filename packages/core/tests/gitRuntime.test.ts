@@ -78,6 +78,13 @@ describe('createGit runtime policy', { timeout: GIT_RUNTIME_TEST_TIMEOUT_MS }, (
       });
     } finally {
       await server.close();
+      // Windows can retain the terminated git process' directory handle briefly
+      // after simple-git has already reported the timeout. Keep the timeout
+      // assertion strict, but let the OS finish releasing that handle before
+      // the shared afterEach cleanup removes the fixture.
+      if (process.platform === 'win32') {
+        await new Promise<void>((resolve) => setTimeout(resolve, 2_000));
+      }
     }
   });
 
