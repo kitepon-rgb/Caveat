@@ -4,6 +4,19 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ## Unreleased
 
+## [0.16.3] — 2026-07-13
+
+### Added
+- `caveat factory-diagnostics --json` now exposes a strict, read-only factory contract for the owned database schema, own-repository sync state, Claude MCP/hooks, and Codex native hooks.
+- `caveat runtime-errors` now provides an explicit-opt-in local structured error store with bounded snapshots, monotonic acknowledgement, resolve/reopen lifecycle, and acknowledged-record retention.
+
+### Changed
+- Caveat hook, sync, index, and MCP failure boundaries record only fixed allow-listed error definitions; prompt text, entry/file content, paths, stack traces, stderr, and credentials are never stored.
+- Factory diagnostics validate exact database and connector structures and report unavailable remote state as unverified instead of silently accepting stale local tracking data.
+
+### Security
+- Runtime collection remains disabled unless the canonical dotagents factory config explicitly enables it. State/config ownership, size, symlink, POSIX mode, and Windows ACL checks fail closed.
+
 ## [0.16.2] — 2026-07-13
 
 ### Added

@@ -3,6 +3,7 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 const core = vi.hoisted(() => ({
   syncOwn: vi.fn(),
   initOwnSync: vi.fn(),
+  observeRuntimeError: vi.fn(),
 }));
 
 vi.mock('@caveat/core', () => core);
@@ -24,6 +25,7 @@ const ctx = {
 afterEach(() => {
   core.syncOwn.mockReset();
   core.initOwnSync.mockReset();
+  core.observeRuntimeError.mockReset();
   messages.length = 0;
   process.exitCode = undefined;
 });

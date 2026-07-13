@@ -34,3 +34,4 @@ export * from './sealedIndex.js';
 export * from './proposalEval.js';
 export * from './proposalExecution.js';
 export * from './proposalExecutionCompiler.js';
+export * from './runtimeErrors.js';

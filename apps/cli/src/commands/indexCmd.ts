@@ -5,10 +5,12 @@ import {
   createKeyserverKeyProvider,
   openDb,
   prewarmSealedKeys,
+  observeRuntimeError,
   rebuildAll,
   reindexAllSources,
   writeDigestMarker,
 } from '@caveat/core';
+import { CAVEAT_VERSION } from '../version.js';
 import type { CliContext } from '../context.js';
 
 export interface IndexOptions {
@@ -24,7 +26,13 @@ export async function runIndex(ctx: CliContext, opts: IndexOptions): Promise<voi
     ctx.logger.warn(`${failure.source}: sealed key prewarm failed: ${errorMessage(failure.error)}`);
   }
 
-  const db = openDb({ path: ctx.paths.dbPath, logger: ctx.logger });
+  let db;
+  try {
+    db = openDb({ path: ctx.paths.dbPath, logger: ctx.logger });
+  } catch (error) {
+    observeRuntimeError('CAVEAT.DATABASE_OPEN_FAILED', { version: CAVEAT_VERSION });
+    throw error;
+  }
   try {
     if (opts.full) {
       ctx.logger.info('full rebuild: DELETE FROM entries');
@@ -40,6 +48,9 @@ export async function runIndex(ctx: CliContext, opts: IndexOptions): Promise<voi
       }
     }
     writeDigestMarker(ctx.caveatHome, computeEntriesDigest(ctx.paths));
+  } catch (error) {
+    observeRuntimeError('CAVEAT.INDEX_FAILED', { version: CAVEAT_VERSION });
+    throw error;
   } finally {
     db.close();
   }

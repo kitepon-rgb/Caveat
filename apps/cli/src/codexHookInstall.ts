@@ -1,5 +1,5 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { accessSync, constants, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join } from 'node:path';
 import type { Logger } from '@caveat/core';
 import { parse as parseToml } from 'smol-toml';
 
@@ -75,6 +75,21 @@ function isCaveatCodexHookCommand(
 ): boolean {
   const lower = actual.toLowerCase();
   return lower.includes('caveat') && actual.includes(eventCommandFragment(event));
+}
+
+function commandTokens(command: string): string[] | null {
+  const tokens: string[] = []; const pattern = /"([^"]*)"|([^\s"]+)/g; let end = 0; let match: RegExpExecArray | null;
+  while ((match = pattern.exec(command)) !== null) { if (command.slice(end, match.index).trim()) return null; tokens.push(match[1] ?? match[2]!); end = pattern.lastIndex; }
+  return command.slice(end).trim() ? null : tokens;
+}
+function isCanonicalAsset(path: unknown, expectedPath: string, mode: number): path is string {
+  if (typeof path !== 'string' || !isAbsolute(path) || !isAbsolute(expectedPath)) return false;
+  try { accessSync(path, mode); return statSync(path).isFile() && realpathSync(path) === realpathSync(expectedPath); } catch { return false; }
+}
+/** Exact read-only detector used by factory diagnostics. */
+export function isCanonicalCaveatCodexHookCommand(actual: string, event: 'user-prompt-submit' | 'post-tool-use' | 'stop', nodePath: string, cliScriptPath: string): boolean {
+  const tokens = commandTokens(actual);
+  return tokens?.length === 4 && isCanonicalAsset(tokens[0], nodePath, constants.X_OK) && isCanonicalAsset(tokens[1], cliScriptPath, constants.R_OK) && tokens[2] === 'codex-hook' && tokens[3] === event;
 }
 
 function hasCaveatHook(hooksJson: HooksJson, event: HookEvent, fragment: string): boolean {

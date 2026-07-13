@@ -1,5 +1,6 @@
-import { resetAutoSyncFailureState, syncOwn, initOwnSync } from '@caveat/core';
+import { observeRuntimeError, resetAutoSyncFailureState, syncOwn, initOwnSync } from '@caveat/core';
 import type { CliContext } from '../context.js';
+import { CAVEAT_VERSION } from '../version.js';
 import { askOnce, defaultGitHubRepoUrl, runGh, type GhRunner } from '../ghSetup.js';
 
 export interface SyncCmdOptions {
@@ -34,6 +35,9 @@ export async function runSync(
   opts: SyncCmdOptions,
   dependencies: SyncCmdDependencies = {},
 ): Promise<void> {
+  if (opts.repo && (opts.init === undefined || opts.init === false)) {
+    ctx.logger.error('--repo requires --init'); process.exitCode = 1; return;
+  }
   try {
     const ghRunner = dependencies.ghRunner ?? runGh;
     const isTty = dependencies.isTty ?? (() => Boolean(process.stdin.isTTY));
@@ -56,7 +60,6 @@ export async function runSync(
       );
       return;
     }
-    if (opts.repo) throw new Error('--repo requires --init');
     const result = await syncOwn({
       ownDir: ctx.paths.knowledgeRepo,
       caveatHome: ctx.caveatHome,
@@ -79,6 +82,7 @@ export async function runSync(
       }
     }
   } catch (err) {
+    observeRuntimeError('CAVEAT.SYNC_FAILED', { version: CAVEAT_VERSION });
     const message = err instanceof Error ? err.message : String(err);
     ctx.logger.error(message);
     process.exitCode = 1;

@@ -31,6 +31,8 @@ import {
   runCommunityRemove,
 } from './commands/community.js';
 import { resolveHookNodePath } from './nodePath.js';
+import { factoryDiagnostics } from './commands/factoryDiagnostics.js';
+import { parseCursor, runRuntimeErrors } from './commands/runtimeErrors.js';
 
 const program = new Command();
 function collectRepeatable(value: string, previous: string[]): string[] {
@@ -41,6 +43,23 @@ program
   .name('caveat')
   .description('External spec gotcha knowledge base CLI')
   .version(CAVEAT_VERSION);
+
+program
+  .command('factory-diagnostics')
+  .description('Emit read-only factory diagnostics')
+  .requiredOption('--json', 'emit the versioned JSON contract')
+  .action((opts: { json: boolean }) => {
+    const output = factoryDiagnostics(buildContext(stdoutLogger));
+    process.stdout.write(`${JSON.stringify(output)}\n`);
+    if (output.overall.status !== 'ready') process.exitCode = 1;
+  });
+
+const runtimeErrors = program.command('runtime-errors').description('Inspect Caveat opt-in runtime errors');
+const parseLimit = (value: string) => { const parsed = parseCursor(value); if (parsed < 1 || parsed > 256) throw Error('invalid_limit'); return parsed; };
+runtimeErrors.command('snapshot').requiredOption('--json', 'emit JSON').option('--after-cursor <n>', 'cursor', parseCursor, 0).option('--limit <n>', 'limit', parseLimit, 256).action((opts: { afterCursor?: number; limit?: number }) => { process.stdout.write(`${JSON.stringify(runRuntimeErrors('snapshot', undefined, opts))}\n`); });
+for (const action of ['diagnostics', 'compact'] as const) runtimeErrors.command(action).requiredOption('--json', 'emit JSON').action(() => { process.stdout.write(`${JSON.stringify(runRuntimeErrors(action))}\n`); });
+runtimeErrors.command('ack <cursor>').requiredOption('--json', 'emit JSON').action((cursor: string) => { process.stdout.write(`${JSON.stringify(runRuntimeErrors('ack', cursor))}\n`); });
+for (const action of ['resolve', 'reopen'] as const) runtimeErrors.command(`${action} <fingerprint>`).requiredOption('--json', 'emit JSON').action((fingerprint: string) => { process.stdout.write(`${JSON.stringify(runRuntimeErrors(action, fingerprint))}\n`); });
 
 program
   .command('init')

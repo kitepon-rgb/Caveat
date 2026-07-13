@@ -48,8 +48,10 @@ import {
   type HookSearchInput,
   type SearchResult,
   type SessionSignals,
+  observeRuntimeError,
 } from '@caveat/core';
 import { buildContext, type CliContext } from '../context.js';
+import { CAVEAT_VERSION } from '../version.js';
 import { maybeTriggerAutoReindex } from '../autoReindexTrigger.js';
 import { maybeTriggerAutoSync } from '../autoSyncTrigger.js';
 import { formatCodexSidecarAdvisory, runCodexSidecarAdvisory } from './codexSidecarAdvisory.js';
@@ -80,6 +82,7 @@ function parsePayload(raw: string): Record<string, unknown> {
   try {
     return JSON.parse(raw) as Record<string, unknown>;
   } catch (err: unknown) {
+    observeRuntimeError('CAVEAT.CLAUDE_HOOK_FAILED', { version: CAVEAT_VERSION });
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[caveat:hook] json parse error: ${msg}\n`);
     return {};
@@ -95,6 +98,7 @@ function buildContextSafely(): CliContext | null {
   try {
     return buildContext(silentLogger);
   } catch (err: unknown) {
+    observeRuntimeError('CAVEAT.CLAUDE_HOOK_FAILED', { version: CAVEAT_VERSION });
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[caveat:hook] context error: ${msg}\n`);
     return null;
@@ -122,6 +126,7 @@ function searchCaveatsSafely(input: HookSearchInput | readonly HookSearchInput[]
       ? findCaveatsForHook(db, inputs[0]!, searchOptions)
       : findCaveatsForHookSegments(db, inputs, searchOptions);
   } catch (err: unknown) {
+    observeRuntimeError('CAVEAT.CLAUDE_HOOK_FAILED', { version: CAVEAT_VERSION });
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[caveat:hook] search error: ${msg}\n`);
     return [];
@@ -130,6 +135,7 @@ function searchCaveatsSafely(input: HookSearchInput | readonly HookSearchInput[]
     try {
       markHit(db!, hits);
     } catch (err: unknown) {
+      observeRuntimeError('CAVEAT.CLAUDE_HOOK_FAILED', { version: CAVEAT_VERSION });
       const msg = err instanceof Error ? err.message : String(err);
       process.stderr.write(`[caveat:hook] markHit error: ${msg}\n`);
     }
@@ -137,6 +143,7 @@ function searchCaveatsSafely(input: HookSearchInput | readonly HookSearchInput[]
     try {
       logHookQueryMiss({ caveatHome: caveatHome!, agent: 'claude', surface: inputs[0]!.surface, query: queryForLog });
     } catch (err: unknown) {
+      observeRuntimeError('CAVEAT.CLAUDE_HOOK_FAILED', { version: CAVEAT_VERSION });
       const msg = err instanceof Error ? err.message : String(err);
       process.stderr.write(`[caveat:hook] query log error: ${msg}\n`);
     }

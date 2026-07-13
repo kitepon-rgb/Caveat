@@ -26,6 +26,7 @@ export interface McpContextOverrides {
   caveatHome?: string;
   userHome?: string;
   logger?: Logger;
+  productVersion?: string;
 }
 
 export function buildMcpContext(overrides: McpContextOverrides = {}): McpContext {

@@ -11,7 +11,7 @@ export async function startMcpStdioServer(
     { name: 'caveat', version: '0.0.0' },
     { capabilities: { tools: {} } },
   );
-  registerAllTools(server, ctx);
+  registerAllTools(server, ctx, overrides.productVersion);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

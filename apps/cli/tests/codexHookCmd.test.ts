@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { appendPendingReminder, drainPendingReminders, openDb } from '@caveat/core';
+import { appendPendingReminder, drainPendingReminders, openDb, runtimeErrorsSnapshot, runtimeErrorsStatePath } from '@caveat/core';
 import {
   buildCodexPostToolUseWorkerJob,
   codexFeatureListEnv,
@@ -61,6 +61,26 @@ describe('Codex hook output formatting', () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toBe('');
       expect(result.stderr).toContain('[caveat:codex-hook] query log error:');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, CODEX_HOOK_E2E_TIMEOUT_MS);
+
+  it('records an unexpected search/open failure but not expected empty-input validation', () => {
+    const root = mkdtempSync(join(tmpdir(), 'caveat-codex-runtime-error-'));
+    const caveatHome = join(root, 'caveat-home'); const userHome = join(root, 'home'); const configHome = join(root, 'xdg-config'); const stateHome = join(root, 'xdg-state');
+    const runtimeEnv = { ...process.env, CAVEAT_HOME: caveatHome, HOME: userHome, XDG_CONFIG_HOME: configHome, XDG_STATE_HOME: stateHome };
+    try {
+      mkdirSync(userHome, { recursive: true }); mkdirSync(join(configHome, 'dotagents'), { recursive: true });
+      const reporterConfig = join(configHome, 'dotagents', 'factory-reporter.json'); writeFileSync(reporterConfig, JSON.stringify({ schema_version: '1.0', host: { id: 'fixture', profile: 'mac' }, collection: { enabled: true }, reporting: { enabled: false } }), { mode: 0o600 }); chmodSync(reporterConfig, 0o600);
+      mkdirSync(join(caveatHome, 'index', 'caveat.db'), { recursive: true });
+      const failed = spawnSync(process.execPath, ['--import', 'tsx', fileURLToPath(new URL('../src/index.ts', import.meta.url)), 'codex-hook', 'user-prompt-submit'], { cwd: fileURLToPath(new URL('..', import.meta.url)), input: JSON.stringify({ session_id: 's', prompt: 'search this' }), encoding: 'utf-8', timeout: CODEX_HOOK_CHILD_TIMEOUT_MS, env: runtimeEnv });
+      expect(failed.status).toBe(0); expect(failed.stderr).toContain('[caveat:codex-hook] search error:');
+      expect(runtimeErrorsSnapshot(0, 256, { env: runtimeEnv }).runtime_errors).toMatchObject([{ error_code: 'CAVEAT.CODEX_HOOK_FAILED' }]);
+
+      const validationEnv = { ...runtimeEnv, XDG_STATE_HOME: join(root, 'validation-state') };
+      const validation = spawnSync(process.execPath, ['--import', 'tsx', fileURLToPath(new URL('../src/index.ts', import.meta.url)), 'codex-hook', 'user-prompt-submit'], { cwd: fileURLToPath(new URL('..', import.meta.url)), input: JSON.stringify({ session_id: 's' }), encoding: 'utf-8', timeout: CODEX_HOOK_CHILD_TIMEOUT_MS, env: validationEnv });
+      expect(validation.status).toBe(0); expect(existsSync(runtimeErrorsStatePath(validationEnv))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
