@@ -13,6 +13,9 @@ import {
   isCodexToolError,
 } from '../src/commands/codexHookCmd.js';
 
+const CODEX_HOOK_CHILD_TIMEOUT_MS = 20_000;
+const CODEX_HOOK_E2E_TIMEOUT_MS = 30_000;
+
 it('formats Codex pending cleanup failures with a fixed stderr prefix', () => {
   expect(codexPendingCleanupFailureText()).toBe('[caveat:codex-hook] pending reminder cleanup failed');
 });
@@ -51,6 +54,7 @@ describe('Codex hook output formatting', () => {
           cwd: fileURLToPath(new URL('..', import.meta.url)),
           input: JSON.stringify({ session_id: 'sess-1', hook_event_name: 'UserPromptSubmit', prompt: 'unmatched query' }),
           encoding: 'utf-8',
+          timeout: CODEX_HOOK_CHILD_TIMEOUT_MS,
           env: { ...process.env, CAVEAT_HOME: caveatHome, HOME: userHome, CAVEAT_HOOK_QUERY_LOG: 'on' },
         },
       );
@@ -60,7 +64,7 @@ describe('Codex hook output formatting', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, CODEX_HOOK_E2E_TIMEOUT_MS);
 
   it('formats user prompt context as hookSpecificOutput.additionalContext', () => {
     expect(JSON.parse(codexContextOutput('hello'))).toEqual({
@@ -100,6 +104,7 @@ describe('Codex stop hook', () => {
             prompt: 'continue',
           }),
           encoding: 'utf-8',
+          timeout: CODEX_HOOK_CHILD_TIMEOUT_MS,
           env: {
             ...process.env,
             CAVEAT_HOME: caveatHome,
@@ -118,7 +123,7 @@ describe('Codex stop hook', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, CODEX_HOOK_E2E_TIMEOUT_MS);
 
   it('dedupes repeated stop reminders and caps user prompt context blocks', async () => {
     const root = mkdtempSync(join(tmpdir(), 'caveat-codex-user-prompt-'));
@@ -168,6 +173,7 @@ describe('Codex stop hook', () => {
             prompt: 'continue',
           }),
           encoding: 'utf-8',
+          timeout: CODEX_HOOK_CHILD_TIMEOUT_MS,
           env: {
             ...process.env,
             CAVEAT_HOME: caveatHome,
@@ -189,7 +195,7 @@ describe('Codex stop hook', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, CODEX_HOOK_E2E_TIMEOUT_MS);
 
   it('queues stop reminders without blocking stdout', () => {
     const root = mkdtempSync(join(tmpdir(), 'caveat-codex-stop-'));
@@ -234,6 +240,7 @@ describe('Codex stop hook', () => {
             stop_hook_active: false,
           }),
           encoding: 'utf-8',
+          timeout: CODEX_HOOK_CHILD_TIMEOUT_MS,
           env: {
             ...process.env,
             CAVEAT_HOME: caveatHome,
@@ -255,7 +262,7 @@ describe('Codex stop hook', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, CODEX_HOOK_E2E_TIMEOUT_MS);
 
   it('does not requeue unchanged stop reminders for the same session', () => {
     const root = mkdtempSync(join(tmpdir(), 'caveat-codex-stop-'));
@@ -301,6 +308,7 @@ describe('Codex stop hook', () => {
               stop_hook_active: false,
             }),
             encoding: 'utf-8',
+            timeout: CODEX_HOOK_CHILD_TIMEOUT_MS,
             env: {
               ...process.env,
               CAVEAT_HOME: caveatHome,
@@ -327,7 +335,7 @@ describe('Codex stop hook', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, CODEX_HOOK_E2E_TIMEOUT_MS);
 });
 
 describe('isCodexToolError', () => {
