@@ -13,6 +13,15 @@ import {
   communityRemove,
 } from '../src/community.js';
 
+// No Windows 2025 p95 is retained in the repository. This is a local child
+// process bound, not a CI job limit; the surrounding bounds leave enough time
+// to report the failing git phase.
+const GIT_PROCESS_TIMEOUT_MS = 20_000;
+const GIT_FIXTURE_SETUP_TIMEOUT_MS = 45_000;
+const GIT_FIXTURE_CLEANUP_TIMEOUT_MS = 30_000;
+const GIT_E2E_TEST_TIMEOUT_MS = 60_000;
+const COMMUNITY_FIXTURE_NAME = 'community integration fixture';
+
 describe('validateCommunityUrl', () => {
   it('accepts github.com/<org>/<repo>', () => {
     const r = validateCommunityUrl('https://github.com/alice/caveats-alice');
@@ -89,17 +98,32 @@ interface FakeRemote {
   workdir: string;
 }
 
+function git(args: string[], cwd: string, phase: string): string {
+  try {
+    return execFileSync('git', args, {
+      cwd,
+      encoding: 'utf-8',
+      stdio: 'pipe',
+      timeout: GIT_PROCESS_TIMEOUT_MS,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never' },
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`${COMMUNITY_FIXTURE_NAME}: git phase ${phase} failed or timed out after ${GIT_PROCESS_TIMEOUT_MS}ms: ${detail}`, { cause: error });
+  }
+}
+
 function initBareWithContent(): FakeRemote {
   const root = mkdtempSync(join(tmpdir(), 'caveat-remote-'));
   const bare = join(root, 'remote.git');
   const work = join(root, 'work');
 
-  execFileSync('git', ['init', '--bare', bare], { stdio: 'pipe' });
+  git(['init', '--bare', bare], root, 'init bare remote');
 
-  execFileSync('git', ['clone', bare, work], { stdio: 'pipe' });
-  execFileSync('git', ['config', 'user.email', 't@t'], { cwd: work });
-  execFileSync('git', ['config', 'user.name', 't'], { cwd: work });
-  execFileSync('git', ['config', 'commit.gpgsign', 'false'], { cwd: work });
+  git(['clone', bare, work], root, 'clone fixture worktree');
+  git(['config', 'user.email', 't@t'], work, 'configure user email');
+  git(['config', 'user.name', 't'], work, 'configure user name');
+  git(['config', 'commit.gpgsign', 'false'], work, 'disable commit signing');
 
   mkdirSync(join(work, 'entries', 'gpu'), { recursive: true });
   writeFileSync(
@@ -107,25 +131,25 @@ function initBareWithContent(): FakeRemote {
     `---\nid: sample\ntitle: Sample\nvisibility: public\nconfidence: tentative\n---\n\n## Symptom\nx\n`,
     'utf-8',
   );
-  execFileSync('git', ['add', '-A'], { cwd: work });
-  execFileSync('git', ['commit', '-m', 'initial'], { cwd: work });
-  execFileSync('git', ['push', 'origin', 'HEAD'], { cwd: work });
+  git(['add', '-A'], work, 'stage initial content');
+  git(['commit', '-m', 'initial'], work, 'commit initial content');
+  git(['push', 'origin', 'HEAD'], work, 'push initial content');
 
   return { root, bareUrl: bare, workdir: work };
 }
 
-describe('communityAdd / communityPull / communityList (integration)', () => {
+describe('communityAdd / communityPull / communityList (integration)', { timeout: GIT_E2E_TEST_TIMEOUT_MS }, () => {
   let remote: FakeRemote;
   let playground: string;
   beforeEach(() => {
     remote = initBareWithContent();
     playground = mkdtempSync(join(tmpdir(), 'caveat-play-'));
     mkdirSync(join(playground, 'community'), { recursive: true });
-  });
+  }, GIT_FIXTURE_SETUP_TIMEOUT_MS);
   afterEach(() => {
     rmSync(remote.root, { recursive: true, force: true });
     rmSync(playground, { recursive: true, force: true });
-  });
+  }, GIT_FIXTURE_CLEANUP_TIMEOUT_MS);
 
   it('add rejects non-github URLs without touching filesystem', async () => {
     await expect(
@@ -140,9 +164,7 @@ describe('communityAdd / communityPull / communityList (integration)', () => {
   it('pull iterates existing community handles (noop success for up-to-date)', async () => {
     // Set up: manually clone the bare repo into community/foo
     const communityDir = join(playground, 'community');
-    execFileSync('git', ['clone', '--depth', '1', remote.bareUrl, join(communityDir, 'foo')], {
-      stdio: 'pipe',
-    });
+    git(['clone', '--depth', '1', remote.bareUrl, join(communityDir, 'foo')], communityDir, 'clone community repo');
 
     const results = await communityPull({ communityDir });
     expect(results.length).toBe(1);
@@ -153,16 +175,16 @@ describe('communityAdd / communityPull / communityList (integration)', () => {
   it('pull updates plaintext community repos through fetch reset clean', async () => {
     const communityDir = join(playground, 'community');
     const target = join(communityDir, 'foo');
-    execFileSync('git', ['clone', '--depth', '1', remote.bareUrl, target], { stdio: 'pipe' });
+    git(['clone', '--depth', '1', remote.bareUrl, target], communityDir, 'clone community repo');
 
     writeFileSync(
       join(remote.workdir, 'entries', 'gpu', 'sample.md'),
       `---\nid: sample\ntitle: Updated\nvisibility: public\nconfidence: tentative\n---\n\n## Symptom\nupdated plaintext\n`,
       'utf-8',
     );
-    execFileSync('git', ['add', '-A'], { cwd: remote.workdir });
-    execFileSync('git', ['commit', '-m', 'update'], { cwd: remote.workdir });
-    execFileSync('git', ['push', 'origin', 'HEAD'], { cwd: remote.workdir });
+    git(['add', '-A'], remote.workdir, 'stage plaintext update');
+    git(['commit', '-m', 'update'], remote.workdir, 'commit plaintext update');
+    git(['push', 'origin', 'HEAD'], remote.workdir, 'push plaintext update');
 
     const results = await communityPull({ communityDir });
     expect(results[0]?.status).toBe('ok');
@@ -172,20 +194,17 @@ describe('communityAdd / communityPull / communityList (integration)', () => {
   it('pull survives orphan force-push replacement without unrelated histories failure', async () => {
     const communityDir = join(playground, 'community');
     const target = join(communityDir, 'foo');
-    execFileSync('git', ['clone', '--depth', '1', remote.bareUrl, target], { stdio: 'pipe' });
+    git(['clone', '--depth', '1', remote.bareUrl, target], communityDir, 'clone community repo');
 
-    execFileSync('git', ['checkout', '--orphan', 'sealed-replacement'], { cwd: remote.workdir });
-    execFileSync('git', ['rm', '-rf', '.'], { cwd: remote.workdir });
+    git(['checkout', '--orphan', 'sealed-replacement'], remote.workdir, 'create orphan replacement');
+    git(['rm', '-rf', '.'], remote.workdir, 'clear orphan replacement');
     mkdirSync(join(remote.workdir, 'bundle'), { recursive: true });
     writeFileSync(join(remote.workdir, 'README.md'), 'sealed replacement\n', 'utf-8');
     writeFileSync(join(remote.workdir, 'bundle', 'entries.caveat'), 'encrypted', 'utf-8');
-    execFileSync('git', ['add', '-A'], { cwd: remote.workdir });
-    execFileSync('git', ['commit', '-m', 'orphan replacement'], { cwd: remote.workdir });
-    const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
-      cwd: target,
-      encoding: 'utf-8',
-    }).trim();
-    execFileSync('git', ['push', '--force', 'origin', `HEAD:${branch}`], { cwd: remote.workdir });
+    git(['add', '-A'], remote.workdir, 'stage orphan replacement');
+    git(['commit', '-m', 'orphan replacement'], remote.workdir, 'commit orphan replacement');
+    const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'], target, 'read target branch').trim();
+    git(['push', '--force', 'origin', `HEAD:${branch}`], remote.workdir, 'force-push orphan replacement');
 
     const results = await communityPull({ communityDir });
     expect(results[0]?.status).toBe('ok');
