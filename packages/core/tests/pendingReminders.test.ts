@@ -129,7 +129,7 @@ describe('pendingReminders', () => {
         expect(reminders.filter((text) => text === 'only once')).toHaveLength(1);
       }
     } finally { cleanup(); }
-  });
+  }, OS_PROCESS_STRESS_TIMEOUT_MS);
 
   it('keeps a live builder claim when staleDays is zero', async () => {
     const { home, cleanup } = freshHome();
@@ -154,7 +154,7 @@ describe('pendingReminders', () => {
       await exit;
       expect(drainPendingReminders(home, 's1')).toEqual(['built after sweep']);
     } finally { cleanup(); }
-  });
+  }, OS_PROCESS_STRESS_TIMEOUT_MS);
 
   it('reclaims expired claims and reports cleanup failures through the detailed API', () => {
     const { home, cleanup } = freshHome();
