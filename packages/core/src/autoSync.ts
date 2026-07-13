@@ -12,6 +12,7 @@ import {
 import { communityPull } from './community.js';
 import type { Logger } from './db.js';
 import { openDb } from './db.js';
+import { BACKGROUND_GIT_TIMEOUT_MS } from './gitRuntime.js';
 import { appendGlobalPendingReminder } from './pendingReminders.js';
 import type { ResolvedPaths } from './paths.js';
 import {
@@ -178,6 +179,7 @@ export interface RunAutoSyncOptions {
   paths: Pick<ResolvedPaths, 'dbPath' | 'entriesDir' | 'communityDir'>;
   logger: Logger;
   now?: () => Date;
+  gitTimeoutMs?: number;
 }
 
 export interface RunAutoSyncResult {
@@ -210,6 +212,7 @@ export async function runAutoSync(opts: RunAutoSyncOptions): Promise<RunAutoSync
     const community = await communityPull({
       communityDir: opts.paths.communityDir,
       logger: opts.logger,
+      gitTimeoutMs: opts.gitTimeoutMs ?? BACKGROUND_GIT_TIMEOUT_MS,
     });
 
     let own: AutoSyncOutcome['own'];
@@ -227,6 +230,7 @@ export async function runAutoSync(opts: RunAutoSyncOptions): Promise<RunAutoSync
           paths: opts.paths,
           logger: opts.logger,
           trustRemotePrivate: false,
+          gitTimeoutMs: opts.gitTimeoutMs ?? BACKGROUND_GIT_TIMEOUT_MS,
           probeImpl: async (url) => {
             const probe = await probeAnonymousRead(url);
             lastProbe = probe;

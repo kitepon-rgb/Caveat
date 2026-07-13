@@ -204,6 +204,18 @@ describe('communityAdd / communityPull / communityList (integration)', () => {
     expect(results[0]?.status).toBe('failed');
   });
 
+  it('passes the requested git timeout policy to each community pull', async () => {
+    const communityDir = join(playground, 'community');
+    mkdirSync(join(communityDir, 'timeout-probe'));
+
+    const results = await communityPull({ communityDir, gitTimeoutMs: 5_999 });
+    expect(results).toEqual([expect.objectContaining({
+      handle: 'timeout-probe',
+      status: 'failed',
+      message: expect.stringContaining('at least 6000'),
+    })]);
+  });
+
   it('list reports handles + entry counts from DB', () => {
     const communityDir = join(playground, 'community');
     mkdirSync(join(communityDir, 'alice'));

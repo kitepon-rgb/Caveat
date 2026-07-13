@@ -11,9 +11,18 @@ export const FOREGROUND_GIT_TIMEOUT_MS = 300_000;
 // opportunity instead of hanging a detached process indefinitely.
 export const BACKGROUND_GIT_TIMEOUT_MS = 30_000;
 
+const HTTP_HELPER_PREEMPT_MARGIN_MS = 5_000;
+const MIN_GIT_TIMEOUT_MS = HTTP_HELPER_PREEMPT_MARGIN_MS + 1_000;
+
 export function createGit(baseDir?: string, opts?: { timeoutMs?: number }): SimpleGit {
   const timeoutMs = opts?.timeoutMs ?? FOREGROUND_GIT_TIMEOUT_MS;
-  const lowSpeedTimeSeconds = Math.max(1, Math.ceil(timeoutMs / 1_000));
+  if (!Number.isFinite(timeoutMs) || timeoutMs < MIN_GIT_TIMEOUT_MS) {
+    throw new Error(`git timeoutMs must be at least ${MIN_GIT_TIMEOUT_MS}`);
+  }
+  // Let git-remote-http fail through Git's normal parent/child path before
+  // simple-git has to interrupt only the direct git child. This avoids leaving
+  // the helper orphaned on Node 22/Windows for a connected but silent server.
+  const lowSpeedTimeSeconds = Math.floor((timeoutMs - HTTP_HELPER_PREEMPT_MARGIN_MS) / 1_000);
   const env = {
     ...process.env,
     GIT_TERMINAL_PROMPT: '0',
@@ -28,9 +37,9 @@ export function createGit(baseDir?: string, opts?: { timeoutMs?: number }): Simp
     maxConcurrentProcesses: 1,
     timeout: { block: timeoutMs },
     // On Windows, killing the direct `git` child does not necessarily kill its
-    // `git-remote-http` descendant. This HTTP transfer-rate bound is a
-    // helper-side supplement for a server that stops responding; it is not a
-    // general process-tree or total elapsed-time guarantee.
+    // `git-remote-http` descendant. This earlier HTTP transfer-rate bound lets
+    // Git unwind its own helper first; it is not a general process-tree or
+    // total elapsed-time guarantee.
     config: [
       'http.lowSpeedLimit=1',
       `http.lowSpeedTime=${lowSpeedTimeSeconds}`,

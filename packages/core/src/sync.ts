@@ -33,6 +33,7 @@ export type ProbeImpl = (probeUrl: string | undefined) => Promise<RemoteAccess>;
 export interface PreflightSyncOptions {
   trustRemotePrivate?: boolean;
   probeImpl?: ProbeImpl;
+  gitTimeoutMs?: number;
 }
 
 export interface SyncPreflight {
@@ -127,7 +128,7 @@ export async function preflightSync(
   ownDir: string,
   opts: PreflightSyncOptions = {},
 ): Promise<SyncPreflight> {
-  const git = createGit(ownDir);
+  const git = createGit(ownDir, { timeoutMs: opts.gitTimeoutMs });
   if (!(await git.checkIsRepo())) {
     throw new SyncError('NOT_A_REPO', 'own knowledge directory is not a git repository; run `caveat sync --init` first');
   }
@@ -174,7 +175,7 @@ async function reindexAndMark(opts: Pick<SyncOwnOptions, 'caveatHome' | 'paths' 
 
 export async function syncOwn(opts: SyncOwnOptions): Promise<SyncOwnResult> {
   const preflight = await preflightSync(opts.ownDir, opts);
-  const git = createGit(preflight.ownDir);
+  const git = createGit(preflight.ownDir, { timeoutMs: opts.gitTimeoutMs });
   const status = await git.status();
   if (opts.dryRun) {
     return {

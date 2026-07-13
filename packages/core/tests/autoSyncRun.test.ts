@@ -83,6 +83,25 @@ function freshOwnRepoWithUnprobeableRemote(): { home: string; paths: { dbPath: s
 }
 
 describe('runAutoSync own-sync failure escape (E-5)', () => {
+  it('applies its background git timeout policy to own sync', async () => {
+    const { home, paths, ownDir, cleanup } = freshOwnRepoWithUnprobeableRemote();
+    try {
+      const result = await runAutoSync({
+        caveatHome: home,
+        ownDir,
+        paths,
+        logger: silent,
+        gitTimeoutMs: 5_999,
+      });
+      expect(result.outcome?.own).toMatchObject({
+        disposition: 'fail',
+        code: undefined,
+      });
+    } finally {
+      cleanup();
+    }
+  });
+
   it('increments on repeated failure, escalates once at 3, suspends after, and resets manually', async () => {
     const { home, paths, ownDir, cleanup } = freshOwnRepoWithUnprobeableRemote();
     try {

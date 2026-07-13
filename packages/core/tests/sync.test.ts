@@ -65,6 +65,12 @@ describe('preflightSync', { timeout: GIT_TEST_TIMEOUT_MS }, () => {
     });
   });
 
+  it('passes the requested git timeout policy into preflight', async () => {
+    mkdirSync(fixture.own, { recursive: true });
+    await expect(preflightSync(fixture.own, { probeImpl: denied, gitTimeoutMs: 5_999 }))
+      .rejects.toThrow('at least 6000');
+  });
+
   it('rejects an external subdirectory rather than syncing its parent repo', async () => {
     git(['init', fixture.own]);
     configureIdentity(fixture.own);

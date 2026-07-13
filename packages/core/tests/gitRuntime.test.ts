@@ -4,17 +4,16 @@ import { createServer, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { GitPluginError } from 'simple-git';
 import { createGit } from '../src/gitRuntime.js';
 
 const GIT_RUNTIME_TEST_TIMEOUT_MS = 15_000;
 
 let tmpDir: string | undefined;
 
-afterEach(async () => {
+afterEach(() => {
   vi.unstubAllEnvs();
   if (tmpDir) {
-    await removeTmpDirAfterWindowsHandleRelease(tmpDir, 10_000);
+    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     tmpDir = undefined;
   }
 });
@@ -61,7 +60,7 @@ async function startLocalServer(
 }
 
 describe('createGit runtime policy', { timeout: GIT_RUNTIME_TEST_TIMEOUT_MS }, () => {
-  it('reports a silent git child and bounds its HTTP helper despite conflicting inherited low-speed env', async () => {
+  it('lets the HTTP helper timeout preempt the direct-child timeout despite conflicting inherited env', async () => {
     const root = makeTmpDir();
     vi.stubEnv('GIT_HTTP_LOW_SPEED_LIMIT', '0');
     vi.stubEnv('GIT_HTTP_LOW_SPEED_TIME', '999');
@@ -72,15 +71,13 @@ describe('createGit runtime policy', { timeout: GIT_RUNTIME_TEST_TIMEOUT_MS }, (
     });
 
     try {
-      const git = createGit(root, { timeoutMs: 500 });
+      const git = createGit(root, { timeoutMs: 6_000 });
       await git.init();
       const error = await git.clone(server.url, join(root, 'clone'))
         .catch((err: unknown) => err);
-      expect(error).toBeInstanceOf(GitPluginError);
-      expect(error).toMatchObject({
-        plugin: 'timeout',
-        message: expect.stringContaining('block timeout reached'),
-      });
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toMatchObject({ plugin: 'timeout' });
+      expect(String(error)).toMatch(/operation too slow|less than .* bytes\/sec/i);
       await waitForNoSockets(server.activeSocketCount, 3_000);
       expect(server.activeSocketCount()).toBe(0);
     } finally {
@@ -105,10 +102,14 @@ describe('createGit runtime policy', { timeout: GIT_RUNTIME_TEST_TIMEOUT_MS }, (
   });
 
   it('passes the inactivity bound to the git HTTP helper', async () => {
-    const git = createGit(makeTmpDir(), { timeoutMs: 1_500 });
+    const git = createGit(makeTmpDir(), { timeoutMs: 6_000 });
 
     await expect(git.raw(['config', '--get', 'http.lowSpeedLimit'])).resolves.toBe('1\n');
-    await expect(git.raw(['config', '--get', 'http.lowSpeedTime'])).resolves.toBe('2\n');
+    await expect(git.raw(['config', '--get', 'http.lowSpeedTime'])).resolves.toBe('1\n');
+  });
+
+  it('rejects a timeout too short to let the HTTP helper preempt safely', () => {
+    expect(() => createGit(makeTmpDir(), { timeoutMs: 5_999 })).toThrow('at least 6000');
   });
 
   it('allows inherited pager environment variables even when their value is empty', async () => {
@@ -128,21 +129,5 @@ async function waitForNoSockets(activeSocketCount: () => number, timeoutMs: numb
   const deadline = Date.now() + timeoutMs;
   while (activeSocketCount() > 0 && Date.now() < deadline) {
     await new Promise<void>((resolve) => setTimeout(resolve, 50));
-  }
-}
-
-async function removeTmpDirAfterWindowsHandleRelease(path: string, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (true) {
-    try {
-      rmSync(path, { recursive: true, force: true });
-      return;
-    } catch (error) {
-      const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
-      if (!['EBUSY', 'EPERM', 'ENOTEMPTY'].includes(String(code)) || Date.now() >= deadline) throw error;
-      // Node 22 on Windows can report the task before git has released its cwd
-      // handle. Keep this bounded so a genuinely orphaned process still fails.
-      await new Promise<void>((resolve) => setTimeout(resolve, 100));
-    }
   }
 }

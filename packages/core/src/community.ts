@@ -77,6 +77,7 @@ export async function communityAdd(opts: CommunityAddOptions): Promise<Community
 export interface CommunityPullOptions {
   communityDir: string;
   logger?: Logger;
+  gitTimeoutMs?: number;
 }
 
 export interface CommunityPullResult {
@@ -94,8 +95,8 @@ export async function communityPull(
   for (const entry of readdirSync(opts.communityDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const path = join(opts.communityDir, entry.name);
-    const git = createGit(path);
     try {
+      const git = createGit(path, { timeoutMs: opts.gitTimeoutMs });
       await git.raw(['fetch', 'origin', '--force', '--depth', '1']);
       await git.raw(['reset', '--hard', 'FETCH_HEAD']);
       await git.raw(['clean', '-ffdx']);
