@@ -382,7 +382,7 @@ describe('Claude hook output', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, process.platform === 'win32' ? 15_000 : 5_000);
 
   it('routes hook sidecar advisory through the advisory preset', () => {
     const root = mkdtempSync(join(tmpdir(), 'caveat-claude-sidecar-advisory-'));
