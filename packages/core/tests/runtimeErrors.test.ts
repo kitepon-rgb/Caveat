@@ -2,20 +2,29 @@ import { describe, expect, it } from 'vitest';
 import { chmodSync, mkdtempSync, existsSync, mkdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { acknowledgeRuntimeErrors, compactRuntimeErrors, recordRuntimeError, runtimeCollectionEnabled, runtimeErrorsDiagnostics, runtimeErrorsInternal, runtimeErrorsSnapshot, runtimeErrorsStatePath, setRuntimeErrorStatus } from '../src/runtimeErrors.js';
+import { acknowledgeRuntimeErrors, compactRuntimeErrors, recordRuntimeError, runWindowsAcl, runtimeCollectionEnabled, runtimeErrorsDiagnostics, runtimeErrorsInternal, runtimeErrorsSnapshot, runtimeErrorsStatePath, setRuntimeErrorStatus } from '../src/runtimeErrors.js';
 
 function env(root: string, enabled: unknown): NodeJS.ProcessEnv {
-  const configHome = join(root, 'config'); const config = join(configHome, 'dotagents', 'factory-reporter.json'); mkdirSync(join(configHome, 'dotagents'), { recursive: true }); writeFileSync(config, JSON.stringify({ schema_version: '1.0', host: { id: 'test', profile: 'mac' }, collection: { enabled }, reporting: { enabled: false } }), { mode: 0o600 }); chmodSync(config, 0o600);
-  return { ...process.env, XDG_CONFIG_HOME: configHome, XDG_STATE_HOME: join(root, 'state') };
+  const isWindows = process.platform === 'win32';
+  const configHome = join(root, 'config');
+  const config = isWindows
+    ? join(root, 'dotagents', 'factory-reporter', 'config.json')
+    : join(configHome, 'dotagents', 'factory-reporter.json');
+  mkdirSync(dirname(config), { recursive: true });
+  writeFileSync(config, JSON.stringify({ schema_version: '1.0', host: { id: 'test', profile: isWindows ? 'windows-native' : 'mac' }, collection: { enabled }, reporting: { enabled: false } }), { mode: 0o600 });
+  if (isWindows) runWindowsAcl(config, false, true); else chmodSync(config, 0o600);
+  return { ...process.env, HOME: root, USERPROFILE: root, LOCALAPPDATA: root, XDG_CONFIG_HOME: configHome, XDG_STATE_HOME: join(root, 'state') };
 }
+function configPath(root: string) { return process.platform === 'win32' ? join(root, 'dotagents', 'factory-reporter', 'config.json') : join(root, 'config', 'dotagents', 'factory-reporter.json'); }
+function absentEnv(root: string): NodeJS.ProcessEnv { return { ...process.env, HOME: root, USERPROFILE: root, LOCALAPPDATA: root, XDG_CONFIG_HOME: join(root, 'config'), XDG_STATE_HOME: join(root, 'state') }; }
 const definition = 'CAVEAT.DATABASE_OPEN_FAILED' as const;
 
 function child(args: string[], env: NodeJS.ProcessEnv) {
   const fixture = new URL('./fixtures/runtime-error-child.mjs', import.meta.url);
   const tsxLoader = fileURLToPath(new URL('../../../apps/cli/node_modules/tsx/dist/loader.mjs', import.meta.url));
-  return spawn(process.execPath, ['--import', tsxLoader, fixture.pathname, ...args], {
+  return spawn(process.execPath, ['--import', tsxLoader, fileURLToPath(fixture), ...args], {
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -37,13 +46,14 @@ describe('runtime errors', () => {
   });
   it('fails closed without creating state for absent, malformed, oversized config and unsafe fresh state paths', () => {
     const absentRoot = mkdtempSync(join(tmpdir(), 'caveat-runtime-'));
-    const absent = { ...process.env, XDG_CONFIG_HOME: join(absentRoot, 'config'), XDG_STATE_HOME: join(absentRoot, 'state') };
+    const absent = absentEnv(absentRoot);
     recordRuntimeError(definition, { env: absent });
     expect(existsSync(runtimeErrorsStatePath(absent))).toBe(false);
 
     for (const configBody of ['{bad', `${JSON.stringify({ schema_version: '1.0', host: { id: 'test', profile: 'mac' }, collection: { enabled: true }, reporting: { enabled: false } })}${' '.repeat(1024 * 1024)}`]) {
       const root = mkdtempSync(join(tmpdir(), 'caveat-runtime-')); const e = env(root, true);
-      writeFileSync(join(root, 'config', 'dotagents', 'factory-reporter.json'), configBody);
+      writeFileSync(configPath(root), configBody);
+      if (process.platform === 'win32') runWindowsAcl(configPath(root), false, true);
       recordRuntimeError(definition, { env: e });
       expect(existsSync(runtimeErrorsStatePath(e))).toBe(false);
     }
@@ -126,7 +136,7 @@ describe('runtime errors', () => {
     expect(recordRuntimeError(definition, { env: e, version: '0.16.2', isWindows: () => true, aclRunner: () => { throw Error('acl failed'); } })).toMatchObject({ status: 'disabled' });
     expect(existsSync(runtimeErrorsStatePath(e))).toBe(false);
   });
-  it('serializes 20 truly concurrent child recorders without corrupting JSON', { timeout: 30_000 }, async () => {
+  it.skipIf(process.platform === 'win32')('serializes 20 truly concurrent child recorders without corrupting JSON', { timeout: 30_000 }, async () => {
     const root = mkdtempSync(join(tmpdir(), 'caveat-runtime-')); const e = env(root, true);
     const children = Array.from({ length: 20 }, () => child([], e));
     const exits = await Promise.all(children.map(childExit));

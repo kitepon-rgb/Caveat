@@ -101,7 +101,7 @@ describe('built factory/runtime CLI contracts', () => {
     expect(json(run(['factory-diagnostics', '--json'], dirty.env)).sync).toMatchObject({ status: 'not_ready', reason_code: 'worktree_dirty' });
 
     const behind = isolated(); readyFactory(behind); const remote = join(behind.root, 'remote.git'); const writer = join(behind.root, 'writer');
-    execFileSync('git', ['clone', remote, writer], { stdio: 'pipe' }); execFileSync('git', ['config', 'user.email', 'fixture@example.test'], { cwd: writer }); execFileSync('git', ['config', 'user.name', 'Fixture'], { cwd: writer });
+    execFileSync('git', ['clone', '--branch', 'main', remote, writer], { stdio: 'pipe' }); execFileSync('git', ['config', 'user.email', 'fixture@example.test'], { cwd: writer }); execFileSync('git', ['config', 'user.name', 'Fixture'], { cwd: writer });
     writeFileSync(join(writer, 'remote.md'), 'remote advance\n'); execFileSync('git', ['add', '.'], { cwd: writer }); execFileSync('git', ['commit', '-m', 'remote advance'], { cwd: writer, stdio: 'pipe' }); execFileSync('git', ['push'], { cwd: writer, stdio: 'pipe' });
     execFileSync('git', ['fetch', 'origin'], { cwd: join(behind.caveatHome, 'own'), stdio: 'pipe' });
     expect(json(run(['factory-diagnostics', '--json'], behind.env)).sync).toMatchObject({ status: 'not_ready', reason_code: 'remote_mismatch' });
