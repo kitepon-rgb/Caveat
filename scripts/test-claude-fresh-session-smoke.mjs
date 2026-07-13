@@ -11,7 +11,9 @@ try {
   const caveatHome = join(root, 'caveat-home');
   writeFileSync(settings, '{}'); writeFileSync(mcp, '{}'); mkdirSync(caveatHome);
   for (const [mode, expected] of [['happy', 0], ['unauth', 2], ['bad-auth-json', 2], ['hook-failure', 1], ['wrong-model', 1], ['bad-json', 1], ['missing-hook', 1], ['error-text', 1], ['timeout', 1], ['auth-timeout', 2]]) {
-    const result = spawnSync(process.execPath, ['scripts/claude-fresh-session-smoke.mjs', '--claude-command', process.execPath, '--claude-command-arg', resolve('scripts/fixtures/fake-claude-fresh-session.mjs'), '--settings', settings, '--mcp-config', mcp, '--caveat-home', caveatHome, '--timeout-ms', '50', '--auth-timeout-ms', '50'], { cwd: resolve('.'), env: { ...process.env, FAKE_CLAUDE_MODE: mode }, encoding: 'utf8', timeout: 15_000 });
+    const sessionTimeoutMs = mode === 'timeout' ? '250' : '5000';
+    const authTimeoutMs = mode === 'auth-timeout' ? '250' : '5000';
+    const result = spawnSync(process.execPath, ['scripts/claude-fresh-session-smoke.mjs', '--claude-command', process.execPath, '--claude-command-arg', resolve('scripts/fixtures/fake-claude-fresh-session.mjs'), '--settings', settings, '--mcp-config', mcp, '--caveat-home', caveatHome, '--timeout-ms', sessionTimeoutMs, '--auth-timeout-ms', authTimeoutMs], { cwd: resolve('.'), env: { ...process.env, FAKE_CLAUDE_MODE: mode }, encoding: 'utf8', timeout: 15_000 });
     if (result.status !== expected) throw new Error(`${mode}: expected ${expected}, got ${result.status}; ${result.stderr}`);
   }
   process.stdout.write('claude fresh-session fake smoke: ok\n');
