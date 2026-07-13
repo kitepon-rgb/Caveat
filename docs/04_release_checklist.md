@@ -66,6 +66,9 @@ Expected:
 Use a temporary `HOME` so the user's real Claude/Codex config is not modified.
 
 ```bash
+original_home=${HOME:?}
+original_user=${USER:?}
+original_logname=${LOGNAME:?}
 root=$(mktemp -d)
 prefix="$root/npm"
 home="$root/home"
@@ -194,29 +197,19 @@ Expected:
 
 ## New Claude Session Smoke
 
-Use Haiku for cost control. Avoid project-local hooks contaminating the result:
-run from `/tmp` and pass the fresh-install Caveat settings/MCP files explicitly.
+Use Haiku for cost control. Keep the fresh-install package, settings, MCP config,
+and `CAVEAT_HOME` under the temporary release root, but retain the invoking
+Claude user's `HOME`/`USER`/`LOGNAME`: an isolated `HOME` cannot reuse the
+user's keychain authentication. This is a release-only human smoke; CI runs
+the separate fake CLI contract test and never invokes real Claude.
 
 ```bash
-out="$root/claude-stream.jsonl"
-cd /tmp
-rtk proxy claude -p \
-  --verbose \
-  --output-format=stream-json \
-  --include-hook-events \
-  --setting-sources project \
+repo=$(rtk git rev-parse --show-toplevel)
+mkdir -p "$root/caveat-home"
+HOME="$original_home" USER="$original_user" LOGNAME="$original_logname" rtk node "$repo/scripts/claude-fresh-session-smoke.mjs" \
   --settings "$home/.claude/settings.json" \
   --mcp-config "$home/.claude.json" \
-  --strict-mcp-config \
-  --model haiku \
-  --max-budget-usd 0.05 \
-  --permission-mode dontAsk \
-  --no-session-persistence \
-  "Reply exactly: caveat-claude-session-ok" >"$out"
-
-if rtk rg -i "caveat.*(error|invalid|failed)|invalid.*caveat" "$out"; then
-  exit 1
-fi
+  --caveat-home "$root/caveat-home"
 ```
 
 Expected:
@@ -226,6 +219,8 @@ Expected:
   `outcome: "success"`.
 - The result is `caveat-claude-session-ok`.
 - No Caveat hook invalid/failure lines are present.
+- If `claude auth status` is unavailable or unauthenticated, the script exits
+  unavailable rather than treating the smoke as a pass; authenticate and rerun.
 
 ## Closeout
 

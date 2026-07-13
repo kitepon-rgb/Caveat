@@ -37,5 +37,8 @@ jobs:
       - name: Release smoke script check
         run: corepack pnpm check:release-smoke
 
+      - name: Claude fresh-session fake smoke
+        run: corepack pnpm test:claude-fresh-session-smoke
+
       - name: Test
         run: corepack pnpm -r test
