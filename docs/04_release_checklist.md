@@ -10,12 +10,20 @@ Run workspace checks sequentially. Do not run `build` and `typecheck` in
 parallel: `build` may clean package `dist/` output while downstream packages are
 resolving generated declarations.
 
+Do not wrap the root scripts in `corepack`. `corepack pnpm <script>` exports
+`COREPACK_ROOT` to child processes, and the root scripts shell back out through
+`scripts/pnpm.mjs`, which prefers `pnpm` on `PATH`. On a machine whose `PATH`
+pnpm is a different major than the pinned 10.0.0, that pnpm sees `COREPACK_ROOT`,
+refuses to self-switch, and fails hard. Invoked directly it reads
+`packageManager` and switches itself. Never silence this with
+`--pm-on-fail=ignore`: that runs the release on an unpinned pnpm.
+
 ```bash
-rtk proxy corepack pnpm -r build
-rtk proxy corepack pnpm -r typecheck
-rtk proxy corepack pnpm check:release-smoke
-rtk proxy corepack pnpm -r test
-rtk git diff --check
+pnpm -r build
+pnpm -r typecheck
+pnpm check:release-smoke
+pnpm -r test
+git diff --check
 ```
 
 Update the version and release notes, then verify the packed manifest again
@@ -26,18 +34,18 @@ leak into the tarball, then installs the tarball with npm and verifies
 forbidden because it can leave `workspace:*` strings in the packed manifest.
 
 ```bash
-rtk proxy corepack pnpm check:npm-pack
+pnpm check:npm-pack
 cd apps/cli
-rtk proxy corepack pnpm publish --dry-run --no-git-checks
+pnpm publish --dry-run --no-git-checks
 ```
 
 Commit, tag, push, wait for CI, then publish:
 
 ```bash
-rtk git status --short --branch
-rtk git push
-rtk git push origin "v$VERSION"
-rtk proxy corepack pnpm publish --no-git-checks
+git status --short --branch
+git push
+git push origin "v$VERSION"
+pnpm publish --no-git-checks
 ```
 
 ## Published Package Smoke

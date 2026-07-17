@@ -74,9 +74,9 @@ control/caveat各2 run実行し、両hostともcontrol時点からsafe-and-usefu
 
 ## コマンド
 
-`pnpm` は PATH に無く、`corepack pnpm` 経由で実行（pnpm 10.0.0 が `packageManager` で pin）。pnpm 10 はビルドスクリプトをデフォルトブロック、ホワイトリストは root `package.json` の `pnpm.onlyBuiltDependencies`。
+pnpm 10.0.0 が `packageManager` で pin。pnpm 10 はビルドスクリプトをデフォルトブロック、ホワイトリストは root `package.json` の `pnpm.onlyBuiltDependencies`。CLI パッケージ名は `caveat-cli`（bin は `caveat`）、他の workspace パッケージは `@caveat/core` / `@caveat/mcp` / `@caveat/web`。
 
-`pnpm` は PATH に無く、`corepack pnpm` 経由で実行（pnpm 10.0.0 が `packageManager` で pin）。CLI パッケージ名は `caveat-cli`（bin は `caveat`）、他の workspace パッケージは `@caveat/core` / `@caveat/mcp` / `@caveat/web`。
+**root の script（`check:release-smoke` / `check:npm-pack` / `eval:*` など、内部で `scripts/pnpm.mjs` を呼ぶもの）は `corepack` を挟まずに実行する**。`corepack pnpm <script>` は子プロセスへ `COREPACK_ROOT` を継承させる。`scripts/pnpm.mjs` は PATH 上の `pnpm` を最優先で拾うので、**PATH に pin と違う major の pnpm がある端末**では、その pnpm が `COREPACK_ROOT` を見て「corepack 配下では version を切り替えられない」と判断して硬エラーになる（単体で叩けば同じ pnpm が `packageManager` を読んで pin へ self-switch するため、`corepack` を外すだけで通る）。`--pm-on-fail=ignore` での黙らせは、pin と違う版で走らせることになるので使わない。PATH に pnpm が無い端末では `scripts/pnpm.mjs` が corepack へ fallback するため、この罠は出ない。
 
 ```sh
 corepack pnpm install                              # workspace 依存をインストール

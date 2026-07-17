@@ -4,6 +4,8 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ## Unreleased
 
+## [0.17.0] — 2026-07-17
+
 ### Added
 - `caveat_record` and `caveat_update` now trigger a background sync directly, so a new entry reaches the private remote without waiting for the session to end.
 
