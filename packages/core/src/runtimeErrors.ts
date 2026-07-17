@@ -68,11 +68,20 @@ function ensureSafeDir(dir: string, isWin: boolean, options: RuntimeErrorOptions
 function canonicalReporting(value: unknown) { if (!plain(value) || !Object.keys(value).every((key) => ['enabled','endpoint','credential_file'].includes(key)) || typeof value.enabled !== 'boolean') return false; if (value.endpoint !== undefined) { if (typeof value.endpoint !== 'string' || value.endpoint.length > 2048) return false; try { if (!['http:','https:'].includes(new URL(value.endpoint).protocol)) return false; } catch { return false; } } if (value.credential_file !== undefined && (typeof value.credential_file !== 'string' || value.credential_file.length < 1 || value.credential_file.length > 4096)) return false; return !value.enabled || (value.endpoint !== undefined && value.credential_file !== undefined); }
 const WINDOWS_ACL_VERIFY = String.raw`$p=$env:CAVEAT_ACL_PATH;$isDir=$env:CAVEAT_ACL_DIRECTORY -eq '1';$sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value;$acl=if($isDir){[System.IO.Directory]::GetAccessControl($p)}else{[System.IO.File]::GetAccessControl($p)};$owner=$acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value;if($owner -ne $sid){exit 41};$rules=@($acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]));if($rules.Count -ne 1){exit 42};$r=$rules[0];if($r.IdentityReference.Value -ne $sid -or $r.AccessControlType -ne 'Allow' -or $r.IsInherited -or ($r.FileSystemRights -band [System.Security.AccessControl.FileSystemRights]::FullControl) -ne [System.Security.AccessControl.FileSystemRights]::FullControl){exit 43}`;
 const WINDOWS_ACL_APPLY = String.raw`$p=$env:CAVEAT_ACL_PATH;$isDir=$env:CAVEAT_ACL_DIRECTORY -eq '1';$sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User;$acl=if($isDir){New-Object System.Security.AccessControl.DirectorySecurity}else{New-Object System.Security.AccessControl.FileSecurity};$acl.SetAccessRuleProtection($true,$false);$flags=if($isDir){[System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'}else{[System.Security.AccessControl.InheritanceFlags]::None};$rule=New-Object System.Security.AccessControl.FileSystemAccessRule($sid,'FullControl',$flags,[System.Security.AccessControl.PropagationFlags]::None,[System.Security.AccessControl.AccessControlType]::Allow);$acl.SetOwner($sid);$acl.AddAccessRule($rule);if($isDir){[System.IO.Directory]::SetAccessControl($p,$acl)}else{[System.IO.File]::SetAccessControl($p,$acl)};` + WINDOWS_ACL_VERIFY;
-// Hang guard, not a latency budget. Measured on a Windows workstation, a
-// `powershell.exe -NoProfile -NonInteractive` spawn costs ~150ms idle and ~200ms
-// worst case with 12 spawns in flight, so this is ~15x the observed cost. If a
-// run ever reports ETIMEDOUT at this seam, re-measure before raising it.
-const WINDOWS_ACL_TIMEOUT_MS = 3_000;
+// Hang guard, not a latency budget, and sized against the slowest machine that
+// runs it rather than a developer box.
+//
+// The old 3s bound is what made this seam flake: on a contended Windows CI
+// runner a single apply occasionally crossed it, spawnSync killed powershell,
+// and the null exit status read as "unsafe ACL". Measured on the actual
+// runners, one apply costs 331-459ms across 160 isolated runs, but the same
+// test costs 1042-1319ms inside the full parallel suite and the file it lives
+// in takes 47-61s overall — so 3s left barely 2.5x headroom against a runner
+// under load, and the failing run's test duration was 3039ms: the timeout
+// itself, not a rejected ACL. 15s is ~30x the isolated cost and still an order
+// of magnitude under the enclosing 30s test bound, so a genuine hang is still
+// caught. Re-measure before changing it; a fast idle box will lie to you.
+const WINDOWS_ACL_TIMEOUT_MS = 15_000;
 export function runWindowsAcl(path: string, directory: boolean, apply: boolean) {
   const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', apply ? WINDOWS_ACL_APPLY : WINDOWS_ACL_VERIFY], { env: { ...process.env, CAVEAT_ACL_PATH: path, CAVEAT_ACL_DIRECTORY: directory ? '1' : '0' }, encoding: 'utf-8', timeout: WINDOWS_ACL_TIMEOUT_MS, windowsHide: true });
   // Fail closed on every branch: an ACL we could not apply or verify is one we
