@@ -48,8 +48,10 @@ export type RecordArgs = {
 };
 
 export function handleRecord(ctx: McpContext, args: RecordArgs) {
-  return recordEntry(args, {
+  const result = recordEntry(args, {
     db: ctx.db,
     entriesRoot: ctx.paths.entriesDir,
   });
+  ctx.onEntryWritten();
+  return result;
 }

@@ -192,6 +192,12 @@ installed.
   caveat sync --init --repo https://github.com/acme-corp/Caveat-Private.git   # org / self-hosted
   ```
 
+  Once a private remote is configured, **Caveat also syncs on its own** — a gotcha you hit on one
+  machine is worth little if it reaches the others two days later. A background worker runs the same
+  cycle within a minute of recording an entry, and otherwise at most every 15 minutes when a session
+  ends. It never blocks you, it obeys the same refuse-if-anonymously-readable rule, and repeated
+  failures back off rather than stopping silently. Set `CAVEAT_AUTO_SYNC=off` to sync only by hand.
+
 - **`caveat publish`** — mirror **only** `visibility: public` entries to a **public** repo, one-way. Private entries are never written; the mirror is re-verified before every push and aborts entirely on any malformed entry.
 
   ```sh

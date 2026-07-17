@@ -4,6 +4,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  AUTO_SYNC_DEGRADED_RETRY_MS,
+  AUTO_SYNC_NOTICE_REPEAT_MS,
   drainGlobalPendingReminders,
   readAutoSyncState,
   resetAutoSyncFailureState,
@@ -127,21 +129,43 @@ describe('runAutoSync own-sync failure escape (E-5)', () => {
       expect(readAutoSyncState(home)?.ownSync.consecutiveFailureCount).toBe(3);
       expect(r3.outcome?.own.escalated).toBe(true);
       expect(r3.notified).toBe(true);
-      expect(drainGlobalPendingReminders(home).join('\n')).toContain('auto-retry is paused');
+      expect(drainGlobalPendingReminders(home).join('\n')).toContain('auto-retry is backed off');
 
-      // Cycle 4: suspended — own sync not attempted, count frozen, silent.
+      // Cycle 4: inside the backoff — own sync not attempted, count frozen, and
+      // deduped against cycle 3's identical degraded message.
       const r4 = await runAutoSync(opts);
       expect(r4.outcome?.own.suspended).toBe(true);
       expect(r4.outcome?.own.disposition).toBe('skip');
+      expect(r4.outcome?.own.degraded).toBe(true);
       expect(readAutoSyncState(home)?.ownSync.consecutiveFailureCount).toBe(3);
       expect(r4.notified).toBe(false);
       expect(drainGlobalPendingReminders(home)).toHaveLength(0);
 
-      // Manual sync success resets the counter and re-enables auto-retry.
+      // Once the backoff elapses auto-retry resumes on its own: a broken remote
+      // that recovers must not stay dead until someone runs a manual sync.
+      const afterBackoff = new Date(Date.now() + AUTO_SYNC_DEGRADED_RETRY_MS + 60_000);
+      const r5 = await runAutoSync({ ...opts, now: () => afterBackoff });
+      expect(r5.outcome?.own.disposition).toBe('fail');
+      expect(r5.outcome?.own.suspended).toBeUndefined();
+      expect(readAutoSyncState(home)?.ownSync.consecutiveFailureCount).toBe(4);
+      // Same degraded message as before, and still inside the notice window.
+      expect(r5.notified).toBe(false);
+      expect(drainGlobalPendingReminders(home)).toHaveLength(0);
+
+      // A degraded sync re-announces itself once the notice window passes, so
+      // it can never rot silently.
+      const afterNotice = new Date(Date.now() + AUTO_SYNC_NOTICE_REPEAT_MS + 60_000);
+      const r6 = await runAutoSync({ ...opts, now: () => afterNotice });
+      expect(r6.outcome?.own.degraded).toBe(true);
+      expect(r6.notified).toBe(true);
+      expect(drainGlobalPendingReminders(home).join('\n')).toContain('keeps failing');
+
+      // Manual sync success resets the counter and clears the backoff.
       resetAutoSyncFailureState(home);
       expect(readAutoSyncState(home)?.ownSync.consecutiveFailureCount).toBe(0);
-      const r5 = await runAutoSync(opts);
-      expect(r5.outcome?.own.disposition).toBe('fail');
+      const r7 = await runAutoSync(opts);
+      expect(r7.outcome?.own.disposition).toBe('fail');
+      expect(r7.outcome?.own.degraded).toBeUndefined();
       expect(readAutoSyncState(home)?.ownSync.consecutiveFailureCount).toBe(1);
     } finally {
       cleanup();

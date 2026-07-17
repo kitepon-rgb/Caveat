@@ -4,6 +4,16 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ## Unreleased
 
+### Added
+- `caveat_record` and `caveat_update` now trigger a background sync directly, so a new entry reaches the private remote without waiting for the session to end.
+
+### Changed
+- Automatic sync now runs at most every 15 minutes instead of every 24 hours. The old interval applied independently to the sending and receiving machine, so an entry recorded on one machine could take up to two days to become visible on another.
+- Repeated own-sync failures now back off to a 6-hour retry instead of suspending auto-retry until the next manual `caveat sync`, and the degraded state re-announces itself every 24 hours instead of being announced once and then staying silent.
+
+### Fixed
+- A malformed `CAVEAT_AUTO_SYNC_DEBOUNCE_MS` parsed as `NaN` and disabled the debounce entirely, spawning a sync worker on every trigger. Invalid values now warn on stderr and fall back to the default.
+
 ## [0.16.3] — 2026-07-13
 
 ### Added

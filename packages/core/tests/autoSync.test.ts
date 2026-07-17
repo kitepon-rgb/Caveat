@@ -1,11 +1,14 @@
-import { describe, expect, it } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { afterEach, describe, expect, it } from 'vitest';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   acquireFileLock,
+  AUTO_SYNC_DEBOUNCE_MS,
   autoSyncNotification,
   autoSyncStatePath,
+  CAVEAT_AUTO_SYNC_DEBOUNCE_ENV,
+  CAVEAT_AUTO_SYNC_ENV,
   classifyOwnSyncOutcome,
   ownSyncFailureSignature,
   PROBE_REQUEST_FAILED_REASON,
@@ -13,6 +16,7 @@ import {
   releaseFileLock,
   resetAutoSyncFailureState,
   SyncError,
+  triggerAutoSync,
   writeAutoSyncState,
   type SyncErrorCode,
 } from '../src/index.js';
@@ -21,6 +25,80 @@ function fresh(): { home: string; cleanup: () => void } {
   const home = mkdtempSync(join(tmpdir(), 'caveat-auto-sync-'));
   return { home, cleanup: () => rmSync(home, { recursive: true, force: true }) };
 }
+
+// triggerAutoSync validates its CLI script path only *after* the debounce gate
+// lets it through, so an empty script path turns "would spawn" into a throw.
+// That keeps these assertions honest without launching background workers.
+function wouldSpawn(home: string): boolean {
+  try {
+    triggerAutoSync({ caveatHome: home, cliScript: '' });
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+function markCycleFinished(home: string, agoMs = 0): void {
+  writeAutoSyncState(home, {
+    finishedAt: new Date(Date.now() - agoMs).toISOString(),
+    signature: 'sig',
+    ownSync: { consecutiveFailureSignature: null, consecutiveFailureCount: 0 },
+  });
+  // The gate reads mtime, not the payload. Ageing it explicitly keeps these
+  // assertions off the boundary, where filesystem sub-millisecond timestamps
+  // can land marginally ahead of Date.now().
+  const seconds = (Date.now() - agoMs) / 1000;
+  utimesSync(autoSyncStatePath(home), seconds, seconds);
+}
+
+describe('auto sync trigger', () => {
+  afterEach(() => {
+    delete process.env[CAVEAT_AUTO_SYNC_ENV];
+    delete process.env[CAVEAT_AUTO_SYNC_DEBOUNCE_ENV];
+  });
+
+  it('spawns when no cycle has run, and debounces against a recent one', () => {
+    const { home, cleanup } = fresh();
+    try {
+      expect(wouldSpawn(home)).toBe(true);
+      markCycleFinished(home, 60_000);
+      expect(wouldSpawn(home)).toBe(false);
+      // A cycle older than the default interval no longer gates.
+      markCycleFinished(home, AUTO_SYNC_DEBOUNCE_MS + 60_000);
+      expect(wouldSpawn(home)).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('honors the kill switch', () => {
+    const { home, cleanup } = fresh();
+    try {
+      process.env[CAVEAT_AUTO_SYNC_ENV] = 'off';
+      expect(wouldSpawn(home)).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('falls back to the default when the debounce override is malformed', () => {
+    const { home, cleanup } = fresh();
+    try {
+      markCycleFinished(home, 2 * 60_000);
+      // `Number('abc')` is NaN and `elapsed < NaN` is false, so garbage here
+      // used to mean "spawn a worker on every single trigger".
+      process.env[CAVEAT_AUTO_SYNC_DEBOUNCE_ENV] = 'abc';
+      expect(wouldSpawn(home)).toBe(false);
+      process.env[CAVEAT_AUTO_SYNC_DEBOUNCE_ENV] = '-1';
+      expect(wouldSpawn(home)).toBe(false);
+      // A valid override still wins over the default.
+      process.env[CAVEAT_AUTO_SYNC_DEBOUNCE_ENV] = '1000';
+      expect(wouldSpawn(home)).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+});
 
 describe('auto sync core', () => {
   it('classifies own sync outcomes by sync code and probe reason', () => {
@@ -85,8 +163,20 @@ describe('auto sync core', () => {
     }).text).toContain('REMOTE_PUBLIC');
     expect(autoSyncNotification({
       community: [],
-      own: { disposition: 'fail', code: 'SYNC_CONFLICT', escalated: true },
-    }).text).toContain('auto-retry is paused');
+      own: { disposition: 'fail', code: 'SYNC_CONFLICT', escalated: true, degraded: true },
+    }).text).toContain('backed off');
+    // Retrying-and-failing and sitting inside the backoff are the same story to
+    // the reader, so they must produce one message and one signature.
+    const degradedFail = autoSyncNotification({
+      community: [],
+      own: { disposition: 'fail', code: 'SYNC_CONFLICT', degraded: true },
+    });
+    const degradedSkip = autoSyncNotification({
+      community: [],
+      own: { disposition: 'skip', suspended: true, degraded: true },
+    });
+    expect(degradedSkip.text).toBe(degradedFail.text);
+    expect(degradedSkip.signature).toBe(degradedFail.signature);
     expect(autoSyncNotification({
       community: [{ handle: 'team', status: 'failed', message: 'nope' }],
       own: { disposition: 'skip' },

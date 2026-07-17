@@ -22,6 +22,8 @@ interface Fx {
   knowledgeRepo: string;
   ctx: McpContext;
   db: DatabaseSync;
+  /** Counts onEntryWritten calls; the real one spawns a background sync worker. */
+  writes: { count: number };
 }
 
 const silentLogger: Logger = {
@@ -45,6 +47,7 @@ function makeFx(): Fx {
   const paths = resolvePaths(caveatHome, config.knowledgeRepo, userHome);
   const db = openDb({ path: paths.dbPath, logger: silentLogger });
 
+  const writes = { count: 0 };
   const ctx: McpContext = {
     caveatHome,
     userHome,
@@ -53,8 +56,11 @@ function makeFx(): Fx {
     paths,
     logger: silentLogger,
     db,
+    onEntryWritten: () => {
+      writes.count += 1;
+    },
   };
-  return { root, caveatHome, userHome, knowledgeRepo, ctx, db };
+  return { root, caveatHome, userHome, knowledgeRepo, ctx, db, writes };
 }
 
 function cleanup(f: Fx): void {
@@ -166,6 +172,26 @@ describe('MCP tool handlers', () => {
           patch: { frontmatter: { confidence: 'confirmed' } },
         }),
       ).toThrow(/community エントリは購読物/);
+    });
+  });
+
+  describe('own-entry writes trigger a sync', () => {
+    it('signals a write on record and on update, but not on a rejected update', () => {
+      const { id } = handleRecord(f.ctx, { title: 'trigger test', symptom: 's' });
+      expect(f.writes.count).toBe(1);
+
+      handleUpdate(f.ctx, { id, patch: { frontmatter: { confidence: 'confirmed' } } });
+      expect(f.writes.count).toBe(2);
+
+      // A rejected write changed nothing, so there is nothing to propagate.
+      expect(() =>
+        handleUpdate(f.ctx, {
+          id: 'sample',
+          source: 'community/team',
+          patch: { frontmatter: { confidence: 'confirmed' } },
+        }),
+      ).toThrow();
+      expect(f.writes.count).toBe(2);
     });
   });
 

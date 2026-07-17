@@ -54,9 +54,11 @@ export function handleUpdate(ctx: McpContext, args: UpdateArgs) {
   if (source !== 'own') {
     throw new Error('community エントリは購読物です; 編集は上流で行ってください');
   }
-  return updateEntry(args.id, args.patch, {
+  const result = updateEntry(args.id, args.patch, {
     db: ctx.db,
     entriesRoot: ctx.paths.entriesDir,
     source,
   });
+  ctx.onEntryWritten();
+  return result;
 }

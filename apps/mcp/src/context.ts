@@ -11,6 +11,7 @@ import {
   type ResolvedPaths,
 } from '@caveat/core';
 import type { DatabaseSync } from 'node:sqlite';
+import { triggerAutoSyncAfterWrite } from './autoSyncTrigger.js';
 
 export interface McpContext {
   caveatHome: string;
@@ -20,6 +21,12 @@ export interface McpContext {
   paths: ResolvedPaths;
   logger: Logger;
   db: DatabaseSync;
+  /**
+   * Called after a write tool mutates own entries. Required (not optional) so
+   * that every context constructor — tests included — states whether a write
+   * spawns a real background sync.
+   */
+  onEntryWritten: () => void;
 }
 
 export interface McpContextOverrides {
@@ -27,6 +34,7 @@ export interface McpContextOverrides {
   userHome?: string;
   logger?: Logger;
   productVersion?: string;
+  onEntryWritten?: () => void;
 }
 
 export function buildMcpContext(overrides: McpContextOverrides = {}): McpContext {
@@ -37,5 +45,7 @@ export function buildMcpContext(overrides: McpContextOverrides = {}): McpContext
   const config = loadConfig(userConfigPath);
   const paths = resolvePaths(caveatHome, config.knowledgeRepo, userHome);
   const db = openDb({ path: paths.dbPath, logger });
-  return { caveatHome, userHome, userConfigPath, config, paths, logger, db };
+  const onEntryWritten =
+    overrides.onEntryWritten ?? (() => triggerAutoSyncAfterWrite(caveatHome, logger));
+  return { caveatHome, userHome, userConfigPath, config, paths, logger, db, onEntryWritten };
 }

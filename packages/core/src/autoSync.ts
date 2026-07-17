@@ -1,5 +1,6 @@
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
   acquireFileLock,
@@ -24,8 +25,23 @@ import { createKeyserverKeyProvider } from './sealedKeys.js';
 import { prewarmSealedKeys } from './sealedIndex.js';
 import { SyncError, syncOwn } from './sync.js';
 
-export const AUTO_SYNC_DEBOUNCE_MS = 24 * 60 * 60 * 1000;
+// Knowledge is worthless to the other terminals until it reaches the private
+// remote, so the periodic cycle runs on a human-scale interval. A cycle is one
+// probe + fetch/rebase + push against a repo that is usually unchanged.
+export const AUTO_SYNC_DEBOUNCE_MS = 15 * 60 * 1000;
+// A fresh entry should leave the machine without waiting for the next Stop
+// hook. This floor only batches a burst of writes; it is not a rate limit.
+export const AUTO_SYNC_RECORD_DEBOUNCE_MS = 60 * 1000;
+export const AUTO_SYNC_SUSPEND_THRESHOLD = 3;
+// After the threshold, auto-retry backs off instead of stopping forever: a
+// remote that is down, rotated, or mid-conflict usually recovers without the
+// user ever running a manual sync.
+export const AUTO_SYNC_DEGRADED_RETRY_MS = 6 * 60 * 60 * 1000;
+// A degraded sync must never rot silently, so the notice repeats on this
+// interval even when the outcome has not changed.
+export const AUTO_SYNC_NOTICE_REPEAT_MS = 24 * 60 * 60 * 1000;
 export const CAVEAT_AUTO_SYNC_ENV = 'CAVEAT_AUTO_SYNC';
+export const CAVEAT_AUTO_SYNC_DEBOUNCE_ENV = 'CAVEAT_AUTO_SYNC_DEBOUNCE_MS';
 
 function syncDir(caveatHome: string): string {
   return join(caveatHome, 'sync');
@@ -42,7 +58,14 @@ export function autoSyncLockPath(caveatHome: string): string {
 export interface AutoSyncState {
   finishedAt: string;
   signature: string;
-  ownSync: { consecutiveFailureSignature: string | null; consecutiveFailureCount: number };
+  /** When the user was last told about a degraded sync. Drives notice repeats. */
+  lastNotifiedAt?: string;
+  ownSync: {
+    consecutiveFailureSignature: string | null;
+    consecutiveFailureCount: number;
+    /** When own sync was last actually attempted. Drives the degraded backoff. */
+    lastAttemptAt?: string;
+  };
 }
 
 export function readAutoSyncState(caveatHome: string): AutoSyncState | null {
@@ -70,6 +93,7 @@ export function resetAutoSyncFailureState(caveatHome: string): void {
     writeAutoSyncState(caveatHome, {
       finishedAt: current?.finishedAt ?? new Date(0).toISOString(),
       signature: current?.signature ?? '',
+      lastNotifiedAt: current?.lastNotifiedAt,
       ownSync: { consecutiveFailureSignature: null, consecutiveFailureCount: 0 },
     });
   } catch {
@@ -83,6 +107,7 @@ function isAutoSyncState(value: unknown): value is AutoSyncState {
   return (
     typeof candidate.finishedAt === 'string' &&
     typeof candidate.signature === 'string' &&
+    isOptionalString(candidate.lastNotifiedAt) &&
     candidate.ownSync !== null &&
     typeof candidate.ownSync === 'object' &&
     (
@@ -90,8 +115,20 @@ function isAutoSyncState(value: unknown): value is AutoSyncState {
       typeof candidate.ownSync.consecutiveFailureSignature === 'string'
     ) &&
     Number.isInteger(candidate.ownSync.consecutiveFailureCount) &&
-    candidate.ownSync.consecutiveFailureCount >= 0
+    candidate.ownSync.consecutiveFailureCount >= 0 &&
+    isOptionalString(candidate.ownSync.lastAttemptAt)
   );
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string';
+}
+
+/** Unparseable or absent timestamps read as "never", which lets work proceed. */
+function parseTimestamp(value: string | undefined): number {
+  if (value === undefined) return 0;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : 0;
 }
 
 export type OwnSyncDisposition = 'success' | 'skip' | 'network-skip' | 'fail';
@@ -138,6 +175,8 @@ export interface AutoSyncOutcome {
     changedFiles?: number;
     suspended?: boolean;
     escalated?: boolean;
+    /** Repeated failures have pushed own sync onto the backoff schedule. */
+    degraded?: boolean;
   };
 }
 
@@ -146,8 +185,12 @@ export function autoSyncNotification(outcome: AutoSyncOutcome): { signature: str
   if (outcome.own.pulled === true) {
     lines.push('autosync: pulled updates from your private remote');
   }
-  if (outcome.own.escalated === true) {
-    lines.push('autosync: own sync failed 3x in a row and auto-retry is paused. run `caveat sync` manually to resolve and resume.');
+  const backoffHours = Math.round(AUTO_SYNC_DEGRADED_RETRY_MS / (60 * 60 * 1000));
+  if (outcome.own.degraded === true) {
+    // One wording for the whole degraded stretch, whether this cycle retried
+    // and failed or sat inside the backoff. Otherwise the two states alternate
+    // and every backoff window announces itself twice.
+    lines.push(`autosync: own sync keeps failing; auto-retry is backed off to every ${backoffHours}h. run \`caveat sync\` to resolve now.`);
   } else if (outcome.own.disposition === 'fail') {
     lines.push(`autosync: own sync failed (${outcome.own.code ?? 'UNKNOWN'}). run \`caveat sync\` to resolve.`);
   }
@@ -159,17 +202,11 @@ export function autoSyncNotification(outcome: AutoSyncOutcome): { signature: str
     lines.push(`autosync: community pull failed: ${failedHandles.join(', ')}`);
   }
   const text = lines.length > 0 ? lines.join('\n') : null;
-  const signature = sha256(JSON.stringify({
-    lines,
-    own: {
-      disposition: outcome.own.disposition,
-      code: outcome.own.code ?? null,
-      pulled: outcome.own.pulled ?? null,
-      suspended: outcome.own.suspended ?? false,
-      escalated: outcome.own.escalated ?? false,
-    },
-    communityFailed: failedHandles,
-  }));
+  // The signature answers exactly one question — "has the message the user
+  // would read changed?" — so it is derived from the message and nothing else.
+  // Folding internal fields in here made identical messages look different and
+  // re-notified on every disposition flip.
+  const signature = sha256(JSON.stringify(lines));
   return { signature, text };
 }
 
@@ -204,6 +241,9 @@ export async function runAutoSync(opts: RunAutoSyncOptions): Promise<RunAutoSync
     reindexLock = acquireReindexLock(opts.caveatHome);
     if (!reindexLock) return { ran: false };
 
+    const nowDate = (opts.now ?? (() => new Date()))();
+    const nowMs = nowDate.getTime();
+    const nowIso = nowDate.toISOString();
     const previousState = readAutoSyncState(opts.caveatHome);
     let ownSyncState = previousState?.ownSync ?? {
       consecutiveFailureSignature: null,
@@ -216,12 +256,16 @@ export async function runAutoSync(opts: RunAutoSyncOptions): Promise<RunAutoSync
     });
 
     let own: AutoSyncOutcome['own'];
-    if (ownSyncState.consecutiveFailureCount >= 3) {
-      // E-5: auto-retry is suspended after 3 consecutive same-code failures.
-      // Only a successful manual `caveat sync` (resetAutoSyncFailureState)
-      // clears it. Silent here — the escalation was already announced once.
+    // E-5: after repeated same-code failures auto-retry backs off, but it does
+    // not stop. A permanent stop that only a manual `caveat sync` could clear
+    // left propagation dead until the user happened to notice.
+    const degraded = ownSyncState.consecutiveFailureCount >= AUTO_SYNC_SUSPEND_THRESHOLD;
+    const retryDue =
+      nowMs - parseTimestamp(ownSyncState.lastAttemptAt) >= AUTO_SYNC_DEGRADED_RETRY_MS;
+    if (degraded && !retryDue) {
       own = { disposition: 'skip', suspended: true };
     } else {
+      ownSyncState = { ...ownSyncState, lastAttemptAt: nowIso };
       let lastProbe: RemoteAccess | undefined;
       try {
         const result = await syncOwn({
@@ -256,11 +300,14 @@ export async function runAutoSync(opts: RunAutoSyncOptions): Promise<RunAutoSync
           ownSyncState = {
             consecutiveFailureSignature: failureSignature,
             consecutiveFailureCount,
+            lastAttemptAt: nowIso,
           };
-          if (consecutiveFailureCount === 3) own.escalated = true;
+          if (consecutiveFailureCount === AUTO_SYNC_SUSPEND_THRESHOLD) own.escalated = true;
         }
       }
     }
+
+    if (ownSyncState.consecutiveFailureCount >= AUTO_SYNC_SUSPEND_THRESHOLD) own.degraded = true;
 
     // Reindex under the held lock so community-pull changes land in the index
     // even when own sync was skipped or failed.
@@ -268,14 +315,21 @@ export async function runAutoSync(opts: RunAutoSyncOptions): Promise<RunAutoSync
 
     const outcome: AutoSyncOutcome = { community, own };
     const { signature, text } = autoSyncNotification(outcome);
+    // A changed message always speaks. A *degraded* sync also re-speaks on an
+    // interval: signature dedup alone announced the breakage once and then went
+    // quiet forever while nothing propagated.
+    const repeatDue =
+      own.degraded === true &&
+      nowMs - parseTimestamp(previousState?.lastNotifiedAt) >= AUTO_SYNC_NOTICE_REPEAT_MS;
     let notified = false;
-    if (text !== null && previousState?.signature !== signature) {
+    if (text !== null && (previousState?.signature !== signature || repeatDue)) {
       appendGlobalPendingReminder(opts.caveatHome, text);
       notified = true;
     }
     writeAutoSyncState(opts.caveatHome, {
-      finishedAt: (opts.now ?? (() => new Date()))().toISOString(),
+      finishedAt: nowIso,
       signature,
+      lastNotifiedAt: notified ? nowIso : previousState?.lastNotifiedAt,
       ownSync: ownSyncState,
     });
     return { ran: true, outcome, notified };
@@ -296,6 +350,52 @@ export async function runAutoSync(opts: RunAutoSyncOptions): Promise<RunAutoSync
       opts.logger.warn(`autosync lock release failed: ${errorMessage(err)}`);
     }
   }
+}
+
+export interface TriggerAutoSyncOptions {
+  caveatHome: string;
+  /** Caveat CLI entry script; the worker is spawned as `<cliScript> hook autosync`. */
+  cliScript: string;
+  /** Minimum age of the last completed cycle before spawning. Default: AUTO_SYNC_DEBOUNCE_MS. */
+  debounceMs?: number;
+}
+
+/**
+ * Spawn a detached autosync worker unless one ran recently. Returns immediately;
+ * the worker owns the real lock, so an over-eager caller costs a wasted spawn,
+ * never a concurrent sync.
+ */
+export function triggerAutoSync(opts: TriggerAutoSyncOptions): void {
+  if (process.env[CAVEAT_AUTO_SYNC_ENV] === 'off') return;
+  const debounceMs = resolveTriggerDebounceMs(opts.debounceMs ?? AUTO_SYNC_DEBOUNCE_MS);
+  const statePath = autoSyncStatePath(opts.caveatHome);
+  try {
+    if (existsSync(statePath) && Date.now() - statSync(statePath).mtimeMs < debounceMs) return;
+  } catch {
+    // Treat unreadable state as not yet run; the worker owns the real lock.
+  }
+  if (!opts.cliScript) throw new Error('current Caveat CLI script path is unavailable');
+  const child = spawn(
+    process.execPath,
+    [...process.execArgv, '--disable-warning=ExperimentalWarning', opts.cliScript, 'hook', 'autosync'],
+    { detached: true, stdio: 'ignore', windowsHide: true },
+  );
+  child.unref();
+}
+
+function resolveTriggerDebounceMs(fallback: number): number {
+  const raw = process.env[CAVEAT_AUTO_SYNC_DEBOUNCE_ENV];
+  if (raw === undefined) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    // A malformed override used to read as NaN, and `elapsed < NaN` is false —
+    // so garbage here silently meant "spawn a worker on every trigger".
+    process.stderr.write(
+      `[caveat] ${CAVEAT_AUTO_SYNC_DEBOUNCE_ENV}=${raw} is not a non-negative number; using ${fallback}ms\n`,
+    );
+    return fallback;
+  }
+  return parsed;
 }
 
 async function reindexAndMark(opts: RunAutoSyncOptions): Promise<void> {

@@ -230,6 +230,7 @@ MCP stdio サーバは stdout に JSON-RPC 以外を書いてはいけない。`
 
 - **`packages/core` と `apps/mcp` は `bundle: false` + `entry: ['src/**/*.ts']`**。bundle すると esbuild が `node:` プレフィクスを dist 出力で剥がす（例: `from 'node:sqlite'` → `from 'sqlite'`）。`node:sqlite` は bare 名前では解決不能なので、consumer 側（vitest 4 / workspace 別パッケージ）で `Cannot find package 'sqlite'` として破綻する。bundle せずファイル個別出力にすれば保持される
 - **`apps/cli` は Phase 12 で `bundle: true` + `noExternal` で workspace deps を吸収**。esbuild の prefix 剥がしは onSuccess の post-process で `NODE_BUILTINS` を regex 置換して復元。CJS 依存（gray-matter）は banner で `createRequire(import.meta.url)` を inject
+- **`apps/cli` は workspace deps を「src ではなく各パッケージの `dist`」から bundle する**。`@caveat/core` と `@caveat/mcp` を直したら **core → mcp → cli の順で全部ビルドし直す**。`apps/mcp` の build を飛ばすと CLI は古い MCP を bundle し、typecheck も test も通るのに実行時だけ挙動が古いまま——という無症状の失敗になる（`corepack pnpm -r build` なら依存順で解決）。疑ったら `grep -c <新シンボル> apps/cli/dist/index.js` で bundle の実物を見る
 
 ## Claude Code 統合（Phase 10 で初期実装、Phase 12 でインストーラ化）
 
@@ -300,3 +301,17 @@ MCP stdio サーバは stdout に JSON-RPC 以外を書いてはいけない。`
 - **非 git ディレクトリや staged 対象なしは exit 0**。false-block を回避（`feedback_no_unnecessary_fallbacks` の範囲内、必要最小のガード）
 - 緊急バイパスは `git commit --no-verify`（git 標準）。カスタム escape hatch は作らない
 - `findBlockedFiles(stagedContents)` は v0.11.2 で `@caveat/core/visibilityGate` に移動済。`hooks/pre-commit-visibility-gate.mjs` は core から import して re-export する薄いラッパ。test (`hooks/tests/pre-commit-gate.test.ts`) も `@caveat/core` から import するので、`.mjs` を vitest が直接 transform する経路を取らない（Windows + vitest で日本語含む `.mjs` の transform が `SyntaxError: Invalid or unexpected token` で落ちる CI 問題の構造的回避）
+
+## 自動同期（AutoSync）
+
+**多端末伝播の唯一の経路**。ロジックは [packages/core/src/autoSync.ts](packages/core/src/autoSync.ts) に集約。
+
+- **1 cycle の中身**: `communityPull`（全 community repo を git pull）→ `syncOwn`（commit → `pull --rebase` → push）→ 全 source 再索引。**push と pull は分離できない** — `syncOwn` が必ず往復する 1 セット。前段に匿名可読 probe（remote への HTTP GET）が入る。実測 ~3.5s（community 0 件、own 218 entries、detached background なのでユーザー体感 0）
+- **発火点は 2 つ**。どちらも `triggerAutoSync` で detached worker (`caveat hook autosync`) を spawn して即 return する:
+  1. **Stop hook** ([hookCmd.ts](apps/cli/src/commands/hookCmd.ts) / [codexHookCmd.ts](apps/cli/src/commands/codexHookCmd.ts)) — `AUTO_SYNC_DEBOUNCE_MS` = **15 分**。定期的に他端末の entry を拾う担当
+  2. **MCP の書き込み** (`caveat_record` / `caveat_update`) — `AUTO_SYNC_RECORD_DEBOUNCE_MS` = **60 秒**。登録した罠を即座に private remote へ出す担当。`McpContext.onEntryWritten` 経由（**必須フィールド**。テストが暗黙に実 spawn するのを型で防ぐため optional にしない）
+- **デバウンス値の根拠**: 旧 24 時間は送信側・受信側の両方に掛かり、伝播が最悪 48h だった。「別端末で登録した罠が当日中に届かない」は Caveat の価値そのものを殺すので、実測コストが許す範囲まで詰めた。record 起点の 60 秒は rate limit ではなく **burst 吸収の floor**
+- **失敗時は backoff であって永久停止ではない**: 同一 code の失敗が `AUTO_SYNC_SUSPEND_THRESHOLD`(3) 回連続すると `AUTO_SYNC_DEGRADED_RETRY_MS`(6h) 間隔へ後退する。**手動 `caveat sync` を待たずに自力で回復する**。degraded 中は `AUTO_SYNC_NOTICE_REPEAT_MS`(24h) ごとに reminder を再送する（旧実装は escalation を 1 回告知した後は完全に無言で永久停止し、伝播が死んだことに誰も気づけなかった）
+- **notification signature は「本文」から採る**。`sha256(JSON.stringify(lines))` のみ。内部 field (`disposition` / `suspended`) を混ぜると、同じ意味の状態（6h ごとの再試行失敗 と その間の skip）が別物と判定されて backoff 窓ごとに 2 通飛ぶ
+- **env**: `CAVEAT_AUTO_SYNC=off` で全停止。`CAVEAT_AUTO_SYNC_DEBOUNCE_MS` でデバウンス上書き（**不正値は stderr に警告して default へ落とす** — `Number('abc')` = NaN、`elapsed < NaN` は常に false なので、素通しにすると「毎回 spawn」になる）
+- **配布の注意**: 伝播は両端末が新版を持って初めて速くなる。片側だけ更新しても、相手が push しなければ pull するものが無い
