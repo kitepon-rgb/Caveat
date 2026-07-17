@@ -1,72 +1,85 @@
 # Next Session Handoff
 
-Last updated: 2026-07-13.
+Last updated: 2026-07-17.
 
 ## Status
 
-Precision and runtime reliability work is complete and released. There are no
-remaining release tasks for `caveat-cli@0.16.2` or codex-sidecar 0.3.6.
+AutoSync propagation work is complete and released as `caveat-cli@0.17.0`. There
+are no remaining release tasks.
 
-BugHub/dotagents integration was intentionally excluded. Caveat did not add a
-duplicate diagnostics store, error reporter, outbox, acknowledgement, or
-notification path.
+The release closes a real multi-terminal failure: an entry recorded on the WSL2
+machine never reached the macOS machine. The cause was structural, not a bug —
+the 24-hour debounce applied independently to the sending and the receiving
+machine, so propagation took up to two days, and nothing pushed until a Stop
+hook happened to fire outside that window.
 
 ## Released Artifacts
 
-- `caveat-cli@0.16.2` is npm `latest`, globally installed, and available from
-  <https://github.com/kitepon-rgb/Caveat/releases/tag/v0.16.2>.
-- `codex-sidecar-core@0.3.6`, `codex-sidecar-cli@0.3.6`, and
-  `codex-sidecar-mcp@0.3.6` are npm `latest`; CLI/MCP 0.3.6 are installed.
-- codex-sidecar release:
-  <https://github.com/kitepon-rgb/codex-sidecar/releases/tag/v0.3.6>.
-- Caveat release tag `v0.16.2` resolves to exact green commit
-  `fb059b82e0f1ce24dd20665fe6bfc71b643b17cc`.
-- codex-sidecar release tag `v0.3.6` resolves to
-  `581e81dd2bf9656adc71d2988ae089e1fb6b96a3`.
+- `caveat-cli@0.17.0` is npm `latest` and installed on all three machines
+  (macOS 0.17.0, WSL2 0.17.0, Windows native 0.17.0).
+- Release tag `v0.17.0` resolves to green commit
+  `fe09f2fe60463c37e7fa00d5fb3852a9bf52fa59`.
+- The tag was force-moved once before publish: it originally pointed at the
+  version-bump commit, and the Windows ACL fix landed after it. Nothing had been
+  published at that point, so the tag now matches the published bytes.
+
+## What Shipped
+
+- Automatic sync runs at most every 15 minutes instead of every 24 hours.
+- `caveat_record` / `caveat_update` trigger a background sync directly (60s
+  burst floor) via the required `McpContext.onEntryWritten` seam, so a new entry
+  no longer waits for the session to end.
+- Repeated own-sync failures back off to a 6-hour retry instead of suspending
+  until a manual `caveat sync`, and re-announce every 24 hours instead of going
+  silent forever after one escalation notice.
+- Notification signatures derive from the message text alone; folding internal
+  dispositions in made identical messages re-notify on every state flip.
+- `CAVEAT_AUTO_SYNC_DEBOUNCE_MS` garbage no longer parses to `NaN` and disables
+  the debounce entirely.
+- Windows ACL seam: 3s timeout raised to 15s, and failures now name their mode.
 
 ## Verification
 
-- Caveat local gate: build, typecheck, release pack/install smoke, diff-check,
-  and all 545 tests green (core 419 / CLI 88 / MCP 12 / Web 17 / hooks 9).
-- Hook-search evaluation: all 410 cases and corpus/golden digests unchanged from
-  the recorded baseline. Primary precision remained 155/257 (0.6031128405),
-  positive recall 151/269 (0.56133829), and negative any-hit 52/141
-  (0.3687943262).
-- Consecutive six-job CI runs `29227144416` and `29227427125` are green across
-  Ubuntu 24.04, Windows 2022/2025, and Node 22/24.
-- codex-sidecar CI run `29226366326` is green; Luna low structured advisory was
-  8/8 valid before release.
-- Fresh registry install verified package version 0.16.2, executable mode 755,
-  manifest bin, `caveat init`, Codex hook install idempotence, diagnostics,
-  generated Claude/Codex config, and uninstall leaving zero Caveat Codex hooks.
-- New Codex session returned `caveat-new-session-ok` with `gpt-5.6-luna` and no
-  Caveat hook failure. Codex separately emitted one model-catalog refresh child
-  timeout; the explicit Luna turn completed.
-- Published sidecar advisory smoke passed independently for Stop and tool-error
-  with `gpt-5.6-luna` low, `status: ok`, output schema, raw log, and matched
-  thread/turn binding verified.
-- Published-package Claude smoke passed with Haiku, budget cap `$0.05`,
-  UserPromptSubmit/Stop success, and `caveat-claude-session-ok`.
+- Local gate: build, typecheck, `check:release-smoke`, `check:npm-pack`,
+  `git diff --check`, and all 570 tests green (core 437 / CLI 94 / MCP 13 /
+  Web 17 / hooks 9).
+- CI runs `29565434227` and `29565925548` are green across Ubuntu 24.04,
+  Windows 2022/2025, and Node 22/24.
+- Published-package smoke: fresh `npm install -g caveat-cli@0.17.0` into a
+  temporary prefix reported version 0.17.0, `dist/caveat.js` mode 755, and
+  `bin.caveat = dist/caveat.js`. The ACL fix is present in the published bundle.
+- End-to-end propagation was verified against the real failure, not a fixture:
+  `caveat sync` on WSL2 pushed 6 stranded entries, autosync on macOS pulled and
+  reindexed them, and `caveat_search` then returned the WSL2-authored entry.
 
 ## Operational Notes
 
-- The raw Codex CLI fresh-session smoke may symlink the real `auth.json` into a
-  temporary `CODEX_HOME`.
-- The codex-sidecar advisory smoke must instead receive the canonical real
-  `CODEX_HOME`. Sidecar deliberately opens canonical auth with `O_NOFOLLOW` for
-  durable snapshot/lease safety, so passing the temporary auth symlink fails
-  closed with `ELOOP`. The release checklist records the exact separation.
-- Windows timing evidence is bounded characterization, not a universal latency
-  guarantee: `community.test.ts` n=22 p95 12.905s and
-  `autoSyncHook.test.ts` n=8 p95 14.186s. Both use a 20s child timeout with
-  longer setup/cleanup/suite bounds and phase-labelled failures.
+- The Windows ACL flake was diagnosed, not silenced. It had been "stabilized"
+  three times (42f0451 / 0c4678f / 07a84b2) because the seam swallowed
+  PowerShell's stderr and collapsed spawn failure, timeout, and non-zero exit
+  into one `store_unsafe`. Decisive evidence was duration: the failing test ran
+  3039ms against a 3000ms bound, while green runs ran it in 1042-1319ms. One
+  apply costs 331-459ms on the runners themselves (measured via a throwaway
+  diagnostic PR, #24, closed after collection). A developer workstation measures
+  ~200ms and will not reproduce it — do not size CI bounds from a fast idle box.
+- Do not wrap root scripts in `corepack`. `corepack pnpm <script>` exports
+  `COREPACK_ROOT`, and `scripts/pnpm.mjs` prefers `PATH` pnpm, which then
+  refuses to self-switch to the pinned 10.0.0 and fails hard. This bit the
+  pre-publish gate; the checklist and CLAUDE.md now say `pnpm <script>`.
+- `apps/cli` bundles workspace deps from their `dist/`, not `src/`. Rebuild in
+  dependency order (`pnpm -r build`) — skipping `apps/mcp` ships a stale MCP
+  while typecheck and tests still pass.
+- Non-login SSH shells (WSL2 included) do not restore the npm prefix PATH, so a
+  globally installed `caveat` looks missing. Use `bash -lc`. Recorded as
+  `login-ssh-wsl2-npm-prefix-path-cli`.
 - Six open Dependabot PRs at closeout are distinct current dependency updates,
   not superseded duplicates. They were left untouched.
 
 ## Canonical References
 
+- AutoSync contract: `CLAUDE.md` (自動同期（AutoSync）)
 - Release procedure: [`04_release_checklist.md`](04_release_checklist.md)
 - Claude/Codex and sidecar contract:
   [`03_dual_agent_support.md`](03_dual_agent_support.md)
-- Completed implementation, audit, timing, and release ledger:
-  [`archive/11_precision_and_runtime_reliability.md`](archive/11_precision_and_runtime_reliability.md)
+- Sharing and reindex design:
+  [`06_sharing_and_reindex.md`](06_sharing_and_reindex.md)
