@@ -43,14 +43,14 @@ The knowledge repo is plain markdown-in-git. Open it as an Obsidian vault. Share
 
 ## How it compares
 
-| | **Caveat** | `.cursorrules` / `CLAUDE.md` / `AGENTS.md` | RAG over docs | Notion / Obsidian (manual) |
-|---|---|---|---|---|
-| Surfaces context **automatically** | ✅ 3 hook firing points | ❌ always-on, fills context | ⚠️ on explicit query | ❌ manual recall |
-| Granular per-trap retrieval | ✅ FTS5 co-occurrence | ❌ monolithic file | ✅ embeddings | ❌ |
-| Source of truth | markdown-in-git | a single rules file | vector DB | proprietary |
-| Records new traps from session | ✅ via `caveat_record` MCP tool | ❌ | ❌ | manual |
-| Catches struggle the AI didn't self-report | ✅ transcript signal mining | ❌ | ❌ | ❌ |
-| Mixes external-spec gotchas with repo-specific context | ✅ public / private tiers | ⚠️ no separation | ⚠️ | ⚠️ |
+| | **Caveat** | `.cursorrules` / `CLAUDE.md` / `AGENTS.md` | **Cline memory-bank** | RAG over docs | Notion / Obsidian (manual) |
+|---|---|---|---|---|---|
+| Surfaces context **automatically** | ✅ 3 hook firing points | ❌ always-on, fills context | ❌ re-reads the whole bank each task | ⚠️ on explicit query | ❌ manual recall |
+| Granular per-trap retrieval | ✅ FTS5 co-occurrence | ❌ monolithic file | ❌ loads the entire folder | ✅ embeddings | ❌ |
+| Source of truth | markdown-in-git | a single rules file | markdown folder in workspace | vector DB | proprietary |
+| Records new traps from session | ✅ via `caveat_record` MCP tool | ❌ | ⚠️ manual "update memory bank" command | ❌ | manual |
+| Catches struggle the AI didn't self-report | ✅ transcript signal mining | ❌ | ❌ | ❌ | ❌ |
+| Mixes external-spec gotchas with repo-specific context | ✅ public / private tiers | ⚠️ no separation | ⚠️ no separation | ⚠️ | ⚠️ |
 
 **Status**: v0.14.10, CI green across Ubuntu/Windows and Node 22/24. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install. Current handoff notes live in [docs/05_next_session.md](docs/05_next_session.md).
 

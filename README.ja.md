@@ -43,14 +43,14 @@ review、risk-check、isolated work 用に残します。
 
 ## 競合との違い
 
-| | **Caveat** | `.cursorrules` / `CLAUDE.md` / `AGENTS.md` | ドキュメント RAG | Notion / Obsidian（手動） |
-|---|---|---|---|---|
-| 関連コンテキストの **自動 surface** | ✅ 3 発火点 hook | ❌ 常時 on、コンテキスト圧迫 | ⚠️ 明示クエリ要 | ❌ 自分で思い出す |
-| 罠ごとの粒度で取り出し | ✅ FTS5 共起 | ❌ モノリシックなファイル | ✅ embeddings | ❌ |
-| 真実の源 | markdown-in-git | 単一の rules ファイル | vector DB | プロプライエタリ |
-| セッションから新規罠を記録 | ✅ `caveat_record` MCP tool | ❌ | ❌ | 手動 |
-| AI が自覚しないもがきも検出 | ✅ transcript シグナル抽出 | ❌ | ❌ | ❌ |
-| 外部仕様の罠と repo 固有メモを混在管理 | ✅ public / private 2 tier | ⚠️ 分離なし | ⚠️ | ⚠️ |
+| | **Caveat** | `.cursorrules` / `CLAUDE.md` / `AGENTS.md` | **Cline memory-bank** | ドキュメント RAG | Notion / Obsidian（手動） |
+|---|---|---|---|---|---|
+| 関連コンテキストの **自動 surface** | ✅ 3 発火点 hook | ❌ 常時 on、コンテキスト圧迫 | ❌ 各タスクで bank 全体を読む | ⚠️ 明示クエリ要 | ❌ 自分で思い出す |
+| 罠ごとの粒度で取り出し | ✅ FTS5 共起 | ❌ モノリシックなファイル | ❌ フォルダ全体を一括ロード | ✅ embeddings | ❌ |
+| 真実の源 | markdown-in-git | 単一の rules ファイル | workspace の markdown フォルダ | vector DB | プロプライエタリ |
+| セッションから新規罠を記録 | ✅ `caveat_record` MCP tool | ❌ | ⚠️ "update memory bank"（手動トリガ） | ❌ | 手動 |
+| AI が自覚しないもがきも検出 | ✅ transcript シグナル抽出 | ❌ | ❌ | ❌ | ❌ |
+| 外部仕様の罠と repo 固有メモを混在管理 | ✅ public / private 2 tier | ⚠️ 分離なし | ⚠️ 分離なし | ⚠️ | ⚠️ |
 
 **ステータス**: v0.14.10、CI は Ubuntu / Windows × Node 22/24 で緑。個人および小規模チームが主な想定ユースケースです。中央 DB なし、インストール時の自動購読なし。最新の引き継ぎノートは [docs/05_next_session.md](docs/05_next_session.md) を参照。
 
