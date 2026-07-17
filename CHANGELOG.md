@@ -15,6 +15,8 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ### Fixed
 - A malformed `CAVEAT_AUTO_SYNC_DEBOUNCE_MS` parsed as `NaN` and disabled the debounce entirely, spawning a sync worker on every trigger. Invalid values now warn on stderr and fall back to the default.
+- The Windows ACL seam timed out after 3 seconds, which a contended CI runner crossed often enough to fail intermittently: the killed PowerShell reported a null exit status, and that read as an unsafe ACL rather than a slow one. The bound is now 15 seconds, sized against the runners themselves (one apply costs 331-459ms there) rather than against a developer machine.
+- Windows ACL failures now report whether the seam hit a spawn error, a timeout, or a non-zero exit, instead of collapsing every mode into one opaque `store_unsafe`. Recorded errors still carry no paths or stderr.
 
 ## [0.16.3] — 2026-07-13
 
