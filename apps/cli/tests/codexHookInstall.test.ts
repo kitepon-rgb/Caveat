@@ -60,6 +60,37 @@ describe('installCodexHooks', () => {
     cleanup(fx);
   });
 
+  it('writes PowerShell-callable commands for Windows paths with spaces', () => {
+    fx.nodePath = 'C:/Program Files/nodejs/node.exe';
+    fx.cliScriptPath = 'C:/Users/Kite/App Data/Roaming/npm/node_modules/caveat-cli/dist/caveat.js';
+    installCodexHooks({
+      codexHome: fx.codexHome,
+      cliScriptPath: fx.cliScriptPath,
+      nodePath: fx.nodePath,
+      platform: 'win32',
+      dryRun: false,
+      logger: silentLogger,
+    });
+    const hooks = JSON.parse(readFileSync(fx.hooksPath, 'utf-8')) as {
+      hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>>;
+    };
+    expect(hooks.hooks.UserPromptSubmit[0]?.hooks[0]?.command).toBe(
+      '& "C:/Program Files/nodejs/node.exe" "C:/Users/Kite/App Data/Roaming/npm/node_modules/caveat-cli/dist/caveat.js" codex-hook user-prompt-submit',
+    );
+    expect(hooks.hooks.PostToolUse[0]?.hooks[0]?.command).toContain('& "C:/Program Files/nodejs/node.exe"');
+    expect(hooks.hooks.Stop[0]?.hooks[0]?.command).toContain('& "C:/Program Files/nodejs/node.exe"');
+
+    const second = installCodexHooks({
+      codexHome: fx.codexHome,
+      cliScriptPath: fx.cliScriptPath,
+      nodePath: fx.nodePath,
+      platform: 'win32',
+      dryRun: false,
+      logger: silentLogger,
+    });
+    expect(second.hooks).toEqual({ userPromptSubmit: 'unchanged', postToolUse: 'unchanged', stop: 'unchanged' });
+  });
+
   it('creates hooks.json and enables the canonical hooks feature', () => {
     const result = installCodexHooks({
       codexHome: fx.codexHome,

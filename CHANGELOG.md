@@ -4,6 +4,11 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ## Unreleased
 
+## [0.17.1] — 2026-07-20
+
+### Fixed
+- Windows native Codex hook commands now prefix quoted Node executables with the PowerShell call operator `&`. Reinstall migrates the legacy command, diagnostics accept the canonical form, and POSIX commands are unchanged.
+
 ## [0.17.0] — 2026-07-17
 
 ### Added

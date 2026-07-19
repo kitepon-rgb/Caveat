@@ -9,6 +9,7 @@ export interface CodexHookInstallOptions {
   nodePath: string;
   dryRun: boolean;
   logger: Logger;
+  platform?: NodeJS.Platform;
 }
 
 export interface CodexHookInstallResult {
@@ -57,8 +58,10 @@ function hookCommand(
   nodePath: string,
   cliScriptPath: string,
   event: 'user-prompt-submit' | 'post-tool-use' | 'stop',
+  platform: NodeJS.Platform = process.platform,
 ): string {
-  return `${quote(nodePath)} ${quote(cliScriptPath)} codex-hook ${event}`;
+  const prefix = platform === 'win32' ? '& ' : '';
+  return `${prefix}${quote(nodePath)} ${quote(cliScriptPath)} codex-hook ${event}`;
 }
 
 function eventCommandFragment(event: 'user-prompt-submit' | 'post-tool-use' | 'stop'): string {
@@ -88,7 +91,8 @@ function isCanonicalAsset(path: unknown, expectedPath: string, mode: number): pa
 }
 /** Exact read-only detector used by factory diagnostics. */
 export function isCanonicalCaveatCodexHookCommand(actual: string, event: 'user-prompt-submit' | 'post-tool-use' | 'stop', nodePath: string, cliScriptPath: string): boolean {
-  const tokens = commandTokens(actual);
+  const parsed = commandTokens(actual);
+  const tokens = parsed?.[0] === '&' ? parsed.slice(1) : parsed;
   return tokens?.length === 4 && isCanonicalAsset(tokens[0], nodePath, constants.X_OK) && isCanonicalAsset(tokens[1], cliScriptPath, constants.R_OK) && tokens[2] === 'codex-hook' && tokens[3] === event;
 }
 
@@ -352,19 +356,19 @@ export function installCodexHooks(opts: CodexHookInstallOptions): CodexHookInsta
   const userPromptSubmit = upsertHook(
     hooksJson,
     'UserPromptSubmit',
-    hookCommand(opts.nodePath, opts.cliScriptPath, 'user-prompt-submit'),
+    hookCommand(opts.nodePath, opts.cliScriptPath, 'user-prompt-submit', opts.platform),
     'user-prompt-submit',
   );
   const postToolUse = upsertHook(
     hooksJson,
     'PostToolUse',
-    hookCommand(opts.nodePath, opts.cliScriptPath, 'post-tool-use'),
+    hookCommand(opts.nodePath, opts.cliScriptPath, 'post-tool-use', opts.platform),
     'post-tool-use',
   );
   const stop = upsertHook(
     hooksJson,
     'Stop',
-    hookCommand(opts.nodePath, opts.cliScriptPath, 'stop'),
+    hookCommand(opts.nodePath, opts.cliScriptPath, 'stop', opts.platform),
     'stop',
   );
 
@@ -401,19 +405,19 @@ export function uninstallCodexHooks(opts: CodexHookInstallOptions): CodexHookIns
   const userPromptSubmitRemoved = removeHook(
     hooksJson,
     'UserPromptSubmit',
-    hookCommand(opts.nodePath, opts.cliScriptPath, 'user-prompt-submit'),
+    hookCommand(opts.nodePath, opts.cliScriptPath, 'user-prompt-submit', opts.platform),
     'user-prompt-submit',
   );
   const postToolUseRemoved = removeHook(
     hooksJson,
     'PostToolUse',
-    hookCommand(opts.nodePath, opts.cliScriptPath, 'post-tool-use'),
+    hookCommand(opts.nodePath, opts.cliScriptPath, 'post-tool-use', opts.platform),
     'post-tool-use',
   );
   const stopRemoved = removeHook(
     hooksJson,
     'Stop',
-    hookCommand(opts.nodePath, opts.cliScriptPath, 'stop'),
+    hookCommand(opts.nodePath, opts.cliScriptPath, 'stop', opts.platform),
     'stop',
   );
 
