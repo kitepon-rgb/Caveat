@@ -359,6 +359,7 @@ describe('installCodexHooks', () => {
       codexHome: fx.codexHome,
       cliScriptPath: '/opt/homebrew/bin/caveat',
       nodePath: '/opt/homebrew/bin/node',
+      platform: 'linux',
       dryRun: false,
       logger: silentLogger,
     });
