@@ -14,6 +14,12 @@
 
 🇬🇧 **English**: [README.md](README.md)
 
+## 開発工場での位置づけ
+
+Caveatは[dotagents開発工場](https://github.com/kitepon-rgb/dotagents)が管理する
+自作コア10製品の一つです。本repoはCaveatのsource、release、schema、diagnosticsを所有し、
+dotagentsは製品横断の導入・統合契約を所有します。第三者CLIのMarkItDownは別区分です。
+
 ## 30 秒でわかる動作
 
 ```sh

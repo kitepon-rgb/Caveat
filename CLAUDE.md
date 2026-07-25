@@ -4,7 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクトの状態
 
-**未リリース（2026-07-13）**。Codex sidecar advisoryのproduction presetを、synthetic/publicの
+**v0.17.1（2026-07-20公開）**。Windows native Codex hook commandのquoted Node実行に
+PowerShell call operator `&`を付け、reinstallで旧commandを移行する。v0.17.0では
+record/update直後のbackground sync、15分autosync、失敗時6時間backoff、Windows ACL seamの
+15秒boundとtyped failureを公開した。
+
+**v0.16.2（2026-07-13公開）**。Codex sidecar advisoryのproduction presetを、synthetic/publicの
 Stop・tool-error各4 independent runsで8/8完遂、known-bad 0、有効解8/8、miniより低い
 実測credits/runを示した`gpt-5.6-luna` lowへ更新。hookからは生error/search/path/sessionを送らず、
 閉じたtool/failure種別とStop countだけをstrictな`caveat-hook-signal` blockとして渡す。
