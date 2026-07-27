@@ -14,14 +14,15 @@
 
 🇯🇵 **日本語版**: [README.ja.md](README.ja.md)
 
-## Factory role
+Built and maintained by [Quo](https://x.com/QLyun35332) at [kitepon.dev](https://kitepon.dev/en).
 
-Caveat is one of the ten self-owned core products managed by the
-[dotagents development factory](https://github.com/kitepon-rgb/dotagents).
-This repository owns Caveat's source, release, schema, and diagnostics;
-dotagents owns cross-product installation and integration contracts. The
-third-party MarkItDown CLI is managed separately and is not a factory-core
-component.
+## Ownership boundary
+
+This repository owns Caveat's source, release, schema, and diagnostics.
+Cross-product installation and integration contracts are handled by
+[dotagents](https://github.com/kitepon-rgb/dotagents), the internal development
+toolchain behind kitepon.dev's products. The third-party MarkItDown CLI is
+managed separately.
 
 ## What it does in 30 seconds
 

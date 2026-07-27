@@ -14,11 +14,15 @@
 
 🇬🇧 **English**: [README.md](README.md)
 
-## 開発工場での位置づけ
+[kitepon.dev](https://kitepon.dev/)を運営する[クオ（@QLyun35332）](https://x.com/QLyun35332)が
+開発・メンテナンスしています。
 
-Caveatは[dotagents開発工場](https://github.com/kitepon-rgb/dotagents)が管理する
-自作コア10製品の一つです。本repoはCaveatのsource、release、schema、diagnosticsを所有し、
-dotagentsは製品横断の導入・統合契約を所有します。第三者CLIのMarkItDownは別区分です。
+## 所有境界
+
+本repositoryはCaveatのsource、release、schema、diagnosticsを所有します。
+製品横断の導入・統合契約は、kitepon.devの製品開発を支える内部基盤
+[dotagents](https://github.com/kitepon-rgb/dotagents)が担当します。
+第三者CLIのMarkItDownは別区分です。
 
 ## 30 秒でわかる動作
 
