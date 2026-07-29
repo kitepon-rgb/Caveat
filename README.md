@@ -62,7 +62,7 @@ The knowledge repo is plain markdown-in-git. Open it as an Obsidian vault. Share
 | Catches struggle the AI didn't self-report | ✅ transcript signal mining | ❌ | ❌ | ❌ | ❌ |
 | Mixes external-spec gotchas with repo-specific context | ✅ public / private tiers | ⚠️ no separation | ⚠️ no separation | ⚠️ | ⚠️ |
 
-**Status**: v0.17.1, CI green across Ubuntu/Windows and Node 22/24. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install. Current handoff notes live in [docs/05_next_session.md](docs/05_next_session.md).
+**Status**: v0.17.2, CI green across Ubuntu/Windows and Node 22/24. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install. Current handoff notes live in [docs/05_next_session.md](docs/05_next_session.md).
 
 <details>
 <summary><strong>Why no central shared DB?</strong> (v0.7 pivot)</summary>

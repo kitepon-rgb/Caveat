@@ -1,8 +1,20 @@
-# caveat-cli
+<p align="center">
+  <img src="https://raw.githubusercontent.com/kitepon-rgb/Caveat/main/.github/og.png" alt="Caveat — long-term memory layer for coding agents" width="100%">
+</p>
 
-Long-term memory CLI for Claude Code and Codex — markdown + SQLite FTS5 + MCP server + agent hooks. Personal / group knowledge tool, no central shared DB.
+# Caveat
 
-**Source / full docs**: https://github.com/kitepon-rgb/Caveat
+[![npm](https://img.shields.io/npm/v/caveat-cli?color=cb3837&label=caveat-cli)](https://www.npmjs.com/package/caveat-cli)
+[![CI](https://github.com/kitepon-rgb/Caveat/actions/workflows/ci.yml/badge.svg)](https://github.com/kitepon-rgb/Caveat/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/caveat-cli?color=blue)](https://github.com/kitepon-rgb/Caveat/blob/main/LICENSE)
+
+> **Stop rediscovering the same trap.** Caveat is a long-term memory layer for Claude Code and Codex: record a hard-won external-spec quirk or repo-specific oddity once, and the relevant note surfaces before an AI repeats it.
+
+🇯🇵 **日本語版**: [README.ja.md](https://github.com/kitepon-rgb/Caveat/blob/main/README.ja.md)
+
+Built and maintained by [Quo](https://x.com/QLyun35332) at [kitepon.dev](https://kitepon.dev/en).
+
+**Source / full docs**: [github.com/kitepon-rgb/Caveat](https://github.com/kitepon-rgb/Caveat)
 
 ## Install
 

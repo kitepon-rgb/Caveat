@@ -4,6 +4,15 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ## Unreleased
 
+## [0.17.2] — 2026-07-29
+
+### Changed
+- The npm package page now carries the same Caveat visual, Japanese documentation route, and kitepon.dev ownership line as the public GitHub repository.
+
+### Fixed
+- The Windows Server 2025 / Node 22 CI lane now runs workspace test suites sequentially, avoiding runner-contention timeouts while the other five matrix lanes remain parallel.
+- Sidecar advisory hook tests use the same explicit Windows timeout contract.
+
 ## [0.17.1] — 2026-07-20
 
 ### Fixed
