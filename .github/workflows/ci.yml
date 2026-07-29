@@ -41,4 +41,9 @@ jobs:
         run: corepack pnpm test:claude-fresh-session-smoke
 
       - name: Test
+        if: matrix.os != 'windows-2025-vs2026' || matrix.node != '22'
         run: corepack pnpm -r test
+
+      - name: Test (constrained Windows runner)
+        if: matrix.os == 'windows-2025-vs2026' && matrix.node == '22'
+        run: corepack pnpm -r --workspace-concurrency=1 test
