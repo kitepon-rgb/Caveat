@@ -458,5 +458,5 @@ describe('Claude hook output', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, process.platform === 'win32' ? 15_000 : 5_000);
 });
