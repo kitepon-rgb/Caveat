@@ -12,6 +12,7 @@
     "build": "node scripts/pnpm.mjs -r build",
     "test": "node scripts/pnpm.mjs -r test",
     "typecheck": "node scripts/pnpm.mjs -r typecheck",
+    "test:release-gate": "node --test scripts/verify-release-commit.test.mjs",
     "check:npm-pack": "node scripts/check-npm-pack.mjs",
     "check:release-smoke": "node --check scripts/check-npm-pack.mjs && node --check scripts/codex-sidecar-advisory-smoke.mjs && node --check scripts/claude-fresh-session-smoke.mjs && node --check scripts/fixtures/fake-claude-fresh-session.mjs && node --check scripts/test-claude-fresh-session-smoke.mjs && node scripts/pnpm.mjs check:npm-pack && node scripts/pnpm.mjs smoke:codex-sidecar-advisory -- --help",
     "smoke:codex-sidecar-advisory": "node scripts/codex-sidecar-advisory-smoke.mjs",

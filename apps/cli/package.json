@@ -45,7 +45,8 @@
     "build": "tsup",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "prepublishOnly": "node ../../scripts/verify-release-commit.mjs"
   },
   "dependencies": {
     "commander": "^14.0.3",
