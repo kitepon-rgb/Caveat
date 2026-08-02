@@ -32,18 +32,25 @@ export interface CodexHookInstallationStatus {
     postToolUse: boolean;
     stop: boolean;
   };
+  legacyTimeoutSec: {
+    userPromptSubmit: boolean;
+    postToolUse: boolean;
+    stop: boolean;
+  };
 }
 
 type HookEvent = 'UserPromptSubmit' | 'PostToolUse' | 'Stop';
+type HookCommand = {
+  type: string;
+  command: string;
+  timeout?: number | null;
+  timeoutSec?: number | null;
+  async?: boolean;
+  statusMessage?: string | null;
+};
 type HookEntry = {
   matcher?: string | null;
-  hooks: Array<{
-    type: string;
-    command: string;
-    timeoutSec?: number | null;
-    async?: boolean;
-    statusMessage?: string | null;
-  }>;
+  hooks: HookCommand[];
 };
 type HooksJson = {
   hooks?: Partial<Record<HookEvent, HookEntry[]>>;
@@ -96,6 +103,23 @@ export function isCanonicalCaveatCodexHookCommand(actual: string, event: 'user-p
   return tokens?.length === 4 && isCanonicalAsset(tokens[0], nodePath, constants.X_OK) && isCanonicalAsset(tokens[1], cliScriptPath, constants.R_OK) && tokens[2] === 'codex-hook' && tokens[3] === event;
 }
 
+export function isCanonicalCaveatCodexHookEntry(
+  value: unknown,
+  event: 'user-prompt-submit' | 'post-tool-use' | 'stop',
+  nodePath: string,
+  cliScriptPath: string,
+): boolean {
+  if (!isPlainRecord(value)
+    || typeof value.type !== 'string'
+    || typeof value.command !== 'string') return false;
+  return value.type === 'command'
+    && isCanonicalCaveatCodexHookCommand(value.command, event, nodePath, cliScriptPath)
+    && value.timeout === 5
+    && value.timeoutSec === undefined
+    && value.async === false
+    && value.statusMessage === null;
+}
+
 function hasCaveatHook(hooksJson: HooksJson, event: HookEvent, fragment: string): boolean {
   return (
     hooksJson.hooks?.[event]?.some((entry) =>
@@ -131,10 +155,18 @@ function upsertHook(
   const list = (hooksJson.hooks[event] ??= []);
   for (const entry of list) {
     for (const hook of entry.hooks ?? []) {
-      if (isSameHookCommand(hook.command, command)) return 'unchanged';
-      if (isCaveatCodexHookCommand(hook.command, subcommand)) {
+      if (isSameHookCommand(hook.command, command)
+        && hook.type === 'command'
+        && hook.timeout === 5
+        && hook.timeoutSec === undefined
+        && hook.async === false
+        && hook.statusMessage === null) return 'unchanged';
+      if (isSameHookCommand(hook.command, command)
+        || isCaveatCodexHookCommand(hook.command, subcommand)) {
         hook.command = command;
-        hook.timeoutSec = 5;
+        hook.type = 'command';
+        hook.timeout = 5;
+        delete hook.timeoutSec;
         hook.async = false;
         hook.statusMessage = null;
         return 'added';
@@ -146,7 +178,7 @@ function upsertHook(
       {
         type: 'command',
         command,
-        timeoutSec: 5,
+        timeout: 5,
         async: false,
         statusMessage: null,
       },
@@ -452,10 +484,20 @@ export function detectCodexHookInstallation(codexHome: string): CodexHookInstall
     postToolUse: hasCaveatHook(hooksJson, 'PostToolUse', eventCommandFragment('post-tool-use')),
     stop: hasCaveatHook(hooksJson, 'Stop', eventCommandFragment('stop')),
   };
+  const hasLegacyTimeoutSec = (event: HookEvent, fragment: string): boolean =>
+    hooksJson.hooks?.[event]?.some((entry) => entry.hooks?.some((hook) =>
+      hook.command.includes(fragment) && hook.timeoutSec !== undefined)) ?? false;
+  const legacyTimeoutSec = {
+    userPromptSubmit: hasLegacyTimeoutSec('UserPromptSubmit', eventCommandFragment('user-prompt-submit')),
+    postToolUse: hasLegacyTimeoutSec('PostToolUse', eventCommandFragment('post-tool-use')),
+    stop: hasLegacyTimeoutSec('Stop', eventCommandFragment('stop')),
+  };
   const count = Object.values(hooks).filter(Boolean).length;
+  const hasLegacy = Object.values(legacyTimeoutSec).some(Boolean);
   return {
-    installation: count === 0 ? 'not-installed' : count === 3 ? 'installed' : 'partial',
+    installation: count === 0 ? 'not-installed' : count === 3 && !hasLegacy ? 'installed' : 'partial',
     hooksPath,
     hooks,
+    legacyTimeoutSec,
   };
 }

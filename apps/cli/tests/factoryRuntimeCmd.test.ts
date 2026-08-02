@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -44,7 +44,8 @@ function readyFactory(fixture: ReturnType<typeof isolated>) {
   const nodeCommand = quoted(process.execPath); const cliCommand = quoted(cli);
   writeFileSync(join(fixture.home, '.claude.json'), JSON.stringify({ mcpServers: { caveat: { type: 'stdio', command: process.execPath, args: ['--disable-warning=ExperimentalWarning', cli, 'mcp-server'], env: {} } } }));
   mkdirSync(join(fixture.home, '.claude'), { recursive: true }); writeFileSync(join(fixture.home, '.claude', 'settings.json'), JSON.stringify({ hooks: { UserPromptSubmit: [{ hooks: [{ command: `${nodeCommand} ${cliCommand} hook user-prompt-submit` }] }], PostToolUse: [{ hooks: [{ command: `${nodeCommand} ${cliCommand} hook post-tool-use` }] }], PostToolUseFailure: [{ hooks: [{ command: `${nodeCommand} ${cliCommand} hook post-tool-use` }] }], Stop: [{ hooks: [{ command: `${nodeCommand} ${cliCommand} hook stop` }] }] } }));
-  mkdirSync(fixture.codexHome, { recursive: true }); writeFileSync(join(fixture.codexHome, 'config.toml'), '[features]\nhooks = true\n'); writeFileSync(join(fixture.codexHome, 'hooks.json'), JSON.stringify({ hooks: { UserPromptSubmit: [{ hooks: [{ command: `${nodeCommand} ${cliCommand} codex-hook user-prompt-submit` }] }], PostToolUse: [{ hooks: [{ command: `${nodeCommand} ${cliCommand} codex-hook post-tool-use` }] }], Stop: [{ hooks: [{ command: `${nodeCommand} ${cliCommand} codex-hook stop` }] }] } }));
+  const codexHook = (subcommand: string) => ({ type: 'command', command: `${nodeCommand} ${cliCommand} codex-hook ${subcommand}`, timeout: 5, async: false, statusMessage: null });
+  mkdirSync(fixture.codexHome, { recursive: true }); writeFileSync(join(fixture.codexHome, 'config.toml'), '[features]\nhooks = true\n'); writeFileSync(join(fixture.codexHome, 'hooks.json'), JSON.stringify({ hooks: { UserPromptSubmit: [{ hooks: [codexHook('user-prompt-submit')] }], PostToolUse: [{ hooks: [codexHook('post-tool-use')] }], Stop: [{ hooks: [codexHook('stop')] }] } }));
 }
 
 describe('built factory/runtime CLI contracts', { timeout: process.platform === 'win32' ? 30_000 : 5_000 }, () => {
@@ -91,6 +92,17 @@ describe('built factory/runtime CLI contracts', { timeout: process.platform === 
     writeFileSync(join(connectorFixture.codexHome, 'config.toml'), '[features]\nhooks = false\n');
     const fakeConnector = json(run(['factory-diagnostics', '--json'], connectorFixture.env));
     expect(fakeConnector.connectors.claude.mcp.status).toBe('not_ready'); expect(fakeConnector.connectors.codex.status).toBe('not_ready'); expect(fakeConnector.overall.status).toBe('not_ready');
+
+    const legacyTimeoutFixture = isolated(); readyFactory(legacyTimeoutFixture);
+    const legacyPath = join(legacyTimeoutFixture.codexHome, 'hooks.json');
+    const legacyHooks = JSON.parse(readFileSync(legacyPath, 'utf8')) as { hooks: Record<string, Array<{ hooks: Array<Record<string, unknown>> }>> };
+    for (const entries of Object.values(legacyHooks.hooks)) for (const entry of entries) for (const hook of entry.hooks) {
+      hook.timeoutSec = hook.timeout;
+      delete hook.timeout;
+    }
+    writeFileSync(legacyPath, JSON.stringify(legacyHooks));
+    const legacyTimeout = json(run(['factory-diagnostics', '--json'], legacyTimeoutFixture.env));
+    expect(legacyTimeout.connectors.codex.status).toBe('not_ready');
 
     const executorFixture = isolated(); readyFactory(executorFixture);
     const fakeNode = join(executorFixture.root, 'not-node'); const fakeCli = join(executorFixture.root, 'caveat.js');

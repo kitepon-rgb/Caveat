@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { parse as parseToml } from 'smol-toml';
-import { isCanonicalCaveatCodexHookCommand } from '../codexHookInstall.js';
+import { isCanonicalCaveatCodexHookEntry } from '../codexHookInstall.js';
 import { isCanonicalCaveatClaudeHookCommand, isCaveatClaudeMcpRegistration } from '../claudeInstall.js';
 import type { CliContext } from '../context.js';
 import { CAVEAT_VERSION } from '../version.js';
@@ -54,7 +54,7 @@ function codexFeature(codexHome: string) {
 }
 function codexHooks(codexHome: string, nodePath: string, cliScriptPath: string) {
   const value: unknown = JSON.parse(readFileSync(join(codexHome, 'hooks.json'), 'utf8')); if (!isRecord(value) || !isRecord(value.hooks)) throw Error('config_unreadable');
-  const hooks = value.hooks as Record<string, unknown>; const present = (event: string, subcommand: 'user-prompt-submit' | 'post-tool-use' | 'stop') => Array.isArray(hooks[event]) && hooks[event].some((entry) => isRecord(entry) && Array.isArray(entry.hooks) && entry.hooks.some((item) => isRecord(item) && typeof item.command === 'string' && isCanonicalCaveatCodexHookCommand(item.command, subcommand, nodePath, cliScriptPath)));
+  const hooks = value.hooks as Record<string, unknown>; const present = (event: string, subcommand: 'user-prompt-submit' | 'post-tool-use' | 'stop') => Array.isArray(hooks[event]) && hooks[event].some((entry) => isRecord(entry) && Array.isArray(entry.hooks) && entry.hooks.some((item) => isCanonicalCaveatCodexHookEntry(item, subcommand, nodePath, cliScriptPath)));
   return { userPromptSubmit: present('UserPromptSubmit', 'user-prompt-submit'), postToolUse: present('PostToolUse', 'post-tool-use'), stop: present('Stop', 'stop') };
 }
 function sync(own: string) {

@@ -1,6 +1,6 @@
 {
   "name": "caveat-cli",
-  "version": "0.17.2",
+  "version": "0.17.3",
   "description": "Long-term memory CLI for Claude Code and Codex (markdown + SQLite FTS5 + MCP + hooks)",
   "keywords": [
     "caveat",

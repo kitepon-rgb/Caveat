@@ -4,6 +4,11 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ## Unreleased
 
+## [0.17.3] — 2026-08-02
+
+### Fixed
+- Codex native hooks now write the supported `timeout` field in seconds instead of the ignored `timeoutSec` field. Reinstall and upgrade canonicalize existing Caveat-owned entries in place, and diagnostics flag the legacy shape until it is repaired.
+
 ## [0.17.2] — 2026-07-29
 
 ### Changed

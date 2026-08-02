@@ -105,17 +105,56 @@ describe('installCodexHooks', () => {
     expect(result.feature).toBe('enabled');
 
     const hooks = JSON.parse(readFileSync(fx.hooksPath, 'utf-8')) as {
-      hooks: Record<string, Array<{ hooks: Array<{ command: string; async: boolean }> }>>;
+      hooks: Record<string, Array<{ hooks: Array<{ command: string; timeout: number; timeoutSec?: number; async: boolean }> }>>;
     };
     expect(hooks.hooks.UserPromptSubmit[0]?.hooks[0]?.command).toContain(
       'codex-hook user-prompt-submit',
     );
     expect(hooks.hooks.UserPromptSubmit[0]?.hooks[0]?.async).toBe(false);
+    expect(hooks.hooks.UserPromptSubmit[0]?.hooks[0]?.timeout).toBe(5);
+    expect(hooks.hooks.UserPromptSubmit[0]?.hooks[0]?.timeoutSec).toBeUndefined();
     expect(hooks.hooks.PostToolUse[0]?.hooks[0]?.command).toContain(
       'codex-hook post-tool-use',
     );
     expect(hooks.hooks.Stop[0]?.hooks[0]?.command).toContain('codex-hook stop');
+    expect(JSON.stringify(hooks)).not.toContain('timeoutSec');
     expect(readFileSync(fx.configPath, 'utf-8')).toContain('hooks = true');
+  });
+
+  it('canonicalizes legacy timeoutSec entries even when commands are unchanged', () => {
+    const command = (event: string) => `${fx.nodePath} ${fx.cliScriptPath} codex-hook ${event}`;
+    writeFileSync(
+      fx.hooksPath,
+      JSON.stringify({
+        hooks: {
+          UserPromptSubmit: [{ hooks: [{ type: 'command', command: command('user-prompt-submit'), timeoutSec: 5, async: false, statusMessage: null }] }],
+          PostToolUse: [{ hooks: [{ type: 'command', command: command('post-tool-use'), timeoutSec: 5, async: false, statusMessage: null }] }],
+          Stop: [{ hooks: [{ type: 'command', command: command('stop'), timeoutSec: 5, async: false, statusMessage: null }] }],
+        },
+      }, null, 2),
+      'utf-8',
+    );
+    writeFileSync(fx.configPath, '[features]\nhooks = true\n', 'utf-8');
+
+    const before = detectCodexHookInstallation(fx.codexHome);
+    expect(before.installation).toBe('partial');
+    expect(before.legacyTimeoutSec).toEqual({ userPromptSubmit: true, postToolUse: true, stop: true });
+
+    const result = installCodexHooks({
+      codexHome: fx.codexHome,
+      cliScriptPath: fx.cliScriptPath,
+      nodePath: fx.nodePath,
+      dryRun: false,
+      logger: silentLogger,
+    });
+
+    expect(result.hooks).toEqual({ userPromptSubmit: 'added', postToolUse: 'added', stop: 'added' });
+    const raw = readFileSync(fx.hooksPath, 'utf-8');
+    expect(raw).not.toContain('timeoutSec');
+    const migrated = JSON.parse(raw) as { hooks: Record<string, Array<{ hooks: Array<{ timeout: number }> }>> };
+    expect(['UserPromptSubmit', 'PostToolUse', 'Stop'].map((event) => migrated.hooks[event]?.[0]?.hooks[0]?.timeout)).toEqual([5, 5, 5]);
+    expect(detectCodexHookInstallation(fx.codexHome).legacyTimeoutSec).toEqual({ userPromptSubmit: false, postToolUse: false, stop: false });
+    expect(findBackup(fx.codexHome, 'hooks.json.caveat-backup-')).toBeDefined();
   });
 
   it('preserves unrelated hooks and is idempotent', () => {

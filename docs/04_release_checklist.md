@@ -97,7 +97,8 @@ Verify generated config:
   `PostToolUse`, `PostToolUseFailure`, and `Stop` commands.
 - `~/.claude.json` contains the `caveat` MCP registration.
 - `~/.codex/hooks.json` contains Caveat `UserPromptSubmit`, `PostToolUse`, and
-  `Stop` commands with `timeoutSec: 5` and `async: false`.
+  `Stop` commands with `timeout: 5` (seconds) and `async: false`. The obsolete,
+  ignored `timeoutSec` key must not appear.
 - `~/.codex/config.toml` contains `[features] hooks = true` and no deprecated
   `codex_hooks` alias.
 

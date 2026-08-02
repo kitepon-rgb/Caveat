@@ -545,6 +545,7 @@ function runDiagnostics(codexHome = process.env.CODEX_HOME ?? join(homedir(), '.
     codexHome,
     hooksPath: installation.hooksPath,
     installedHooks: installation.hooks,
+    legacyTimeoutSec: installation.legacyTimeoutSec,
     evidence: featureOutput
       .split('\n')
       .find((line) => line.trim().startsWith('hooks')) ?? null,
