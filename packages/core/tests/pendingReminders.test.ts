@@ -31,7 +31,18 @@ const OS_PROCESS_STRESS_TIMEOUT_MS = 30_000;
 
 function freshHome(): { home: string; cleanup: () => void } {
   const home = mkdtempSync(join(tmpdir(), 'caveat-pending-'));
-  return { home, cleanup: () => rmSync(home, { recursive: true, force: true }) };
+  return {
+    home,
+    // Windows can retain a just-exited child process handle briefly. Node's
+    // built-in bounded retry handles that transient EPERM without hiding a
+    // persistent cleanup failure.
+    cleanup: () => rmSync(home, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    }),
+  };
 }
 
 describe('pendingReminders', () => {

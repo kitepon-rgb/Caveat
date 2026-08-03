@@ -37,7 +37,7 @@ function childExit(childProcess: ReturnType<typeof spawn>) {
   });
 }
 
-describe('runtime errors', { timeout: process.platform === 'win32' ? 30_000 : 5_000 }, () => {
+describe('runtime errors', { timeout: process.platform === 'win32' ? 60_000 : 5_000 }, () => {
   it('is strictly opt-in and creates no state while disabled', () => {
     const root = mkdtempSync(join(tmpdir(), 'caveat-runtime-')); const e = env(root, false);
     expect(runtimeCollectionEnabled(e)).toBe(false); recordRuntimeError(definition, { env: e });

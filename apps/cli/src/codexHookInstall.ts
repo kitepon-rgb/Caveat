@@ -76,7 +76,16 @@ function eventCommandFragment(event: 'user-prompt-submit' | 'post-tool-use' | 's
 }
 
 function isSameHookCommand(actual: string, expected: string): boolean {
-  return actual === expected || actual.endsWith(` ${expected}`);
+  const normalizedTokens = (command: string): string[] | null => {
+    const parsed = commandTokens(command);
+    return parsed?.[0] === '&' ? parsed.slice(1) : parsed;
+  };
+  const actualTokens = normalizedTokens(actual);
+  const expectedTokens = normalizedTokens(expected);
+  return actualTokens !== null
+    && expectedTokens !== null
+    && actualTokens.length === expectedTokens.length
+    && actualTokens.every((token, index) => token === expectedTokens[index]);
 }
 
 function isCaveatCodexHookCommand(

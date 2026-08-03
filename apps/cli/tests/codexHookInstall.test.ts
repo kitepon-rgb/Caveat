@@ -157,6 +157,40 @@ describe('installCodexHooks', () => {
     expect(findBackup(fx.codexHome, 'hooks.json.caveat-backup-')).toBeDefined();
   });
 
+  it('canonicalizes a pre-PowerShell Windows command without duplicating the hook', () => {
+    const legacyCommand = `${fx.nodePath} ${fx.cliScriptPath} codex-hook user-prompt-submit`;
+    writeFileSync(
+      fx.hooksPath,
+      JSON.stringify({
+        hooks: {
+          UserPromptSubmit: [{ hooks: [{ type: 'command', command: legacyCommand, timeoutSec: 5, async: false, statusMessage: null }] }],
+        },
+      }, null, 2),
+      'utf-8',
+    );
+    writeFileSync(fx.configPath, '[features]\nhooks = true\n', 'utf-8');
+
+    installCodexHooks({
+      codexHome: fx.codexHome,
+      cliScriptPath: fx.cliScriptPath,
+      nodePath: fx.nodePath,
+      dryRun: false,
+      logger: silentLogger,
+      platform: 'win32',
+    });
+
+    const hooks = JSON.parse(readFileSync(fx.hooksPath, 'utf-8')) as {
+      hooks: { UserPromptSubmit: Array<{ hooks: Array<{ command: string; timeout: number; timeoutSec?: number }> }> };
+    };
+    expect(hooks.hooks.UserPromptSubmit).toHaveLength(1);
+    expect(hooks.hooks.UserPromptSubmit[0]?.hooks).toHaveLength(1);
+    expect(hooks.hooks.UserPromptSubmit[0]?.hooks[0]).toMatchObject({
+      command: `& ${legacyCommand}`,
+      timeout: 5,
+    });
+    expect(hooks.hooks.UserPromptSubmit[0]?.hooks[0]?.timeoutSec).toBeUndefined();
+  });
+
   it('preserves unrelated hooks and is idempotent', () => {
     writeFileSync(
       fx.hooksPath,
