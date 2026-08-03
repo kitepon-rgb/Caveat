@@ -1,5 +1,7 @@
 <p align="center">
-  <img src=".github/og.png" alt="Caveat — コーディングエージェントのための長期記憶レイヤ" width="100%">
+  <img src=".github/og.png" alt="Caveat — 隠れた罠に気づき、その注意を次へ渡すカラス" width="100%">
+  <br>
+  <sub><em>この画像は、同じ罠をもう一度踏む前に立ち止まり、そこで得た注意を次の実行へ渡していく姿を表しています。</em></sub>
 </p>
 
 # Caveat

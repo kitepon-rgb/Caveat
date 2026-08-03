@@ -1,5 +1,7 @@
 <p align="center">
-  <img src=".github/og.png" alt="Caveat — long-term memory layer for coding agents" width="100%">
+  <img src=".github/og.png" alt="Caveat — a raven noticing a hidden snare and carrying the warning forward" width="100%">
+  <br>
+  <sub><em>This image represents stopping before the same trap is triggered again and carrying the warning learned there into the next execution.</em></sub>
 </p>
 
 # Caveat
