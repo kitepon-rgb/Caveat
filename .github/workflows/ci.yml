@@ -4,46 +4,27 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 実行する工場環境
+        type: choice
+        default: all
+        options: [all, macos-native, linux-native, windows-native, wsl2]
+
+permissions:
+  contents: read
 
 jobs:
-  test:
-    name: Test (${{ matrix.os }} / Node ${{ matrix.node }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, windows-2022, windows-2025-vs2026]
-        node: ['22', '24']
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Enable corepack
-        run: corepack enable
-
-      - name: Setup Node.js ${{ matrix.node }}
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ matrix.node }}
-
-      - name: Install dependencies
-        run: corepack pnpm install --frozen-lockfile
-
-      - name: Build
-        run: corepack pnpm -r build
-
-      - name: Typecheck
-        run: corepack pnpm -r typecheck
-
-      - name: Release smoke script check
-        run: corepack pnpm check:release-smoke
-
-      - name: Claude fresh-session fake smoke
-        run: corepack pnpm test:claude-fresh-session-smoke
-
-      - name: Test
-        if: matrix.os != 'windows-2025-vs2026' || matrix.node != '22'
-        run: corepack pnpm -r test
-
-      - name: Test (constrained Windows runner)
-        if: matrix.os == 'windows-2025-vs2026' && matrix.node == '22'
-        run: corepack pnpm -r --workspace-concurrency=1 test
+  full:
+    uses: kitepon/dotagents/.github/workflows/factory-full-ci.yml@main
+    with:
+      environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'all' }}
+      full-command: >-
+        corepack pnpm install --frozen-lockfile &&
+        corepack pnpm build &&
+        corepack pnpm typecheck &&
+        corepack pnpm check:release-smoke &&
+        corepack pnpm test:claude-fresh-session-smoke &&
+        corepack pnpm test
