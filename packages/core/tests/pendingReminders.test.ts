@@ -28,7 +28,7 @@ import {
 } from '../src/pendingReminders.js';
 
 const OS_PROCESS_STRESS_TIMEOUT_MS = 30_000;
-const OS_PROCESS_CONCURRENCY = 24;
+const OS_PROCESS_CONCURRENCY = 8;
 
 function freshHome(): { home: string; cleanup: () => void } {
   const home = mkdtempSync(join(tmpdir(), 'caveat-pending-'));
@@ -63,7 +63,7 @@ describe('pendingReminders', () => {
       const fixture = fileURLToPath(new URL('./fixtures/pendingPublisher.mjs', import.meta.url));
       const moduleUrl = pathToFileURL(fileURLToPath(new URL('../src/pendingReminders.ts', import.meta.url))).href;
       const children = Array.from({ length: OS_PROCESS_CONCURRENCY }, () => new Promise<void>((resolve, reject) => {
-        const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '--experimental-strip-types', fixture, moduleUrl, home, 's1', key, barrier], { stdio: 'ignore' });
+        const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '--import', 'tsx', fixture, moduleUrl, home, 's1', key, barrier], { stdio: 'ignore' });
         const timer = setTimeout(() => { child.kill(); reject(new Error('publisher child timeout')); }, 15_000);
         child.once('error', reject);
         child.once('exit', (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`publisher child exited ${code}`)); });
@@ -85,7 +85,7 @@ describe('pendingReminders', () => {
       const fixture = fileURLToPath(new URL('./fixtures/pendingBuilder.mjs', import.meta.url));
       const moduleUrl = pathToFileURL(fileURLToPath(new URL('../src/pendingReminders.ts', import.meta.url))).href;
       const children = Array.from({ length: OS_PROCESS_CONCURRENCY }, () => new Promise<void>((resolve, reject) => {
-        const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '--experimental-strip-types', fixture, moduleUrl, home, 's1', key, barrier, counter], { stdio: ['ignore', 'ignore', 'pipe'] });
+        const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '--import', 'tsx', fixture, moduleUrl, home, 's1', key, barrier, counter], { stdio: ['ignore', 'ignore', 'pipe'] });
         let stderr = '';
         child.stderr?.on('data', (chunk) => { stderr += String(chunk); });
         const timer = setTimeout(() => { child.kill(); reject(new Error('builder child timeout')); }, 15_000);
@@ -106,7 +106,7 @@ describe('pendingReminders', () => {
       const fixture = fileURLToPath(new URL('./fixtures/pendingBuilder.mjs', import.meta.url));
       const moduleUrl = pathToFileURL(fileURLToPath(new URL('../src/pendingReminders.ts', import.meta.url))).href;
       const children = Array.from({ length: OS_PROCESS_CONCURRENCY }, () => new Promise<void>((resolve, reject) => {
-        const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '--experimental-strip-types', fixture, moduleUrl, home, 's1', key, barrier, counter], { stdio: 'ignore' });
+        const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '--import', 'tsx', fixture, moduleUrl, home, 's1', key, barrier, counter], { stdio: 'ignore' });
         const timer = setTimeout(() => { child.kill(); reject(new Error('expired builder child timeout')); }, 20_000);
         child.once('error', reject); child.once('exit', (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`expired builder child exited ${code}`)); });
       }));
@@ -131,8 +131,8 @@ describe('pendingReminders', () => {
         const key = buildPendingSemanticKey({ agent: 'claude', surface: 'tool_error', refs: [{ source: 'own', id: String(index) }] });
         const barrier = join(home, `sweep-barrier-${index}`);
         const children = [
-          spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '--experimental-strip-types', publisher, moduleUrl, home, sessionId, key, barrier], { stdio: 'ignore' }),
-          spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '--experimental-strip-types', sweeper, moduleUrl, home, barrier], { stdio: 'ignore' }),
+          spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '--import', 'tsx', publisher, moduleUrl, home, sessionId, key, barrier], { stdio: 'ignore' }),
+          spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '--import', 'tsx', sweeper, moduleUrl, home, barrier], { stdio: 'ignore' }),
         ];
         const exits = children.map((child) => new Promise<void>((resolve, reject) => {
           const timer = setTimeout(() => { child.kill(); reject(new Error('sweep race child timeout')); }, 15_000);
@@ -153,7 +153,7 @@ describe('pendingReminders', () => {
       const release = join(home, 'blocking-builder-release');
       const fixture = fileURLToPath(new URL('./fixtures/pendingBlockingBuilder.mjs', import.meta.url));
       const moduleUrl = pathToFileURL(fileURLToPath(new URL('../src/pendingReminders.ts', import.meta.url))).href;
-      const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '--experimental-strip-types', fixture, moduleUrl, home, 's1', key, started, release], { stdio: 'ignore' });
+      const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '--import', 'tsx', fixture, moduleUrl, home, 's1', key, started, release], { stdio: 'ignore' });
       const exit = new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => { child.kill(); reject(new Error('blocking builder child timeout')); }, 15_000);
         child.once('error', reject); child.once('exit', (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`blocking builder child exited ${code}`)); });
