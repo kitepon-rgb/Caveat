@@ -21,8 +21,8 @@ jobs:
     uses: kitepon/dotagents/.github/workflows/factory-full-ci.yml@main
     with:
       environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'all' }}
+      dependency-command: corepack pnpm install --frozen-lockfile
       full-command: >-
-        corepack pnpm install --frozen-lockfile &&
         corepack pnpm build &&
         corepack pnpm typecheck &&
         corepack pnpm check:release-smoke &&
