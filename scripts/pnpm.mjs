@@ -47,14 +47,14 @@ function* candidateCommands() {
     yield { label: explicit, command: explicit, args: [], shell: true };
   }
 
-  const pnpm = findOnPath(process.platform === 'win32' ? ['pnpm.cmd', 'pnpm.exe', 'pnpm'] : ['pnpm']);
-  if (pnpm) {
-    yield { label: pnpm, command: pnpm, args: [], shell: true };
-  }
-
   const corepack = findOnPath(process.platform === 'win32' ? ['corepack.cmd', 'corepack.exe', 'corepack'] : ['corepack']);
   if (corepack) {
     yield { label: `${corepack} pnpm`, command: corepack, args: ['pnpm'], shell: true };
+  }
+
+  const pnpm = findOnPath(process.platform === 'win32' ? ['pnpm.cmd', 'pnpm.exe', 'pnpm'] : ['pnpm']);
+  if (pnpm) {
+    yield { label: pnpm, command: pnpm, args: [], shell: true };
   }
 
   const npx = findOnPath(process.platform === 'win32' ? ['npx.cmd', 'npx.exe', 'npx'] : ['npx']);
