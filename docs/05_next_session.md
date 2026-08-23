@@ -1,11 +1,20 @@
 # Next Session Handoff
 
-Last updated: 2026-07-17.
+Last updated: 2026-08-23.
 
 ## Status
 
-AutoSync propagation work is complete and released as `caveat-cli@0.17.0`. There
-are no remaining release tasks.
+`caveat-cli@0.17.4` released: behavior-preserving refactor that consolidates
+OS-dependent branches into `packages/core/src/platform.ts`, shared installer
+helpers into `apps/cli/src/installShared.ts`, and the vendor-neutral hook
+engine into `apps/cli/src/hookShared.ts` (Claude/Codex switched by a `HookHost`
+config). No feature or behavior changes; 573 tests passing across all
+workspaces. The separation rules are canonicalized in CLAUDE.md
+(「OS依存・ホスト依存の分離規約」). There are no remaining release tasks.
+
+## Previous Release (v0.17.0)
+
+AutoSync propagation work is complete and released as `caveat-cli@0.17.0`.
 
 The release closes a real multi-terminal failure: an entry recorded on the WSL2
 machine never reached the macOS machine. The cause was structural, not a bug —

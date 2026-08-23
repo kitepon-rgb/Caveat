@@ -4,6 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクトの状態
 
+**v0.17.4（2026-08-23公開）**。挙動不変の内部リファクタ。OS依存分岐を
+[packages/core/src/platform.ts](packages/core/src/platform.ts)へ、Claude/Codex両インストーラの逐語重複を
+[apps/cli/src/installShared.ts](apps/cli/src/installShared.ts)へ、hookCmd/codexHookCmdの逐語重複エンジンを
+[apps/cli/src/hookShared.ts](apps/cli/src/hookShared.ts)（`HookHost`設定で切替）へ集約した。
+「Macを直すとWinが壊れる／Claudeを直すとCodexが壊れる」構造の恒久対策。
+分離規約は下記「OS依存・ホスト依存の分離規約」節が正。
+
 **v0.17.1（2026-07-20公開）**。Windows native Codex hook commandのquoted Node実行に
 PowerShell call operator `&`を付け、reinstallで旧commandを移行する。v0.17.0では
 record/update直後のbackground sync、15分autosync、失敗時6時間backoff、Windows ACL seamの
