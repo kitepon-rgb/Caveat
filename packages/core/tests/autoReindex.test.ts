@@ -370,7 +370,12 @@ body
         keyId: 'keyserver:unreachable',
         keyserverUrl: 'http://127.0.0.1:65535',
       }));
-      const keyProvider = createKeyserverKeyProvider({ caveatHome: home });
+      // WSL2 mirrored networking では閉じた loopback ポートへの接続が即座に
+      // RST されず undici の接続タイムアウト(~10s)までぶら下がるため、既定の
+      // SEALED_KEY_FETCH_TIMEOUT_MS(10s) は vitest の 5s を必ず超える。
+      // このテストの主張は「到達不能なら failure entry を報告する」であり、
+      // 待ち時間の長さではないので、明示 timeout で環境非依存にする。
+      const keyProvider = createKeyserverKeyProvider({ caveatHome: home, timeoutMs: 1000 });
       const failures = await prewarmSealedKeys({ paths: { communityDir: community }, keyProvider });
       expect(failures).toHaveLength(1);
       expect(failures[0]!.source).toBe('community/sealed-team');
