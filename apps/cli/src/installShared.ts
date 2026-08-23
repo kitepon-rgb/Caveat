@@ -8,8 +8,13 @@ import { dirname, isAbsolute } from 'node:path';
  * 片方だけ直して挙動がズレる事故(Mac を直すと Win が壊れる)をここで防ぐ。
  */
 
-export function quoteIfSpaces(p: string): string {
-  return p.includes(' ') ? `"${p}"` : p;
+/**
+ * Hook host の shell に渡す実行パスを quote する。Windows の `C:\\...` は
+ * 空白がなくても Claude の POSIX shell で backslash escape と解釈されるため、
+ * whitespace または backslash を含むパスは必ず quote する。
+ */
+export function quoteCommandPath(p: string): string {
+  return /[\s\\]/.test(p) ? `"${p}"` : p;
 }
 
 /** hook command 文字列を quote 対応で token 分解する。不正な形は null。 */

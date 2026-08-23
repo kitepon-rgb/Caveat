@@ -1,8 +1,17 @@
 # Next Session Handoff
 
-Last updated: 2026-08-23.
+Last updated: 2026-08-24.
 
 ## Status
+
+`caveat-cli@0.17.6` fixes the Windows Claude hook command emitted by `caveat init`.
+The CLI script path was left unquoted when it contained backslashes but no spaces;
+Claude's POSIX hook shell consumed those backslashes and Node resolved a broken
+cwd-relative module path. The shared installer now quotes whitespace or backslash
+paths, migrates existing commands without losing environment prefixes, and factory
+diagnostics rejects the legacy unsafe shape.
+
+## Previous Release (v0.17.5)
 
 `caveat-cli@0.17.5` released from the first all-green four-environment CI run
 (32622740838). Two closure items over 0.17.4: (1) the FOX Windows runner

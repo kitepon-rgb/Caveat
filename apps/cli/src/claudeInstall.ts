@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { constants, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Logger } from '@caveat/core';
-import { commandTokens, isCanonicalAsset, quoteIfSpaces, writeJsonWithBackup } from './installShared.js';
+import { commandTokens, isCanonicalAsset, quoteCommandPath, writeJsonWithBackup } from './installShared.js';
 
 export interface ClaudeInstallOptions {
   claudeDir: string;
@@ -45,7 +45,7 @@ function hookCommand(
   cliScriptPath: string,
   event: 'user-prompt-submit' | 'post-tool-use' | 'stop',
 ): string {
-  return `${quoteIfSpaces(nodePath)} ${quoteIfSpaces(cliScriptPath)} hook ${event}`;
+  return `${quoteCommandPath(nodePath)} ${quoteCommandPath(cliScriptPath)} hook ${event}`;
 }
 
 type HookEntry = { hooks: Array<{ type: string; command: string }> };
@@ -73,7 +73,7 @@ function upsertHook(
     for (const hook of entry.hooks ?? []) {
       if (isSameHookCommand(hook.command, command)) return 'unchanged';
       if (subcommand && isCaveatClaudeHookCommand(hook.command, subcommand)) {
-        hook.command = command;
+        hook.command = `${envPrefix(hook.command)}${command}`;
         return 'added';
       }
     }
@@ -112,8 +112,8 @@ function isSameHookCommand(actual: string, expected: string): boolean {
   return actual === expected || actual.endsWith(` ${expected}`);
 }
 
-function isEnvPrefixedCommand(command: string): boolean {
-  return /^[A-Z_][A-Z0-9_]*=/.test(command.trim());
+function envPrefix(command: string): string {
+  return command.match(/^((?:[A-Z_][A-Z0-9_]*=(?:"[^"]*"|'[^']*'|\S+)\s+)+)/)?.[1] ?? '';
 }
 
 /** Read-only canonical detector shared by installer and factory diagnostics. */
@@ -122,11 +122,12 @@ function isCaveatClaudeHookCommand(
   event: 'user-prompt-submit' | 'post-tool-use' | 'stop',
 ): boolean {
   const lower = actual.toLowerCase();
-  return !isEnvPrefixedCommand(actual) && lower.includes('caveat') && actual.includes(`hook ${event}`);
+  return lower.includes('caveat') && actual.includes(`hook ${event}`);
 }
 
 /** Exact read-only detector used by factory diagnostics; accepts only installer-owned assets. */
 export function isCanonicalCaveatClaudeHookCommand(actual: string, event: 'user-prompt-submit' | 'post-tool-use' | 'stop', nodePath: string, cliScriptPath: string): boolean {
+  if (actual !== hookCommand(nodePath, cliScriptPath, event)) return false;
   const tokens = commandTokens(actual);
   return tokens?.length === 4 && isCanonicalAsset(tokens[0], nodePath, constants.X_OK) && isCanonicalAsset(tokens[1], cliScriptPath, constants.R_OK) && tokens[2] === 'hook' && tokens[3] === event;
 }

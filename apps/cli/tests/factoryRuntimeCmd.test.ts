@@ -40,7 +40,7 @@ function readyFactory(fixture: ReturnType<typeof isolated>) {
   execFileSync('git', ['init', '--bare', remote], { stdio: 'pipe' }); execFileSync('git', ['init'], { cwd: own, stdio: 'pipe' });
   execFileSync('git', ['config', 'user.email', 'fixture@example.test'], { cwd: own }); execFileSync('git', ['config', 'user.name', 'Fixture'], { cwd: own });
   writeFileSync(join(own, 'README.md'), 'fixture\n'); execFileSync('git', ['add', '.'], { cwd: own }); execFileSync('git', ['commit', '-m', 'fixture'], { cwd: own, stdio: 'pipe' }); execFileSync('git', ['branch', '-M', 'main'], { cwd: own }); execFileSync('git', ['remote', 'add', 'origin', remote], { cwd: own }); execFileSync('git', ['push', '-u', 'origin', 'main'], { cwd: own, stdio: 'pipe' });
-  const quoted = (value: string) => value.includes(' ') ? `"${value}"` : value;
+  const quoted = (value: string) => /[\s\\]/.test(value) ? `"${value}"` : value;
   const nodeCommand = quoted(process.execPath); const cliCommand = quoted(cli);
   writeFileSync(join(fixture.home, '.claude.json'), JSON.stringify({ mcpServers: { caveat: { type: 'stdio', command: process.execPath, args: ['--disable-warning=ExperimentalWarning', cli, 'mcp-server'], env: {} } } }));
   mkdirSync(join(fixture.home, '.claude'), { recursive: true }); writeFileSync(join(fixture.home, '.claude', 'settings.json'), JSON.stringify({ hooks: { UserPromptSubmit: [{ hooks: [{ command: `${nodeCommand} ${cliCommand} hook user-prompt-submit` }] }], PostToolUse: [{ hooks: [{ command: `${nodeCommand} ${cliCommand} hook post-tool-use` }] }], PostToolUseFailure: [{ hooks: [{ command: `${nodeCommand} ${cliCommand} hook post-tool-use` }] }], Stop: [{ hooks: [{ command: `${nodeCommand} ${cliCommand} hook stop` }] }] } }));
@@ -112,6 +112,19 @@ describe('built factory/runtime CLI contracts', { timeout: process.platform === 
     writeFileSync(join(executorFixture.codexHome, 'hooks.json'), JSON.stringify({ hooks: Object.fromEntries([['UserPromptSubmit', 'user-prompt-submit'], ['PostToolUse', 'post-tool-use'], ['Stop', 'stop']].map(([event, subcommand]) => [event, [{ hooks: [{ command: `${fakeNode} ${fakeCli} codex-hook ${subcommand}` }] }]])) }));
     const fakeExecutor = json(run(['factory-diagnostics', '--json'], executorFixture.env));
     expect(fakeExecutor.connectors.claude.status).toBe('not_ready'); expect(fakeExecutor.connectors.codex.status).toBe('not_ready'); expect(fakeExecutor.overall.status).toBe('not_ready');
+
+    if (process.platform === 'win32') {
+      const unquotedWindows = isolated(); readyFactory(unquotedWindows);
+      const settingsPath = join(unquotedWindows.home, '.claude', 'settings.json');
+      const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as { hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>> };
+      for (const entries of Object.values(settings.hooks)) for (const entry of entries) for (const hook of entry.hooks) {
+        hook.command = hook.command.replace(`"${cli}"`, cli);
+      }
+      writeFileSync(settingsPath, JSON.stringify(settings));
+      const legacy = json(run(['factory-diagnostics', '--json'], unquotedWindows.env));
+      expect(legacy.connectors.claude.status).toBe('not_ready');
+      expect(legacy.overall.status).toBe('not_ready');
+    }
   });
 
   it('does not report own sync ready for dirty, remotely-behind, or unreachable worktrees', () => {

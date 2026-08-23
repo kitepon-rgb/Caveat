@@ -87,6 +87,56 @@ describe('installClaudeIntegration (hooks only — MCP spawn tolerated)', () => 
     expect(settings.hooks.Stop[0]?.hooks[0]?.command).toContain('hook stop');
   });
 
+  it('quotes Windows backslash paths even when they contain no spaces', () => {
+    installClaudeIntegration({
+      claudeDir: fx.claudeDir,
+      cliScriptPath: 'C:\\Users\\fixture\\AppData\\Roaming\\npm\\node_modules\\caveat-cli\\dist\\caveat.js',
+      nodePath: 'C:\\Program Files\\nodejs\\node.exe',
+      dryRun: false,
+      logger: silentLogger,
+      skipMcpRegistration: true,
+    });
+
+    const settings = JSON.parse(readFileSync(fx.settingsPath, 'utf-8')) as {
+      hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>>;
+    };
+    expect(settings.hooks.UserPromptSubmit[0]?.hooks[0]?.command).toBe(
+      '"C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\fixture\\AppData\\Roaming\\npm\\node_modules\\caveat-cli\\dist\\caveat.js" hook user-prompt-submit',
+    );
+  });
+
+  it('migrates an unquoted Windows hook and preserves its environment prefix', () => {
+    const nodePath = 'C:\\Program Files\\nodejs\\node.exe';
+    const cliScriptPath = 'C:\\Users\\fixture\\AppData\\Roaming\\npm\\node_modules\\caveat-cli\\dist\\caveat.js';
+    writeFileSync(
+      fx.settingsPath,
+      JSON.stringify({
+        hooks: {
+          Stop: [{ hooks: [{ type: 'command', command: `CAVEAT_HOOK_CODEX_SIDECAR=auto "${nodePath}" ${cliScriptPath} hook stop` }] }],
+        },
+      }),
+      'utf-8',
+    );
+
+    const result = installClaudeIntegration({
+      claudeDir: fx.claudeDir,
+      cliScriptPath,
+      nodePath,
+      dryRun: false,
+      logger: silentLogger,
+      skipMcpRegistration: true,
+    });
+
+    expect(result.hooks.stop).toBe('added');
+    const settings = JSON.parse(readFileSync(fx.settingsPath, 'utf-8')) as {
+      hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>>;
+    };
+    expect(settings.hooks.Stop).toHaveLength(1);
+    expect(settings.hooks.Stop[0]?.hooks[0]?.command).toBe(
+      `CAVEAT_HOOK_CODEX_SIDECAR=auto "${nodePath}" "${cliScriptPath}" hook stop`,
+    );
+  });
+
   it('preserves existing hooks when adding caveat hooks', () => {
     writeFileSync(
       fx.settingsPath,

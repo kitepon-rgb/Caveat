@@ -4,6 +4,11 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ## Unreleased
 
+## [0.17.6] — 2026-08-24
+
+### Fixed
+- Claude hooks on Windows now quote backslash paths even when they contain no spaces. Git Bash previously consumed the unquoted backslashes in the global `caveat-cli` script path, so every hook failed with `MODULE_NOT_FOUND`. Reinstall migrates existing commands in place, preserves explicit environment prefixes, and factory diagnostics rejects the legacy unsafe shape.
+
 ## [0.17.3] — 2026-08-02
 
 ### Fixed

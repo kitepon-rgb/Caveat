@@ -4,6 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクトの状態
 
+**v0.17.6（2026-08-24公開）**。WindowsのClaude hook commandで、空白を含まない
+`C:\\...` のCLIパスも必ずquoteする。ClaudeのPOSIX shellが未引用backslashをescapeとして
+消費し、cwd相対の壊れたmodule pathへ変換していた。共通installer helperで根治し、
+環境変数prefixを保持した旧command移行とfactory診断のlegacy拒否を追加した。
+
 **v0.17.5（2026-08-23公開）**。CI green 化の締めくくり。v0.17.4 は FOX runner の環境障害
 （ESET IDS が高頻度 loopback 接続をポートスキャン誤検知して 127.0.0.1 を間欠ブロック。
 `getaddrinfo() thread failed` と fixture 接続不能は同根）により CI green 前の例外 publish

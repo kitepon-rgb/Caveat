@@ -2,7 +2,7 @@ import { constants, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { powershellCallPrefix, type Logger } from '@caveat/core';
 import { parse as parseToml } from 'smol-toml';
-import { commandTokens, isCanonicalAsset, quoteIfSpaces, writeFileWithBackup, writeJsonWithBackup } from './installShared.js';
+import { commandTokens, isCanonicalAsset, quoteCommandPath, writeFileWithBackup, writeJsonWithBackup } from './installShared.js';
 
 export interface CodexHookInstallOptions {
   codexHome: string;
@@ -64,7 +64,7 @@ function hookCommand(
   event: 'user-prompt-submit' | 'post-tool-use' | 'stop',
   platform: NodeJS.Platform = process.platform,
 ): string {
-  return `${powershellCallPrefix(platform)}${quoteIfSpaces(nodePath)} ${quoteIfSpaces(cliScriptPath)} codex-hook ${event}`;
+  return `${powershellCallPrefix(platform)}${quoteCommandPath(nodePath)} ${quoteCommandPath(cliScriptPath)} codex-hook ${event}`;
 }
 
 function eventCommandFragment(event: 'user-prompt-submit' | 'post-tool-use' | 'stop'): string {
