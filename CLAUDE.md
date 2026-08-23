@@ -170,6 +170,13 @@ Project-local `.claude/settings.json` は端末固有の permission allowlist �
 - **FTS5 trigram は 3 文字以上のクエリが必要**。日本語 2 文字（例: `仕様`）はヒットしない。ドキュメント化済の仕様なので、クエリの事前バリデーションは足さない。
 - **gray-matter の YAML エンジン**は `jsyaml.JSON_SCHEMA` に固定。`!!js/function` 等の unsafe タグはパース時に throw する想定（`tests/frontmatter.test.ts` で検証済）。
 
+## OS依存・ホスト依存の分離規約（2026-08-23 リファクタ）
+
+- **`process.platform` / `win32` の分岐を書けるのは [packages/core/src/platform.ts](packages/core/src/platform.ts) だけ**（テストのスキップ条件と、telemetry 用の値変換 `normalizeOs` は除く）。owner-only 所有判定・PowerShell call prefix・node 実行ファイル名・パス case 正規化はここの関数を使う。全関数は `platform` を引数で受けてテスト可能
+- **Claude / Codex 両インストーラの共通ヘルパは [apps/cli/src/installShared.ts](apps/cli/src/installShared.ts)**（`quoteIfSpaces` / `commandTokens` / `isCanonicalAsset` / backup 付き書込）。claudeInstall / codexHookInstall に残るのは「そのホストの設定ファイル形式と command の形」だけ
+- **hook のベンダー中立エンジンは [apps/cli/src/hookShared.ts](apps/cli/src/hookShared.ts)**。`HookHost` 設定（agent / stderrTag / errorCode / stop-state dir / dedupe key）で Claude / Codex を切り替え、stdin 処理・DB 検索（markHit / query-miss log 込み）・pending drain / compact・stop 重複抑止を 1 実装で共有する。hookCmd / codexHookCmd に残るのは出力形式（`<system-reminder>` vs JSON）・payload 解釈・reminder 本文組み立て・worker 方式だけ
+- 片方のホスト / OS を直す時は、共有モジュール側を直せば両方に効く。共有モジュールを迂回して cmd ファイルに同種ロジックを再複製しない
+
 ## Import 規約
 
 - ESM、tsconfig は `"module": "NodeNext"`。**ソース間の相対 import は `.ts` ファイルでも `.js` 拡張子を書く**（例: `import { parseMarkdown } from './frontmatter.js'`）。vitest/vite と tsup の双方で正しく解決される。
