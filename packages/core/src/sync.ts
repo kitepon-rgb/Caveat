@@ -8,6 +8,7 @@ import type { ResolvedPaths } from './paths.js';
 import { deriveAnonymousProbeUrl, probeAnonymousRead, type RemoteAccess } from './remoteVisibility.js';
 import { createGit } from './gitRuntime.js';
 import { createKeyserverKeyProvider } from './sealedKeys.js';
+import { normalizePathCase } from './platform.js';
 import { prewarmSealedKeys } from './sealedIndex.js';
 
 export type SyncErrorCode =
@@ -75,8 +76,7 @@ export interface InitOwnSyncResult {
 }
 
 function normalizePath(path: string): string {
-  const normalized = resolve(path).replace(/\\/g, '/');
-  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+  return normalizePathCase(resolve(path).replace(/\\/g, '/'));
 }
 
 // git push delivers to EVERY push URL, not just the first. `--all` lists them

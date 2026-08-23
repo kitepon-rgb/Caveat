@@ -12,6 +12,8 @@ import {
   caveatEntriesToSidecarContextBlocks,
   decideCodexSidecarExecution,
   get,
+  isPrivateOwnerStat,
+  isWindows,
   markHit,
   openDb,
   search,
@@ -170,13 +172,12 @@ export function readHookSignalAdditionalContextFile(
 }
 
 function assertPrivateRegular(stat: Stats, uid: number | undefined, platform: NodeJS.Platform): void {
-  const privateOwner = platform === 'win32'
-    || ((stat.mode & 0o077) === 0 && (uid === undefined || stat.uid === uid));
+  const privateOwner = isPrivateOwnerStat(stat, uid, platform);
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_ADDITIONAL_CONTEXT_BYTES || !privateOwner) throw new Error('additional context file must be a private owner-only regular file within 4096 bytes');
 }
 
 function assertWindowsPrivateTempContainer(path: string, platform: NodeJS.Platform): void {
-  if (platform !== 'win32') return;
+  if (!isWindows(platform)) return;
   const parent = dirname(path);
   const parentStat = lstatSync(parent);
   const resolvedParent = realpathSync(parent);

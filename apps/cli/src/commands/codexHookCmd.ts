@@ -1,37 +1,35 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createHash, randomBytes } from 'node:crypto';
-import type { DatabaseSync } from 'node:sqlite';
+import { randomBytes } from 'node:crypto';
 import {
   buildAndPublishPendingReminder,
   buildPendingSemanticKey,
-  defaultSelfIdentityTokens,
-  drainPendingRemindersDetailed,
-  findCaveatsForHook,
-  findCaveatsForHookSegments,
   hasAnyStruggleSignal,
-  logHookQueryMiss,
-  markHit,
   maybeSweepPendingDirs,
-  openDb,
   readCodexSessionSignals,
   stopReminderText,
-  struggleSearchText,
   toolErrorReminderText,
   userPromptSubmitReminderText,
-  type Logger,
-  type HookSearchInput,
-  type SearchResult,
   type SessionSignals,
-  observeRuntimeError,
 } from '@caveat/core';
-import { buildContext, type CliContext } from '../context.js';
-import { CAVEAT_VERSION } from '../version.js';
 import { maybeTriggerAutoReindex } from '../autoReindexTrigger.js';
 import { maybeTriggerAutoSync } from '../autoSyncTrigger.js';
 import { detectCodexHookInstallation } from '../codexHookInstall.js';
+import {
+  buildContextSafely,
+  compactContexts,
+  drainForSession,
+  errorMessage,
+  extractToolResponseText,
+  parsePayload,
+  pendingCleanupFailureText,
+  queueStopForSession,
+  readStdin,
+  searchCaveatsSafely,
+  type HookHost,
+} from '../hookShared.js';
 
 export type CodexHookName =
   | 'user-prompt-submit'
@@ -40,16 +38,13 @@ export type CodexHookName =
   | 'worker'
   | 'diagnostics';
 
-const silentLogger: Logger = {
-  info: () => {},
-  warn: () => {},
-  error: (m) => process.stderr.write(`[caveat:codex-hook] ${m}\n`),
+const CODEX_HOST: HookHost = {
+  agent: 'codex',
+  stderrTag: 'caveat:codex-hook',
+  errorCode: 'CAVEAT.CODEX_HOOK_FAILED',
+  stopStateDir: 'codex-stop-state',
+  stopDedupeKey: 'codex-stop-reminder',
 };
-
-const CODEX_MAX_CONTEXT_BLOCKS = 3;
-const CODEX_STOP_REMINDER_PREFIX =
-  '[caveat] このセッションで外部仕様の罠に当たった可能性を示すシグナル:';
-const CODEX_STOP_STATE_DIR = 'codex-stop-state';
 
 interface CodexWorkerJob {
   sessionId: string;
@@ -61,93 +56,11 @@ interface CodexWorkerJob {
   toolUseId?: string;
 }
 
-async function readStdin(): Promise<string> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) {
-    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
-  }
-  return Buffer.concat(chunks).toString('utf-8');
-}
-
-function parsePayload(raw: string): Record<string, unknown> {
-  if (!raw) return {};
-  try {
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch (err: unknown) {
-    observeRuntimeError('CAVEAT.CODEX_HOOK_FAILED', { version: CAVEAT_VERSION });
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[caveat:codex-hook] json parse error: ${msg}\n`);
-    return {};
-  }
-}
-
-function buildContextSafely(): CliContext | null {
-  try {
-    return buildContext(silentLogger);
-  } catch (err: unknown) {
-    observeRuntimeError('CAVEAT.CODEX_HOOK_FAILED', { version: CAVEAT_VERSION });
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[caveat:codex-hook] context error: ${msg}\n`);
-    return null;
-  }
-}
-
-function searchCaveatsSafely(input: HookSearchInput | readonly HookSearchInput[]): SearchResult[] {
-  const inputs: readonly HookSearchInput[] = Array.isArray(input) ? input : [input as HookSearchInput];
-  const queryForLog = inputs.map((item) => item.surface === 'user_prompt'
-    ? (item.topicText || item.failureText)
-    : item.failureText).filter(Boolean).join('\n');
-  if (inputs.length === 0 || inputs.every((item) => !item.topicText && !item.failureText)) return [];
-  let db: DatabaseSync | undefined;
-  let caveatHome: string | undefined;
-  let hits: SearchResult[];
-  try {
-    const ctx = buildContextSafely();
-    if (!ctx || !existsSync(ctx.paths.dbPath)) return [];
-    caveatHome = ctx.caveatHome;
-    db = openDb({ path: ctx.paths.dbPath });
-    const searchOptions = {
-      selfIdentity: defaultSelfIdentityTokens(),
-    };
-    hits = inputs.length === 1
-      ? findCaveatsForHook(db, inputs[0]!, searchOptions)
-      : findCaveatsForHookSegments(db, inputs, searchOptions);
-  } catch (err: unknown) {
-    observeRuntimeError('CAVEAT.CODEX_HOOK_FAILED', { version: CAVEAT_VERSION });
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[caveat:codex-hook] search error: ${msg}\n`);
-    return [];
-  }
-  if (hits.length > 0) {
-    try {
-      markHit(db!, hits);
-    } catch (err: unknown) {
-      observeRuntimeError('CAVEAT.CODEX_HOOK_FAILED', { version: CAVEAT_VERSION });
-      const msg = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`[caveat:codex-hook] markHit error: ${msg}\n`);
-    }
-  } else {
-    try {
-      logHookQueryMiss({ caveatHome: caveatHome!, agent: 'codex', surface: inputs[0]!.surface, query: queryForLog });
-    } catch (err: unknown) {
-      observeRuntimeError('CAVEAT.CODEX_HOOK_FAILED', { version: CAVEAT_VERSION });
-      const msg = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`[caveat:codex-hook] query log error: ${msg}\n`);
-    }
-  }
-  try {
-    return hits;
-  } finally {
-    db?.close();
-  }
-}
-
 function loadSignalsSafely(path: string): SessionSignals | null {
   try {
     return readCodexSessionSignals(path);
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[caveat:codex-hook] transcript read error: ${msg}\n`);
+    process.stderr.write(`[caveat:codex-hook] transcript read error: ${errorMessage(err)}\n`);
     return null;
   }
 }
@@ -155,33 +68,6 @@ function loadSignalsSafely(path: string): SessionSignals | null {
 function codexSessionId(payload: Record<string, unknown>): string | null {
   const v = payload.session_id ?? payload.sessionId;
   return typeof v === 'string' && v.length > 0 ? v : null;
-}
-
-function extractToolResponseText(response: unknown): string {
-  if (typeof response === 'string') return response;
-  if (Array.isArray(response)) {
-    return response
-      .map((item) => {
-        if (typeof item === 'string') return item;
-        if (item !== null && typeof item === 'object') {
-          const text = (item as { text?: unknown }).text;
-          return typeof text === 'string' ? text : '';
-        }
-        return '';
-      })
-      .filter(Boolean)
-      .join(' ');
-  }
-  if (response !== null && typeof response === 'object') {
-    const r = response as Record<string, unknown>;
-    if (typeof r.content === 'string') return r.content;
-    if (Array.isArray(r.content)) return extractToolResponseText(r.content);
-    if (typeof r.output === 'string') return r.output;
-    if (typeof r.stdout === 'string' || typeof r.stderr === 'string') {
-      return [r.stdout, r.stderr].filter((x) => typeof x === 'string').join(' ');
-    }
-  }
-  return '';
 }
 
 function numericExitCode(v: unknown): number | null {
@@ -314,103 +200,7 @@ export function codexContextOutput(text: string, eventName = 'UserPromptSubmit')
 }
 
 export function codexPendingCleanupFailureText(): string {
-  return '[caveat:codex-hook] pending reminder cleanup failed';
-}
-
-function drainForSession(sessionId: string): string[] {
-  const ctx = buildContextSafely();
-  if (!ctx) return [];
-  const local = drainPendingRemindersDetailed(ctx.caveatHome, sessionId);
-  const global = drainPendingRemindersDetailed(ctx.caveatHome, '_global');
-  for (const _failure of [...local.cleanupFailures, ...global.cleanupFailures]) {
-    process.stderr.write(`${codexPendingCleanupFailureText()}\n`);
-  }
-  return [...local.reminders, ...global.reminders];
-}
-
-function codexContextDedupeKey(text: string): string {
-  if (text.startsWith(CODEX_STOP_REMINDER_PREFIX)) return 'codex-stop-reminder';
-  return text.trim();
-}
-
-function compactCodexContexts(contexts: string[]): string[] {
-  const selected: string[] = [];
-  const seen = new Set<string>();
-  for (let i = contexts.length - 1; i >= 0; i -= 1) {
-    const text = contexts[i]?.trim();
-    if (!text) continue;
-    const key = codexContextDedupeKey(text);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    selected.push(text);
-  }
-  selected.reverse();
-  const limited = selected.slice(-CODEX_MAX_CONTEXT_BLOCKS);
-  const omitted = selected.length - limited.length;
-  if (omitted > 0) {
-    limited.push(`[caveat] pending reminder ${omitted} 件を重複または上限により省略しました。`);
-  }
-  return limited;
-}
-
-function sanitizeCodexStateId(raw: string): string {
-  const clean = raw.replace(/[^A-Za-z0-9_-]/g, '');
-  return clean.length > 0 ? clean : '_unknown';
-}
-
-function stopSignalKey(signals: SessionSignals, related: SearchResult[]): string {
-  const body = JSON.stringify({
-    toolFailureCount: signals.toolFailureCount,
-    fileEditCounts: signals.fileEditCounts.map((e) => [e.path, e.count]),
-    webSearchCount: signals.webSearchCount,
-    webFetchCount: signals.webFetchCount,
-    bashRetryCount: signals.bashRetryCount,
-    searchQueries: signals.searchQueries,
-    related: related.map((h) => [h.source, h.id]),
-  });
-  return createHash('sha256').update(body).digest('hex');
-}
-
-function stopStatePath(caveatHome: string, sessionId: string): string {
-  return join(caveatHome, CODEX_STOP_STATE_DIR, `${sanitizeCodexStateId(sessionId)}.txt`);
-}
-
-function wasStopReminderQueued(caveatHome: string, sessionId: string, key: string): boolean {
-  const path = stopStatePath(caveatHome, sessionId);
-  try {
-    return readFileSync(path, 'utf-8') === key;
-  } catch {
-    return false;
-  }
-}
-
-function markStopReminderQueued(caveatHome: string, sessionId: string, key: string): void {
-  const path = stopStatePath(caveatHome, sessionId);
-  mkdirSync(join(caveatHome, CODEX_STOP_STATE_DIR), { recursive: true });
-  writeFileSync(path, key, 'utf-8');
-}
-
-function queueStopForSession(sessionId: string, signals: SessionSignals, related: SearchResult[]): void {
-  const ctx = buildContextSafely();
-  if (!ctx) return;
-  const key = stopSignalKey(signals, related);
-  if (wasStopReminderQueued(ctx.caveatHome, sessionId, key)) return;
-  let result: ReturnType<typeof buildAndPublishPendingReminder>;
-  try {
-    result = buildAndPublishPendingReminder(ctx.caveatHome, sessionId, buildPendingSemanticKey({
-      agent: 'codex', surface: 'stop', refs: related, stopSignalDigest: key,
-    }), () => stopReminderText(signals, related));
-  } catch {
-    process.stderr.write('[caveat:codex-hook] pending reminder build or publish failed\n');
-    return;
-  }
-  if (!result.ran) return;
-  try {
-    markStopReminderQueued(ctx.caveatHome, sessionId, key);
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[caveat:codex-hook] pending reminder write error: ${msg}\n`);
-  }
+  return pendingCleanupFailureText(CODEX_HOST);
 }
 
 function spawnCodexWorker(job: CodexWorkerJob): void {
@@ -425,8 +215,7 @@ function spawnCodexWorker(job: CodexWorkerJob): void {
       flag: 'wx',
     });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[caveat:codex-hook] worker writefile error: ${msg}\n`);
+    process.stderr.write(`[caveat:codex-hook] worker writefile error: ${errorMessage(err)}\n`);
     return;
   }
 
@@ -440,8 +229,7 @@ function spawnCodexWorker(job: CodexWorkerJob): void {
     );
     child.unref();
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[caveat:codex-hook] worker spawn error: ${msg}\n`);
+    process.stderr.write(`[caveat:codex-hook] worker spawn error: ${errorMessage(err)}\n`);
     try {
       unlinkSync(workFile);
     } catch {
@@ -484,14 +272,14 @@ async function processCodexWorkerJob(
 
   if (!knownError && job.allowSymptomOnly !== true) return;
 
-  const hits = searchCaveatsSafely({
+  const hits = searchCaveatsSafely(CODEX_HOST, {
     topicText: job.topicText,
     failureText,
     surface: 'tool_error',
   });
   if (hits.length === 0) return;
 
-  const ctx = buildContextSafely();
+  const ctx = buildContextSafely(CODEX_HOST);
   if (!ctx) return;
   let result: ReturnType<typeof buildAndPublishPendingReminder>;
   try {
@@ -575,22 +363,21 @@ export async function runCodexHook(name: CodexHookName, arg?: string): Promise<v
   try {
     raw = await readStdin();
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[caveat:codex-hook] stdin read error: ${msg}\n`);
+    process.stderr.write(`[caveat:codex-hook] stdin read error: ${errorMessage(err)}\n`);
     process.exit(0);
   }
-  const payload = parsePayload(raw);
+  const payload = parsePayload(CODEX_HOST, raw);
   const sessionId = codexSessionId(payload);
   if (!sessionId) process.stderr.write('[caveat:codex-hook] missing session_id; pending drain disabled\n');
 
   if (name === 'user-prompt-submit') {
-    const contexts = sessionId ? drainForSession(sessionId) : [];
+    const contexts = sessionId ? drainForSession(CODEX_HOST, sessionId) : [];
     const prompt = typeof payload.prompt === 'string' ? payload.prompt : '';
-    const hits = searchCaveatsSafely({ topicText: prompt, failureText: prompt, surface: 'user_prompt' });
+    const hits = searchCaveatsSafely(CODEX_HOST, { topicText: prompt, failureText: prompt, surface: 'user_prompt' });
     if (hits.length > 0) {
       contexts.push(userPromptSubmitReminderText(hits));
     }
-    const compacted = compactCodexContexts(contexts);
+    const compacted = compactContexts(CODEX_HOST, contexts);
     if (compacted.length > 0) {
       process.stdout.write(`${codexContextOutput(compacted.join('\n\n'))}\n`);
     }
@@ -605,37 +392,34 @@ export async function runCodexHook(name: CodexHookName, arg?: string): Promise<v
 
   if (name === 'stop') {
     try {
-      const ctx = buildContextSafely();
+      const ctx = buildContextSafely(CODEX_HOST);
       if (ctx) {
         try {
           maybeSweepPendingDirs(ctx.caveatHome);
         } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          process.stderr.write(`[caveat:codex-hook] pending sweep error: ${msg}\n`);
+          process.stderr.write(`[caveat:codex-hook] pending sweep error: ${errorMessage(err)}\n`);
         }
         maybeTriggerAutoReindex(ctx);
         try {
           maybeTriggerAutoSync(ctx);
         } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          process.stderr.write(`[caveat:codex-hook] auto sync trigger error: ${msg}\n`);
+          process.stderr.write(`[caveat:codex-hook] auto sync trigger error: ${errorMessage(err)}\n`);
         }
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`[caveat:codex-hook] auto reindex trigger error: ${msg}\n`);
+      process.stderr.write(`[caveat:codex-hook] auto reindex trigger error: ${errorMessage(err)}\n`);
     }
     if (payload.stop_hook_active === true) process.exit(0);
     const transcriptPath =
       typeof payload.transcript_path === 'string' ? payload.transcript_path : '';
     const signals = transcriptPath ? loadSignalsSafely(transcriptPath) : null;
     if (!signals || !hasAnyStruggleSignal(signals)) process.exit(0);
-    const related = searchCaveatsSafely(signals.errorSnippets.map((failureText) => ({
+    const related = searchCaveatsSafely(CODEX_HOST, signals.errorSnippets.map((failureText) => ({
       topicText: '',
       failureText,
       surface: 'stop' as const,
     })));
-    if (sessionId) queueStopForSession(sessionId, signals, related);
+    if (sessionId) queueStopForSession(CODEX_HOST, sessionId, signals, related, () => stopReminderText(signals, related));
     process.exit(0);
   }
 

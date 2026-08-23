@@ -1,5 +1,6 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
+import { nodeExecutableNames } from '@caveat/core';
 
 type RealpathFn = (path: string) => string;
 
@@ -28,9 +29,7 @@ export function resolveHookNodePath({
 } = {}): string {
   const execRealpath = safeRealpath(execPath, realpath);
   const pathEnv = env.PATH ?? env.Path ?? '';
-  const names = platform === 'win32'
-    ? ['node.exe', 'node.cmd', 'node.bat', 'node']
-    : ['node'];
+  const names = nodeExecutableNames(platform);
 
   for (const dir of pathEnv.split(delimiter).filter(Boolean)) {
     for (const name of names) {

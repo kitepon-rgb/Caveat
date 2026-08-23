@@ -1,7 +1,8 @@
-import { accessSync, constants, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join } from 'node:path';
-import type { Logger } from '@caveat/core';
+import { constants, existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { powershellCallPrefix, type Logger } from '@caveat/core';
 import { parse as parseToml } from 'smol-toml';
+import { commandTokens, isCanonicalAsset, quoteIfSpaces, writeFileWithBackup, writeJsonWithBackup } from './installShared.js';
 
 export interface CodexHookInstallOptions {
   codexHome: string;
@@ -57,18 +58,13 @@ type HooksJson = {
   [key: string]: unknown;
 };
 
-function quote(p: string): string {
-  return p.includes(' ') ? `"${p}"` : p;
-}
-
 function hookCommand(
   nodePath: string,
   cliScriptPath: string,
   event: 'user-prompt-submit' | 'post-tool-use' | 'stop',
   platform: NodeJS.Platform = process.platform,
 ): string {
-  const prefix = platform === 'win32' ? '& ' : '';
-  return `${prefix}${quote(nodePath)} ${quote(cliScriptPath)} codex-hook ${event}`;
+  return `${powershellCallPrefix(platform)}${quoteIfSpaces(nodePath)} ${quoteIfSpaces(cliScriptPath)} codex-hook ${event}`;
 }
 
 function eventCommandFragment(event: 'user-prompt-submit' | 'post-tool-use' | 'stop'): string {
@@ -96,15 +92,6 @@ function isCaveatCodexHookCommand(
   return lower.includes('caveat') && actual.includes(eventCommandFragment(event));
 }
 
-function commandTokens(command: string): string[] | null {
-  const tokens: string[] = []; const pattern = /"([^"]*)"|([^\s"]+)/g; let end = 0; let match: RegExpExecArray | null;
-  while ((match = pattern.exec(command)) !== null) { if (command.slice(end, match.index).trim()) return null; tokens.push(match[1] ?? match[2]!); end = pattern.lastIndex; }
-  return command.slice(end).trim() ? null : tokens;
-}
-function isCanonicalAsset(path: unknown, expectedPath: string, mode: number): path is string {
-  if (typeof path !== 'string' || !isAbsolute(path) || !isAbsolute(expectedPath)) return false;
-  try { accessSync(path, mode); return statSync(path).isFile() && realpathSync(path) === realpathSync(expectedPath); } catch { return false; }
-}
 /** Exact read-only detector used by factory diagnostics. */
 export function isCanonicalCaveatCodexHookCommand(actual: string, event: 'user-prompt-submit' | 'post-tool-use' | 'stop', nodePath: string, cliScriptPath: string): boolean {
   const parsed = commandTokens(actual);
@@ -140,18 +127,6 @@ function hasCaveatHook(hooksJson: HooksJson, event: HookEvent, fragment: string)
 function readHooks(path: string): HooksJson {
   if (!existsSync(path)) return {};
   return JSON.parse(readFileSync(path, 'utf-8')) as HooksJson;
-}
-
-function writeJsonWithBackup(path: string, value: unknown): string {
-  const dir = dirname(path);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  let backupPath = '';
-  if (existsSync(path)) {
-    backupPath = `${path}.caveat-backup-${Date.now()}`;
-    copyFileSync(path, backupPath);
-  }
-  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf-8');
-  return backupPath;
 }
 
 function upsertHook(
@@ -367,18 +342,6 @@ function maskTomlStringsAndComments(raw: string): string {
   return output;
 }
 
-function writeConfigWithBackup(path: string, text: string): string {
-  const dir = dirname(path);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  let backupPath = '';
-  if (existsSync(path)) {
-    backupPath = `${path}.caveat-backup-${Date.now()}`;
-    copyFileSync(path, backupPath);
-  }
-  writeFileSync(path, text, 'utf-8');
-  return backupPath;
-}
-
 export function installCodexHooks(opts: CodexHookInstallOptions): CodexHookInstallResult {
   const hooksPath = join(opts.codexHome, 'hooks.json');
   const configPath = join(opts.codexHome, 'config.toml');
@@ -427,7 +390,7 @@ export function installCodexHooks(opts: CodexHookInstallOptions): CodexHookInsta
       if (backup) backupPath = backup;
     }
     if (enabled.changed) {
-      const backup = writeConfigWithBackup(configPath, enabled.text);
+      const backup = writeFileWithBackup(configPath, enabled.text);
       if (backup) configBackupPath = backup;
     }
   }

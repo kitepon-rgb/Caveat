@@ -1,7 +1,8 @@
 import { spawnSync } from 'node:child_process';
-import { accessSync, constants, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join } from 'node:path';
+import { constants, existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Logger } from '@caveat/core';
+import { commandTokens, isCanonicalAsset, quoteIfSpaces, writeJsonWithBackup } from './installShared.js';
 
 export interface ClaudeInstallOptions {
   claudeDir: string;
@@ -31,10 +32,6 @@ const EVENT_POST_TOOL_USE = 'PostToolUse';
 const EVENT_POST_TOOL_USE_FAILURE = 'PostToolUseFailure';
 const EVENT_STOP = 'Stop';
 
-function quote(p: string): string {
-  return p.includes(' ') ? `"${p}"` : p;
-}
-
 function mcpArgs(cliScriptPath: string): string[] {
   // `--disable-warning=ExperimentalWarning` silences the node:sqlite warning that
   // otherwise writes a line to stderr; harmless for stderr but keeps the spawn
@@ -48,7 +45,7 @@ function hookCommand(
   cliScriptPath: string,
   event: 'user-prompt-submit' | 'post-tool-use' | 'stop',
 ): string {
-  return `${quote(nodePath)} ${quote(cliScriptPath)} hook ${event}`;
+  return `${quoteIfSpaces(nodePath)} ${quoteIfSpaces(cliScriptPath)} hook ${event}`;
 }
 
 type HookEntry = { hooks: Array<{ type: string; command: string }> };
@@ -128,15 +125,6 @@ function isCaveatClaudeHookCommand(
   return !isEnvPrefixedCommand(actual) && lower.includes('caveat') && actual.includes(`hook ${event}`);
 }
 
-function commandTokens(command: string): string[] | null {
-  const tokens: string[] = []; const pattern = /"([^"]*)"|([^\s"]+)/g; let end = 0; let match: RegExpExecArray | null;
-  while ((match = pattern.exec(command)) !== null) { if (command.slice(end, match.index).trim()) return null; tokens.push(match[1] ?? match[2]!); end = pattern.lastIndex; }
-  return command.slice(end).trim() ? null : tokens;
-}
-function isCanonicalAsset(path: unknown, expectedPath: string, mode: number): path is string {
-  if (typeof path !== 'string' || !isAbsolute(path) || !isAbsolute(expectedPath)) return false;
-  try { accessSync(path, mode); return statSync(path).isFile() && realpathSync(path) === realpathSync(expectedPath); } catch { return false; }
-}
 /** Exact read-only detector used by factory diagnostics; accepts only installer-owned assets. */
 export function isCanonicalCaveatClaudeHookCommand(actual: string, event: 'user-prompt-submit' | 'post-tool-use' | 'stop', nodePath: string, cliScriptPath: string): boolean {
   const tokens = commandTokens(actual);
@@ -160,15 +148,7 @@ function readSettings(path: string): Settings {
 }
 
 function writeSettings(path: string, settings: Settings): string {
-  const dir = dirname(path);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  let backupPath = '';
-  if (existsSync(path)) {
-    backupPath = `${path}.caveat-backup-${Date.now()}`;
-    copyFileSync(path, backupPath);
-  }
-  writeFileSync(path, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
-  return backupPath;
+  return writeJsonWithBackup(path, settings);
 }
 
 const CLAUDE_BIN = 'claude';

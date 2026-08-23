@@ -15,19 +15,11 @@ import type { Stats } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import {
-  buildAndPublishPendingReminder,
-  buildPendingSemanticKey,
   CAVEAT_AUTO_SYNC_ENV,
-  defaultSelfIdentityTokens,
-  drainPendingRemindersDetailed,
-  findCaveatsForHook,
-  findCaveatsForHookSegments,
   hasAnyStruggleSignal,
-  logHookQueryMiss,
-  markHit,
-  maybeSweepPendingDirs,
+  isPrivateOwnerStat,
   openDb,
   acquireReindexLock,
   computeEntriesDigest,
@@ -42,125 +34,54 @@ import {
   struggleSearchText,
   toolErrorReminderText,
   userPromptSubmitReminderText,
+  buildAndPublishPendingReminder,
+  buildPendingSemanticKey,
   buildHookSignalSidecarContextBlock,
+  maybeSweepPendingDirs,
   type CaveatHookSignalSidecarContextBlock,
-  type Logger,
-  type HookSearchInput,
   type SearchResult,
   type SessionSignals,
-  observeRuntimeError,
 } from '@caveat/core';
-import { buildContext, type CliContext } from '../context.js';
-import { CAVEAT_VERSION } from '../version.js';
 import { maybeTriggerAutoReindex } from '../autoReindexTrigger.js';
 import { maybeTriggerAutoSync } from '../autoSyncTrigger.js';
 import { formatCodexSidecarAdvisory, runCodexSidecarAdvisory } from './codexSidecarAdvisory.js';
+import {
+  buildContextSafely,
+  compactContexts,
+  drainForSession,
+  errorMessage,
+  extractToolResponseText,
+  hookSilentLogger,
+  parsePayload,
+  pendingCleanupFailureText,
+  queueStopForSession,
+  readStdin,
+  searchCaveatsSafely,
+  type HookHost,
+} from '../hookShared.js';
 
 export type HookName = 'user-prompt-submit' | 'post-tool-use' | 'stop' | 'worker' | 'reindex' | 'autosync';
 
-const silentLogger: Logger = {
-  info: () => {},
-  warn: () => {},
-  error: (m) => process.stderr.write(`[caveat:hook] ${m}\n`),
+const CLAUDE_HOST: HookHost = {
+  agent: 'claude',
+  stderrTag: 'caveat:hook',
+  errorCode: 'CAVEAT.CLAUDE_HOOK_FAILED',
+  stopStateDir: 'claude-stop-state',
+  stopDedupeKey: 'claude-stop-reminder',
 };
 
-const CLAUDE_MAX_CONTEXT_BLOCKS = 3;
-const CLAUDE_STOP_REMINDER_PREFIX =
-  '[caveat] このセッションで外部仕様の罠に当たった可能性を示すシグナル:';
-const CLAUDE_STOP_STATE_DIR = 'claude-stop-state';
-
-async function readStdin(): Promise<string> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) {
-    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
-  }
-  return Buffer.concat(chunks).toString('utf-8');
-}
-
-function parsePayload(raw: string): Record<string, unknown> {
-  if (!raw) return {};
-  try {
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch (err: unknown) {
-    observeRuntimeError('CAVEAT.CLAUDE_HOOK_FAILED', { version: CAVEAT_VERSION });
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[caveat:hook] json parse error: ${msg}\n`);
-    return {};
-  }
-}
+const silentLogger = hookSilentLogger(CLAUDE_HOST);
 
 function getSessionId(payload: Record<string, unknown>): string {
   const v = payload.session_id ?? payload.sessionId;
   return typeof v === 'string' && v.length > 0 ? v : '_unknown';
 }
 
-function buildContextSafely(): CliContext | null {
-  try {
-    return buildContext(silentLogger);
-  } catch (err: unknown) {
-    observeRuntimeError('CAVEAT.CLAUDE_HOOK_FAILED', { version: CAVEAT_VERSION });
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[caveat:hook] context error: ${msg}\n`);
-    return null;
-  }
-}
-
-function searchCaveatsSafely(input: HookSearchInput | readonly HookSearchInput[]): SearchResult[] {
-  const inputs: readonly HookSearchInput[] = Array.isArray(input) ? input : [input as HookSearchInput];
-  const queryForLog = inputs.map((item) => item.surface === 'user_prompt'
-    ? (item.topicText || item.failureText)
-    : item.failureText).filter(Boolean).join('\n');
-  if (inputs.length === 0 || inputs.every((item) => !item.topicText && !item.failureText)) return [];
-  let db: DatabaseSync | undefined;
-  let caveatHome: string | undefined;
-  let hits: SearchResult[];
-  try {
-    const ctx = buildContextSafely();
-    if (!ctx || !existsSync(ctx.paths.dbPath)) return [];
-    caveatHome = ctx.caveatHome;
-    db = openDb({ path: ctx.paths.dbPath });
-    const searchOptions = {
-      selfIdentity: defaultSelfIdentityTokens(),
-    };
-    hits = inputs.length === 1
-      ? findCaveatsForHook(db, inputs[0]!, searchOptions)
-      : findCaveatsForHookSegments(db, inputs, searchOptions);
-  } catch (err: unknown) {
-    observeRuntimeError('CAVEAT.CLAUDE_HOOK_FAILED', { version: CAVEAT_VERSION });
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[caveat:hook] search error: ${msg}\n`);
-    return [];
-  }
-  if (hits.length > 0) {
-    try {
-      markHit(db!, hits);
-    } catch (err: unknown) {
-      observeRuntimeError('CAVEAT.CLAUDE_HOOK_FAILED', { version: CAVEAT_VERSION });
-      const msg = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`[caveat:hook] markHit error: ${msg}\n`);
-    }
-  } else {
-    try {
-      logHookQueryMiss({ caveatHome: caveatHome!, agent: 'claude', surface: inputs[0]!.surface, query: queryForLog });
-    } catch (err: unknown) {
-      observeRuntimeError('CAVEAT.CLAUDE_HOOK_FAILED', { version: CAVEAT_VERSION });
-      const msg = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`[caveat:hook] query log error: ${msg}\n`);
-    }
-  }
-  try {
-    return hits;
-  } finally {
-    db?.close();
-  }
-}
-
 function loadSignalsSafely(path: string): SessionSignals | null {
   try {
     return readSessionSignals(path);
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[caveat:hook] transcript read error: ${msg}\n`);
+    process.stderr.write(`[caveat:hook] transcript read error: ${errorMessage(err)}\n`);
     return null;
   }
 }
@@ -170,142 +91,7 @@ function systemReminderOutput(text: string): string {
 }
 
 export function claudePendingCleanupFailureText(): string {
-  return '[caveat:hook] pending reminder cleanup failed';
-}
-
-function drainForSession(sessionId: string): string[] {
-  const ctx = buildContextSafely();
-  if (!ctx) return [];
-  const local = drainPendingRemindersDetailed(ctx.caveatHome, sessionId);
-  const global = drainPendingRemindersDetailed(ctx.caveatHome, '_global');
-  for (const _failure of [...local.cleanupFailures, ...global.cleanupFailures]) {
-    process.stderr.write(`${claudePendingCleanupFailureText()}\n`);
-  }
-  return [...local.reminders, ...global.reminders];
-}
-
-function claudeContextDedupeKey(text: string): string {
-  if (text.startsWith(CLAUDE_STOP_REMINDER_PREFIX)) return 'claude-stop-reminder';
-  return text.trim();
-}
-
-function compactClaudeContexts(contexts: string[]): string[] {
-  const selected: string[] = [];
-  const seen = new Set<string>();
-  for (let i = contexts.length - 1; i >= 0; i -= 1) {
-    const text = contexts[i]?.trim();
-    if (!text) continue;
-    const key = claudeContextDedupeKey(text);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    selected.push(text);
-  }
-  selected.reverse();
-  const limited = selected.slice(-CLAUDE_MAX_CONTEXT_BLOCKS);
-  const omitted = selected.length - limited.length;
-  if (omitted > 0) {
-    limited.push(
-      `[caveat] pending reminder ${omitted} 件を重複または上限により省略しました。`,
-    );
-  }
-  return limited;
-}
-
-function sanitizeClaudeStateId(raw: string): string {
-  const clean = raw.replace(/[^A-Za-z0-9_-]/g, '');
-  return clean.length > 0 ? clean : '_unknown';
-}
-
-function stopSignalKey(signals: SessionSignals, related: SearchResult[]): string {
-  const body = JSON.stringify({
-    toolFailureCount: signals.toolFailureCount,
-    fileEditCounts: signals.fileEditCounts.map((e) => [e.path, e.count]),
-    webSearchCount: signals.webSearchCount,
-    webFetchCount: signals.webFetchCount,
-    bashRetryCount: signals.bashRetryCount,
-    searchQueries: signals.searchQueries,
-    related: related.map((h) => [h.source, h.id]),
-  });
-  return createHash('sha256').update(body).digest('hex');
-}
-
-function stopStatePath(caveatHome: string, sessionId: string): string {
-  return join(caveatHome, CLAUDE_STOP_STATE_DIR, `${sanitizeClaudeStateId(sessionId)}.txt`);
-}
-
-function wasStopReminderQueued(caveatHome: string, sessionId: string, key: string): boolean {
-  const path = stopStatePath(caveatHome, sessionId);
-  try {
-    return readFileSync(path, 'utf-8') === key;
-  } catch {
-    return false;
-  }
-}
-
-function markStopReminderQueued(caveatHome: string, sessionId: string, key: string): void {
-  const path = stopStatePath(caveatHome, sessionId);
-  mkdirSync(join(caveatHome, CLAUDE_STOP_STATE_DIR), { recursive: true });
-  writeFileSync(path, key, 'utf-8');
-}
-
-function queueStopForSession(
-  sessionId: string,
-  signals: SessionSignals,
-  related: SearchResult[],
-): void {
-  const ctx = buildContextSafely();
-  if (!ctx) return;
-  const key = stopSignalKey(signals, related);
-  if (wasStopReminderQueued(ctx.caveatHome, sessionId, key)) return;
-  let result: ReturnType<typeof buildAndPublishPendingReminder>;
-  try {
-    result = buildAndPublishPendingReminder(ctx.caveatHome, sessionId, buildPendingSemanticKey({
-      agent: 'claude', surface: 'stop', refs: related, stopSignalDigest: key,
-    }), () => buildStopReminder(signals, related));
-  } catch {
-    process.stderr.write('[caveat:hook] pending reminder build or publish failed\n');
-    return;
-  }
-  if (!result.ran) return;
-  try {
-    markStopReminderQueued(ctx.caveatHome, sessionId, key);
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[caveat:hook] pending reminder write error: ${msg}\n`);
-  }
-}
-
-/**
- * Extract the text portion of a PostToolUse `tool_response` field. Claude
- * Code passes either a string, an object with content/output-like fields,
- * or an array of content blocks. Unknown shapes → empty string.
- */
-function extractToolResponseText(response: unknown): string {
-  if (typeof response === 'string') return response;
-  if (Array.isArray(response)) {
-    const parts: string[] = [];
-    for (const item of response) {
-      if (typeof item === 'string') parts.push(item);
-      else if (
-        item !== null &&
-        typeof item === 'object' &&
-        typeof (item as { text?: unknown }).text === 'string'
-      ) {
-        parts.push((item as { text: string }).text);
-      }
-    }
-    return parts.join(' ');
-  }
-  if (response !== null && typeof response === 'object') {
-    const r = response as Record<string, unknown>;
-    if (typeof r.content === 'string') return r.content;
-    if (Array.isArray(r.content)) return extractToolResponseText(r.content);
-    if (typeof r.output === 'string') return r.output;
-    if (typeof r.stdout === 'string' || typeof r.stderr === 'string') {
-      return [r.stdout, r.stderr].filter((x) => typeof x === 'string').join(' ');
-    }
-  }
-  return '';
+  return pendingCleanupFailureText(CLAUDE_HOST);
 }
 
 function toolTopicText(payload: Record<string, unknown>): string {
@@ -360,8 +146,7 @@ function spawnWorker(job: Omit<WorkerJob, 'schemaVersion'>): void {
     workFile = join(workDir, `${randomBytes(4).toString('hex')}.json`);
     writeFileSync(workFile, JSON.stringify({ ...job, schemaVersion: 'caveat-worker-job/v2' }), { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[caveat:hook] worker writefile error: ${msg}\n`);
+    process.stderr.write(`[caveat:hook] worker writefile error: ${errorMessage(err)}\n`);
     cleanupWorkerDir(workDir, workDir ? dirname(workDir) : undefined);
     return;
   }
@@ -381,8 +166,7 @@ function spawnWorker(job: Omit<WorkerJob, 'schemaVersion'>): void {
     );
     child.unref();
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[caveat:hook] worker spawn error: ${msg}\n`);
+    process.stderr.write(`[caveat:hook] worker spawn error: ${errorMessage(err)}\n`);
     try {
       cleanupWorkerDir(workDir, root);
     } catch {
@@ -409,14 +193,14 @@ async function runWorker(workFile: string): Promise<void> {
   }
   if (!job.failureText || !job.sessionId) process.exit(0);
 
-  const hits = searchCaveatsSafely({
+  const hits = searchCaveatsSafely(CLAUDE_HOST, {
     topicText: job.topicText,
     failureText: job.failureText,
     surface: 'tool_error',
   });
   if (hits.length === 0) process.exit(0);
 
-  const ctx = buildContextSafely();
+  const ctx = buildContextSafely(CLAUDE_HOST);
   if (!ctx) process.exit(0);
   let result: ReturnType<typeof buildAndPublishPendingReminder>;
   try {
@@ -504,11 +288,10 @@ function isStaleWorkerJobDir(path: string): boolean {
 }
 
 function hasPrivateOwnership(stat: Stats, uid: number | undefined): boolean {
-  // Node's POSIX mode/uid fields are not an ACL view on Windows. There the
-  // reserved root lives below the current user's temp directory and inherits
-  // its Windows ACL; structural marker/schema checks remain mandatory.
-  return process.platform === 'win32'
-    || ((stat.mode & 0o077) === 0 && (uid === undefined || stat.uid === uid));
+  // On Windows the reserved root lives below the current user's temp
+  // directory and inherits its Windows ACL; structural marker/schema checks
+  // remain mandatory. See isPrivateOwnerStat for the POSIX-mode semantics.
+  return isPrivateOwnerStat(stat, uid);
 }
 
 function isWorkerJob(value: unknown): value is WorkerJob {
@@ -536,13 +319,8 @@ function writeLastReindex(caveatHome: string, value: Record<string, unknown>): v
   try {
     writeFileSync(join(caveatHome, 'index', '.last-reindex.json'), JSON.stringify(value), 'utf-8');
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[caveat:hook] reindex status write error: ${msg}\n`);
+    process.stderr.write(`[caveat:hook] reindex status write error: ${errorMessage(err)}\n`);
   }
-}
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 async function runReindexWorker(): Promise<void> {
@@ -550,7 +328,7 @@ async function runReindexWorker(): Promise<void> {
     process.stderr.write('[caveat:hook] auto reindex disabled by CAVEAT_INDEX_AUTOSYNC=off\n');
     return;
   }
-  const ctx = buildContextSafely();
+  const ctx = buildContextSafely(CLAUDE_HOST);
   if (!ctx || !existsSync(ctx.paths.dbPath)) {
     process.stderr.write('[caveat:hook] auto reindex skipped: index database does not exist\n');
     return;
@@ -575,7 +353,7 @@ async function runReindexWorker(): Promise<void> {
       perSource: result.perSource,
     });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errorMessage(err);
     process.stderr.write(`[caveat:hook] reindex error: ${msg}\n`);
     writeLastReindex(ctx.caveatHome, {
       startedAt,
@@ -587,8 +365,7 @@ async function runReindexWorker(): Promise<void> {
     try {
       releaseReindexLock(lock);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`[caveat:hook] reindex lock release error: ${msg}\n`);
+      process.stderr.write(`[caveat:hook] reindex lock release error: ${errorMessage(err)}\n`);
     }
   }
 }
@@ -598,7 +375,7 @@ async function runAutoSyncWorker(): Promise<void> {
     process.stderr.write('[caveat:hook] auto sync disabled by CAVEAT_AUTO_SYNC=off\n');
     return;
   }
-  const ctx = buildContextSafely();
+  const ctx = buildContextSafely(CLAUDE_HOST);
   if (!ctx) return;
   try {
     await runAutoSync({
@@ -724,22 +501,21 @@ export async function runHook(name: HookName, arg?: string): Promise<void> {
   try {
     raw = await readStdin();
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[caveat:hook] stdin read error: ${msg}\n`);
+    process.stderr.write(`[caveat:hook] stdin read error: ${errorMessage(err)}\n`);
     process.exit(0);
   }
-  const payload = parsePayload(raw);
+  const payload = parsePayload(CLAUDE_HOST, raw);
   const sessionId = getSessionId(payload);
 
-  const contexts = name === 'stop' ? [] : drainForSession(sessionId);
+  const contexts = name === 'stop' ? [] : drainForSession(CLAUDE_HOST, sessionId);
 
   if (name === 'user-prompt-submit') {
     const prompt = typeof payload.prompt === 'string' ? payload.prompt : '';
-    const hits = searchCaveatsSafely({ topicText: prompt, failureText: prompt, surface: 'user_prompt' });
+    const hits = searchCaveatsSafely(CLAUDE_HOST, { topicText: prompt, failureText: prompt, surface: 'user_prompt' });
     if (hits.length > 0) {
       contexts.push(userPromptSubmitReminderText(hits));
     }
-    const compacted = compactClaudeContexts(contexts);
+    const compacted = compactContexts(CLAUDE_HOST, contexts);
     if (compacted.length > 0) {
       process.stdout.write(`${systemReminderOutput(compacted.join('\n\n'))}\n`);
     }
@@ -747,7 +523,7 @@ export async function runHook(name: HookName, arg?: string): Promise<void> {
   }
 
   if (name === 'post-tool-use') {
-    const compacted = compactClaudeContexts(contexts);
+    const compacted = compactContexts(CLAUDE_HOST, contexts);
     if (compacted.length > 0) {
       process.stdout.write(`${systemReminderOutput(compacted.join('\n\n'))}\n`);
     }
@@ -775,25 +551,22 @@ export async function runHook(name: HookName, arg?: string): Promise<void> {
     // Periodic, debounced housekeeping: sweep stale per-session pending
     // dirs at most once per debounce window. Best-effort — never block the
     // hook contract on cleanup failures.
-    const ctx = buildContextSafely();
+    const ctx = buildContextSafely(CLAUDE_HOST);
     if (ctx) {
       try {
         maybeSweepPendingDirs(ctx.caveatHome);
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        process.stderr.write(`[caveat:hook] pending sweep error: ${msg}\n`);
+        process.stderr.write(`[caveat:hook] pending sweep error: ${errorMessage(err)}\n`);
       }
       try {
         maybeTriggerAutoReindex(ctx);
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        process.stderr.write(`[caveat:hook] auto reindex trigger error: ${msg}\n`);
+        process.stderr.write(`[caveat:hook] auto reindex trigger error: ${errorMessage(err)}\n`);
       }
       try {
         maybeTriggerAutoSync(ctx);
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        process.stderr.write(`[caveat:hook] auto sync trigger error: ${msg}\n`);
+        process.stderr.write(`[caveat:hook] auto sync trigger error: ${errorMessage(err)}\n`);
       }
     }
     if (payload.stop_hook_active === true) process.exit(0);
@@ -801,12 +574,12 @@ export async function runHook(name: HookName, arg?: string): Promise<void> {
       typeof payload.transcript_path === 'string' ? payload.transcript_path : '';
     const signals = transcriptPath ? loadSignalsSafely(transcriptPath) : null;
     if (!signals || !hasAnyStruggleSignal(signals)) process.exit(0);
-    const related = searchCaveatsSafely(signals.errorSnippets.map((failureText) => ({
+    const related = searchCaveatsSafely(CLAUDE_HOST, signals.errorSnippets.map((failureText) => ({
       topicText: '',
       failureText,
       surface: 'stop' as const,
     })));
-    queueStopForSession(sessionId, signals, related);
+    queueStopForSession(CLAUDE_HOST, sessionId, signals, related, () => buildStopReminder(signals, related));
     process.exit(0);
   }
 
