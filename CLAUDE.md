@@ -4,6 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクトの状態
 
+**v0.17.5（2026-08-23公開）**。CI green 化の締めくくり。v0.17.4 は FOX runner の環境障害
+（ESET IDS が高頻度 loopback 接続をポートスキャン誤検知して 127.0.0.1 を間欠ブロック。
+`getaddrinfo() thread failed` と fixture 接続不能は同根）により CI green 前の例外 publish
+だった。ESET 側は IDS 例外（リモートIP 127.0.0.1・ブロックいいえ）で恒久対応。WSL2 の
+mirrored networking では閉じ loopback ポートが即 RST されないため、到達不能 keyserver 試験へ
+明示 `timeoutMs` を渡して環境非依存化（673ed6c）。全4環境 green の run 32622740838 から公開。
+
 **v0.17.4（2026-08-23公開）**。挙動不変の内部リファクタ。OS依存分岐を
 [packages/core/src/platform.ts](packages/core/src/platform.ts)へ、Claude/Codex両インストーラの逐語重複を
 [apps/cli/src/installShared.ts](apps/cli/src/installShared.ts)へ、hookCmd/codexHookCmdの逐語重複エンジンを

@@ -4,6 +4,21 @@ Last updated: 2026-08-23.
 
 ## Status
 
+`caveat-cli@0.17.5` released from the first all-green four-environment CI run
+(32622740838). Two closure items over 0.17.4: (1) the FOX Windows runner
+failures were root-caused to ESET Network Attack Protection (IDS) falsely
+flagging high-frequency loopback connections as a port scan and intermittently
+blocking 127.0.0.1 machine-wide — permanent fix is an IDS exception (remote IP
+127.0.0.1, block: no) with all protections left ON; the mingw git/curl
+`getaddrinfo() thread failed to start` checkout failures were the same root
+cause because mingw's threaded resolver uses loopback internally. (2) The WSL2
+mirrored-networking quirk (closed loopback ports hang instead of refusing) is
+neutralized by passing an explicit `timeoutMs` to the unreachable-keyserver
+test (673ed6c). Diagnosis route is recorded in the caveat DB
+(`eset-web-loopback-http-fixture-git-https-caveat-ci`).
+
+## Previous Release (v0.17.4)
+
 `caveat-cli@0.17.4` released: behavior-preserving refactor that consolidates
 OS-dependent branches into `packages/core/src/platform.ts`, shared installer
 helpers into `apps/cli/src/installShared.ts`, and the vendor-neutral hook
