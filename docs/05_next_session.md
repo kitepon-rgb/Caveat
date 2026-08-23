@@ -30,7 +30,7 @@ test (673ed6c). Diagnosis route is recorded in the caveat DB
 
 `caveat-cli@0.17.4` released: behavior-preserving refactor that consolidates
 OS-dependent branches into `packages/core/src/platform.ts`, shared installer
-helpers into `apps/cli/src/installShared.ts`, and the vendor-neutral hook
+helpers into `apps/cli/src/installShared.ts`, and the harness-neutral hook
 engine into `apps/cli/src/hookShared.ts` (Claude/Codex switched by a `HookHost`
 config). No feature or behavior changes; 573 tests passing across all
 workspaces. The separation rules are canonicalized in CLAUDE.md
