@@ -4,7 +4,7 @@ import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, open
 import { arch as hostArch, homedir, platform as hostPlatform } from 'node:os';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { isWindows } from './platform.js';
+import { isWindowsEnv } from './platform.js';
 
 export const RUNTIME_ERRORS_SCHEMA = 'caveat.runtime_errors.v1';
 const STATE_VERSION = '1.0';
@@ -35,7 +35,7 @@ const validTime = (v: unknown) => typeof v === 'string' && Number.isFinite(Date.
 const validVersion = (v: unknown) => typeof v === 'string' && /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(v);
 const validOs = (v: unknown) => typeof v === 'string' && ['darwin', 'linux', 'windows'].includes(v);
 const validArch = (v: unknown) => typeof v === 'string' && ['x64', 'arm64', 'arm', 'ia32'].includes(v);
-const windows = (env: NodeJS.ProcessEnv) => env.OS === 'Windows_NT' || isWindows(hostPlatform());
+const windows = (env: NodeJS.ProcessEnv) => isWindowsEnv(env, hostPlatform());
 
 export function defaultFactoryReporterConfigPath(env: NodeJS.ProcessEnv = process.env) {
   const home = env.HOME || env.USERPROFILE || homedir();

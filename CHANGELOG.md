@@ -4,6 +4,15 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ## Unreleased
 
+## [0.17.7] — 2026-08-24
+
+### Changed
+- Behavior-preserving OS-layer consolidation (factory-wide harness/OS separation
+  campaign): the env-aware Windows detection that `runtimeErrors.ts` implemented
+  privately (`env.OS === 'Windows_NT' || isWindows()`) moved into
+  `packages/core/src/platform.ts` as `isWindowsEnv()`, keeping platform.ts the
+  single owner of OS branching. No API, schema, or behavior change; 575 tests green.
+
 ## [0.17.6] — 2026-08-24
 
 ### Fixed

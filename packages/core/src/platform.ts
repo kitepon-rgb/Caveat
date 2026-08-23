@@ -11,6 +11,18 @@ export function isWindows(platform: NodeJS.Platform = process.platform): boolean
 }
 
 /**
+ * env を考慮した Windows 判定。`OS=Windows_NT` は Windows native shell が必ず持つ
+ * 環境変数で、テストが env 注入だけで Windows 経路を選べるようにする
+ * (runtimeErrors が独自に持っていた判定をここへ集約。v0.17.5)。
+ */
+export function isWindowsEnv(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return env.OS === 'Windows_NT' || isWindows(platform);
+}
+
+/**
  * owner-only 所有チェック。Node の POSIX mode/uid フィールドは Windows では
  * ACL のビューにならないため、Windows は構造チェック(呼び出し側のマーカー・
  * スキーマ検証や親ディレクトリの ACL)に委ねて素通しする。
