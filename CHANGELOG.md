@@ -4,6 +4,17 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ## Unreleased
 
+## [0.17.8] — 2026-08-24
+
+### Fixed
+- Factory diagnostics falsely reported Claude hooks as `not_installed` on macOS
+  since 0.17.6: the canonical detector compared the whole command against a string
+  built from `process.execPath`, while the installer intentionally writes the
+  stable bin path (a symlink to the same binary). The detector now validates
+  quoting against the command's own token paths and relies on the existing
+  realpath-based canonical-asset check for identity, keeping the legacy unsafe
+  (unquoted backslash) shape rejected. Regression test added.
+
 ## [0.17.7] — 2026-08-24
 
 ### Changed

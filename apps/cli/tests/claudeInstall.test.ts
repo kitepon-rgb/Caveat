@@ -438,3 +438,49 @@ describe('installClaudeIntegration (hooks only — MCP spawn tolerated)', () => 
     );
   });
 });
+
+describe('isCanonicalCaveatClaudeHookCommand', () => {
+  it('accepts symlink-equivalent asset paths (stable bin path vs process.execPath)', async () => {
+    const { isCanonicalCaveatClaudeHookCommand } = await import('../src/claudeInstall.js');
+    const { symlinkSync, chmodSync } = await import('node:fs');
+    const root = mkdtempSync(join(tmpdir(), 'caveat-canon-'));
+    try {
+      const nodeReal = join(root, 'node-real');
+      const cliReal = join(root, 'caveat.js');
+      writeFileSync(nodeReal, '#!/bin/sh\n');
+      chmodSync(nodeReal, 0o755);
+      writeFileSync(cliReal, '// cli\n');
+      const nodeLink = join(root, 'node');
+      const cliLink = join(root, 'caveat');
+      symlinkSync(nodeReal, nodeLink);
+      symlinkSync(cliReal, cliLink);
+      // installer は安定パス（symlink）を書き、診断は process.execPath（実体）を渡す。
+      // realpath が一致する限り canonical として認める（0.17.6 の false negative の再現固定）。
+      const command = `${nodeLink} ${cliLink} hook stop`;
+      expect(
+        isCanonicalCaveatClaudeHookCommand(command, 'stop', nodeReal, cliReal),
+      ).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects non-canonical quoting for paths that need no quotes', async () => {
+    const { isCanonicalCaveatClaudeHookCommand } = await import('../src/claudeInstall.js');
+    const { chmodSync } = await import('node:fs');
+    const root = mkdtempSync(join(tmpdir(), 'caveat-canon-'));
+    try {
+      const nodeReal = join(root, 'node-real');
+      const cliReal = join(root, 'caveat.js');
+      writeFileSync(nodeReal, '#!/bin/sh\n');
+      chmodSync(nodeReal, 0o755);
+      writeFileSync(cliReal, '// cli\n');
+      const command = `"${nodeReal}" ${cliReal} hook stop`;
+      expect(
+        isCanonicalCaveatClaudeHookCommand(command, 'stop', nodeReal, cliReal),
+      ).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
