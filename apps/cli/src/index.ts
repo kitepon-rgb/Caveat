@@ -15,6 +15,8 @@ import { runMcpServer } from './commands/mcpServer.js';
 import { runHook, type HookName } from './commands/hookCmd.js';
 import { runCodexHook } from './commands/codexHookCmd.js';
 import { installCodexHooks, uninstallCodexHooks } from './codexHookInstall.js';
+import { runCursorHook } from './commands/cursorHookCmd.js';
+import { installCursorHooks, uninstallCursorHooks } from './cursorInstall.js';
 import { runPull } from './commands/pull.js';
 import { runSync } from './commands/sync.js';
 import { runPublish } from './commands/publish.js';
@@ -71,6 +73,7 @@ program
   .option('--publish-target [url]', 'configure the sealed public mirror target')
   .option('--yes', 'approve creating conventional GitHub repositories', false)
   .option('--skip-codex-hook', 'skip Codex hook installation', false)
+  .option('--skip-cursor-hook', 'skip Cursor hook installation', false)
   .option('--dry-run', 'show planned changes without writing', false)
   .option(
     '--pending-stale-days <days>',
@@ -90,6 +93,7 @@ program
       publishTarget?: boolean | string;
       yes: boolean;
       skipCodexHook: boolean;
+      skipCursorHook: boolean;
       dryRun: boolean;
       pendingStaleDays?: number;
     }) => {
@@ -102,6 +106,7 @@ program
         publishTarget: opts.publishTarget,
         yes: opts.yes,
         skipCodexHook: opts.skipCodexHook,
+        skipCursorHook: opts.skipCursorHook,
       });
     },
   );
@@ -353,6 +358,89 @@ codexHook
   .description('Run the detached Codex hook worker')
   .action(async (workFile: string) => {
     await runCodexHook('worker', workFile);
+  });
+
+const cursorHook = program
+  .command('cursor-hook')
+  .description('Install or run Cursor hooks for Caveat');
+
+cursorHook
+  .command('install')
+  .description('Install Caveat hooks into ~/.cursor/hooks.json (factory hooks are kept)')
+  .option('--dry-run', 'show planned changes without writing', false)
+  .option('--cursor-dir <path>', 'Cursor home directory', `${process.env.HOME}/.cursor`)
+  .action((opts: { dryRun: boolean; cursorDir: string }) => {
+    const cliScriptPath = process.argv[1];
+    if (!cliScriptPath) {
+      process.stderr.write('[caveat:error] cannot determine CLI script path\n');
+      process.exit(1);
+    }
+    const result = installCursorHooks({
+      cursorDir: opts.cursorDir,
+      cliScriptPath,
+      nodePath: resolveHookNodePath(),
+      dryRun: opts.dryRun,
+      logger: stdoutLogger,
+    });
+    stdoutLogger.info(`beforeSubmitPrompt hook: ${result.hooks.beforeSubmitPrompt}`);
+    stdoutLogger.info(`postToolUse hook: ${result.hooks.postToolUse}`);
+    stdoutLogger.info(`postToolUseFailure hook: ${result.hooks.postToolUseFailure}`);
+    stdoutLogger.info(`stop hook: ${result.hooks.stop}`);
+    if (result.backupPath) stdoutLogger.info(`hooks.json backed up: ${result.backupPath}`);
+  });
+
+cursorHook
+  .command('uninstall')
+  .description('Remove Caveat-owned Cursor hooks from ~/.cursor/hooks.json')
+  .option('--dry-run', 'show planned changes without writing', false)
+  .option('--cursor-dir <path>', 'Cursor home directory', `${process.env.HOME}/.cursor`)
+  .action((opts: { dryRun: boolean; cursorDir: string }) => {
+    const cliScriptPath = process.argv[1];
+    if (!cliScriptPath) {
+      process.stderr.write('[caveat:error] cannot determine CLI script path\n');
+      process.exit(1);
+    }
+    const result = uninstallCursorHooks({
+      cursorDir: opts.cursorDir,
+      cliScriptPath,
+      nodePath: resolveHookNodePath(),
+      dryRun: opts.dryRun,
+      logger: stdoutLogger,
+    });
+    stdoutLogger.info(`beforeSubmitPrompt hook: ${result.hooks.beforeSubmitPrompt === 'added' ? 'removed' : 'not present'}`);
+    stdoutLogger.info(`postToolUse hook: ${result.hooks.postToolUse === 'added' ? 'removed' : 'not present'}`);
+    stdoutLogger.info(`postToolUseFailure hook: ${result.hooks.postToolUseFailure === 'added' ? 'removed' : 'not present'}`);
+    stdoutLogger.info(`stop hook: ${result.hooks.stop === 'added' ? 'removed' : 'not present'}`);
+    if (result.backupPath) stdoutLogger.info(`hooks.json backed up: ${result.backupPath}`);
+  });
+
+cursorHook
+  .command('diagnostics')
+  .description('Check local Cursor hook installation')
+  .option('--cursor-dir <path>', 'Cursor home directory', `${process.env.HOME}/.cursor`)
+  .action(async (opts: { cursorDir: string }) => {
+    await runCursorHook('diagnostics', opts.cursorDir);
+  });
+
+cursorHook
+  .command('user-prompt-submit')
+  .description('Run the Cursor beforeSubmitPrompt hook')
+  .action(async () => {
+    await runCursorHook('user-prompt-submit');
+  });
+
+cursorHook
+  .command('post-tool-use')
+  .description('Run the Cursor postToolUse / postToolUseFailure hook')
+  .action(async () => {
+    await runCursorHook('post-tool-use');
+  });
+
+cursorHook
+  .command('stop')
+  .description('Run the Cursor stop hook')
+  .action(async () => {
+    await runCursorHook('stop');
   });
 
 const codexSidecar = program

@@ -19,6 +19,7 @@ const definitions = {
   'CAVEAT.MCP_TOOL_FAILED': { component: 'mcp_tool', severity: 'high', template: 'Caveat MCP tool handler failed' },
   'CAVEAT.CLAUDE_HOOK_FAILED': { component: 'claude_hook', severity: 'high', template: 'Caveat Claude hook failed' },
   'CAVEAT.CODEX_HOOK_FAILED': { component: 'codex_hook', severity: 'high', template: 'Caveat Codex hook failed' },
+  'CAVEAT.CURSOR_HOOK_FAILED': { component: 'cursor_hook', severity: 'high', template: 'Caveat Cursor hook failed' },
 } as const;
 export type RuntimeErrorCode = keyof typeof definitions;
 type Status = 'open' | 'resolved';

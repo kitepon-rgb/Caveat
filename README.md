@@ -32,6 +32,7 @@ managed separately.
 npm install -g caveat-cli
 caveat init                          # registers Claude Code MCP + hooks
 caveat codex-hook install            # optional: register native Codex hooks
+caveat cursor-hook install           # optional: register native Cursor hooks
 ```
 
 On macOS with Homebrew Node, generated hook commands use the stable

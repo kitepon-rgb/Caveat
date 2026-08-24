@@ -5,7 +5,7 @@ export const CAVEAT_HOOK_QUERY_LOG_ENV = 'CAVEAT_HOOK_QUERY_LOG';
 export const HOOK_QUERY_LOG_MAX_BYTES = 1024 * 1024;
 export const HOOK_QUERY_LOG_MAX_QUERY_CODE_UNITS = 1000;
 
-export type HookQueryAgent = 'claude' | 'codex';
+export type HookQueryAgent = 'claude' | 'codex' | 'cursor';
 export type HookQuerySurface = 'user_prompt' | 'tool_error' | 'stop';
 
 export interface HookQueryMiss {

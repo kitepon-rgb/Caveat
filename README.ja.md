@@ -32,6 +32,7 @@
 npm install -g caveat-cli
 caveat init                          # Claude Code MCP + hooks を登録
 caveat codex-hook install            # 任意: Codex native hooks を登録
+caveat cursor-hook install           # 任意: Cursor native hooks を登録
 ```
 
 macOS の Homebrew Node 環境では、hook command の Node パスに現在の実体と一致する安定 symlink
@@ -127,6 +128,7 @@ flowchart LR
 npm install -g caveat-cli
 caveat init                                                # 初回セットアップ
 caveat codex-hook install                                  # 任意: Codex native hook セットアップ
+caveat cursor-hook install                                 # 任意: Cursor native hook セットアップ
 caveat search "rtx"                                        # ローカルエントリを検索
 caveat community add https://github.com/acme-corp/caveats  # チームの repo を購読
 caveat pull                                                # 購読 repo を git-pull + 再 index

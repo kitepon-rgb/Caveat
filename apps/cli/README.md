@@ -22,6 +22,7 @@ Built and maintained by [Quo](https://x.com/QLyun35332) at [kitepon.dev](https:/
 npm install -g caveat-cli
 caveat init                          # Claude Code MCP + hooks
 caveat codex-hook install            # optional: native Codex hooks
+caveat cursor-hook install           # optional: native Cursor hooks
 ```
 
 On macOS with Homebrew Node, Caveat installs hook commands through the stable
@@ -98,6 +99,7 @@ If you want `~/.caveat/own/` to live elsewhere (e.g. a git-tracked directory you
 - `git` for `caveat community add` / `caveat community pull`
 - Claude Code installed if you want Claude MCP / hooks integration. Without it, `caveat init --skip-claude` still provisions local state.
 - Codex installed if you want native Codex hooks via `caveat codex-hook install`.
+- Cursor installed if you want native Cursor hooks via `caveat cursor-hook install`.
 
 Release install smoke:
 
@@ -107,6 +109,7 @@ npm install -g caveat-cli
 caveat --version
 caveat init
 caveat codex-hook install
+caveat cursor-hook install
 ```
 
 ## License

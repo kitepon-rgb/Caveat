@@ -4,6 +4,17 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ## Unreleased
 
+## [0.18.0] — 2026-08-24
+
+### Added
+- Native Cursor hooks. `caveat cursor-hook install` upserts flat command entries
+  into `~/.cursor/hooks.json` (`beforeSubmitPrompt` / `postToolUse` /
+  `postToolUseFailure` / `stop`) and leaves factory hooks in place. The runner
+  reads the Cursor envelope (`conversation_id`, `prompt`) and returns
+  `additional_context` JSON. `caveat init` installs them when `~/.cursor` exists
+  (`--skip-cursor-hook` to opt out). Factory diagnostics connectors remain
+  Claude/Codex only (exact allowlist).
+
 ## [0.17.8] — 2026-08-24
 
 ### Fixed

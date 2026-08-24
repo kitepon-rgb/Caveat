@@ -66,7 +66,7 @@ describe('logHookQueryMiss', () => {
   it('preserves the exact agent and surface metadata for every hook search surface', () => {
     const root = mkdtempSync(join(tmpdir(), 'caveat-query-log-'));
     try {
-      const expected = (['claude', 'codex'] as const).flatMap((agent) =>
+      const expected = (['claude', 'codex', 'cursor'] as const).flatMap((agent) =>
         (['user_prompt', 'tool_error', 'stop'] as const).map((surface) => ({ agent, surface })),
       );
       withQueryLogEnv('on', () => {

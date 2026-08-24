@@ -25,6 +25,10 @@ import {
   detectCodexHookInstallation,
   installCodexHooks,
 } from '../codexHookInstall.js';
+import {
+  detectCursorHookInstallation,
+  installCursorHooks,
+} from '../cursorInstall.js';
 import { askOnce, defaultGitHubRepoUrl, runGh, type GhRunner } from '../ghSetup.js';
 import { resolveHookNodePath } from '../nodePath.js';
 import { validatePublishTarget } from './publish.js';
@@ -43,6 +47,7 @@ export interface InitOptions {
   publishTarget?: boolean | string;
   yes?: boolean;
   skipCodexHook?: boolean;
+  skipCursorHook?: boolean;
 }
 
 export interface InitDependencies {
@@ -62,6 +67,7 @@ export async function runInit(
   const ghRunner = dependencies.ghRunner ?? runGh;
   let publishTarget = ctx.config.publishTarget;
   let codexHookState: 'installed' | 'partial' | 'not-installed' | 'skipped' = 'not-installed';
+  let cursorHookState: 'installed' | 'partial' | 'not-installed' | 'skipped' = 'not-installed';
 
   ensureUserConfig(ctx.userConfigPath);
   ctx.logger.info(`user config: ${ctx.userConfigPath}`);
@@ -252,7 +258,36 @@ export async function runInit(
     }
   }
 
-  reportEnvironmentSummary(ctx, publishTarget, codexHookState, opts.dryRun);
+  if (opts.skipCursorHook) {
+    cursorHookState = 'skipped';
+    ctx.logger.info('Cursor hook integration skipped (--skip-cursor-hook)');
+  } else if (existsSync(join(ctx.userHome, '.cursor'))) {
+    const cliScriptPath = process.argv[1];
+    if (!cliScriptPath) {
+      cursorHookState = 'skipped';
+      ctx.logger.warn('cannot determine CLI script path; skipping Cursor hook integration');
+    } else {
+      const cursorDir = join(ctx.userHome, '.cursor');
+      const result = installCursorHooks({
+        cursorDir,
+        cliScriptPath,
+        nodePath: resolveHookNodePath(),
+        dryRun: opts.dryRun,
+        logger: ctx.logger,
+      });
+      if (opts.dryRun) {
+        cursorHookState = 'skipped';
+        ctx.logger.info('[dry-run] would install Cursor hooks');
+      } else {
+        cursorHookState = detectCursorHookInstallation(cursorDir).installation;
+        ctx.logger.info(`Cursor beforeSubmitPrompt hook: ${result.hooks.beforeSubmitPrompt}`);
+        ctx.logger.info(`Cursor postToolUse hook: ${result.hooks.postToolUse}`);
+        ctx.logger.info(`Cursor stop hook: ${result.hooks.stop}`);
+      }
+    }
+  }
+
+  reportEnvironmentSummary(ctx, publishTarget, codexHookState, cursorHookState, opts.dryRun);
 }
 
 function detectCodexAvailability(): boolean {
@@ -282,6 +317,7 @@ function reportEnvironmentSummary(
   ctx: CliContext,
   publishTarget: string | null,
   codexHookState: 'installed' | 'partial' | 'not-installed' | 'skipped',
+  cursorHookState: 'installed' | 'partial' | 'not-installed' | 'skipped',
   dryRun: boolean,
 ): void {
   const prefix = dryRun ? '[dry-run] would have ' : '';
@@ -298,6 +334,7 @@ function reportEnvironmentSummary(
   ctx.logger.info(`  publish target: ${publishTarget || 'not configured'}`);
   ctx.logger.info(`  community sources: ${communityCount}`);
   ctx.logger.info(`  codex hook: ${codexHookState}`);
+  ctx.logger.info(`  cursor hook: ${cursorHookState}`);
 }
 
 function errorMessage(err: unknown): string {

@@ -22,16 +22,16 @@ import { buildContext, type CliContext } from './context.js';
 import { CAVEAT_VERSION } from './version.js';
 
 /**
- * Claude / Codex 両 hook コマンドで共有するベンダー中立エンジン。
+ * Claude / Codex / Cursor の hook コマンドで共有するベンダー中立エンジン。
  * ホスト差分(出力形式・payload 解釈・reminder 本文の組み立て)は
- * hookCmd.ts / codexHookCmd.ts 側に残し、DB 検索・pending queue・
+ * hookCmd.ts / codexHookCmd.ts / cursorHookCmd.ts 側に残し、DB 検索・pending queue・
  * stop 重複抑止・stdin 処理はこの 1 実装だけを使う。
  */
 export interface HookHost {
-  agent: 'claude' | 'codex';
+  agent: 'claude' | 'codex' | 'cursor';
   /** stderr 診断行の prefix(例: 'caveat:hook')。 */
   stderrTag: string;
-  errorCode: 'CAVEAT.CLAUDE_HOOK_FAILED' | 'CAVEAT.CODEX_HOOK_FAILED';
+  errorCode: 'CAVEAT.CLAUDE_HOOK_FAILED' | 'CAVEAT.CODEX_HOOK_FAILED' | 'CAVEAT.CURSOR_HOOK_FAILED';
   /** `<caveatHome>/<dir>/<sessionId>.txt` に stop 重複抑止キーを置く。 */
   stopStateDir: string;
   /** compact 時に stop reminder 同士を 1 件へ寄せる dedupe キー。 */
