@@ -46,13 +46,13 @@ private な caveat の正当性は以下に限定する:
 
 コード確認結果:
 
-- [record.ts:58](../packages/core/src/record.ts#L58) — `caveat_record` は `visibility: private` を frontmatter に書いて `~/.caveat/own/<id>.md` に保存する
-- [repository.ts:76](../packages/core/src/repository.ts#L76) — 検索も `visibility: 'private'` フィルタで引ける
+- [record.ts:58](../../packages/core/src/record.ts#L58) — `caveat_record` は `visibility: private` を frontmatter に書いて `~/.caveat/own/<id>.md` に保存する
+- [repository.ts:76](../../packages/core/src/repository.ts#L76) — 検索も `visibility: 'private'` フィルタで引ける
 - 全文検索の索引にも入る
 
 **ローカル 1 台運用では今日から動く**。この設計メモで扱うのは主に「対象拡大に伴う判定・誘導の仕組み」の話。
 
-複数マシン間の同期は [pre-commit-visibility-gate.mjs](../hooks/pre-commit-visibility-gate.mjs) が
+複数マシン間の同期は [pre-commit-visibility-gate.mjs](../../hooks/pre-commit-visibility-gate.mjs) が
 `visibility: private` のコミットを弾くので現状不可。複数マシンで private を同期したくなった時点で
 private 専用リポジトリを別途用意する等の検討が必要。現時点では保留。
 
@@ -62,9 +62,9 @@ private 専用リポジトリを別途用意する等の検討が必要。現時
 
 | Hook | 役割 | public/private 判定に関与するか |
 |------|------|--------------------------------|
-| UserPromptSubmit ([claudeHooks.ts:162](../packages/core/src/claudeHooks.ts#L162)) | 関連 caveat を浮上させるだけ | 関与しない（変更不要） |
-| PostToolUse ([claudeHooks.ts:144](../packages/core/src/claudeHooks.ts#L144)) | 同上、拾い上げ専用 | 関与しない（変更不要） |
-| Stop ([claudeHooks.ts:191](../packages/core/src/claudeHooks.ts#L191)) | 苦戦シグナルと関連 caveat を出して `caveat_record` / `caveat_update` を誘導 | **関与する** |
+| UserPromptSubmit ([claudeHooks.ts:162](../../packages/core/src/claudeHooks.ts#L162)) | 関連 caveat を浮上させるだけ | 関与しない（変更不要） |
+| PostToolUse ([claudeHooks.ts:144](../../packages/core/src/claudeHooks.ts#L144)) | 同上、拾い上げ専用 | 関与しない（変更不要） |
+| Stop ([claudeHooks.ts:191](../../packages/core/src/claudeHooks.ts#L191)) | 苦戦シグナルと関連 caveat を出して `caveat_record` / `caveat_update` を誘導 | **関与する** |
 
 **発火ロジックは据え置き**。判定は `caveat_record` を呼ぶ時に Claude がツール説明を読んで決める。
 介入点は **ツール説明を中心に、Stop リマインダに 1 行補強**。
@@ -143,8 +143,8 @@ Hook 発火の拾い上げはフラットのまま（そこは触らない）。
 **Claude が自発的に `caveat_search` を呼ぶ時の絞り込み項目として公開度を露出する**。
 
 現状:
-- core 側 ([repository.ts:76](../packages/core/src/repository.ts#L76)) は `visibility: 'public' | 'private' | 'all'` の絞り込みを既に実装済
-- MCP ツール側 ([apps/mcp/src/tools/search.ts](../apps/mcp/src/tools/search.ts)) の絞り込み欄には `source` / `tags` / `confidence` しか露出されていない
+- core 側 ([repository.ts:76](../../packages/core/src/repository.ts#L76)) は `visibility: 'public' | 'private' | 'all'` の絞り込みを既に実装済
+- MCP ツール側 ([apps/mcp/src/tools/search.ts](../../apps/mcp/src/tools/search.ts)) の絞り込み欄には `source` / `tags` / `confidence` しか露出されていない
 
 追加作業（3 ステップ）:
 
@@ -165,7 +165,7 @@ Hook 発火の拾い上げはフラットのまま（そこは触らない）。
 
 ## 保留事項
 
-- **複数マシン間の同期** — 現状 [pre-commit-visibility-gate.mjs](../hooks/pre-commit-visibility-gate.mjs) が
+- **複数マシン間の同期** — 現状 [pre-commit-visibility-gate.mjs](../../hooks/pre-commit-visibility-gate.mjs) が
   `visibility: private` のコミットを弾くので、複数マシンで private を同期する経路が無い。
   1 台運用の間は保留。複数マシン運用が要る時点で private 専用リポジトリ分離 or 歯止めの調整を検討。
 
@@ -222,7 +222,7 @@ private が育たないリスクがある。2 方向で対策:
 
 ### CLAUDE.md への波及
 
-01_plan.md にマージするとき、[CLAUDE.md](../CLAUDE.md) にも以下を反映:
+01_plan.md にマージするとき、[CLAUDE.md](../../CLAUDE.md) にも以下を反映:
 - 二項基準と「迷ったら private」の方針
 - 明示依頼パターンの存在（「private で記録して」と言われたら即従う）
 - `caveat list --stale` の月次点検の運用
@@ -239,6 +239,6 @@ private が育たないリスクがある。2 方向で対策:
 
 ## 関連
 
-- [01_plan.md](01_plan.md) — 設計の真実の源（本メモがマージされるべき先）
-- [CLAUDE.md](../CLAUDE.md) — hook 実装の現行仕様
-- [archive/auto-merge-design.md](archive/auto-merge-design.md) — v0.7 転換の背景（自動マージの却下理由）
+- [01_plan.md](../01_plan.md) — 設計の真実の源（本メモがマージされるべき先）
+- [CLAUDE.md](../../CLAUDE.md) — hook 実装の現行仕様
+- [archive/auto-merge-design.md](auto-merge-design.md) — v0.7 転換の背景（自動マージの却下理由）

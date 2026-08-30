@@ -107,7 +107,7 @@ export function buildSealedReadme(fileCount: number, files: PublishFile[]): stri
     '',
     `Public entries: ${fileCount}`,
     '',
-    'Caveat: https://github.com/kitepon-rgb/Caveat',
+    'Caveat: https://github.com/kitepon/Caveat',
     '',
   ];
   // localeCompare は ICU/ロケールに依存し端末ごとに順序が変わり得る。README は publish

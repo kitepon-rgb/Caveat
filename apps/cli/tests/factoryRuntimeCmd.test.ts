@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
-import { openDb, recordRuntimeError, runWindowsAcl, runtimeErrorsStatePath } from '@caveat/core';
+import { openDb, recordRuntimeError, runtimeErrorsConfigPath, runtimeErrorsStatePath } from '@caveat/core';
 
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
 const cli = join(repo, 'apps', 'cli', 'dist', 'caveat.js');
@@ -24,14 +24,12 @@ function isolated() {
   const home = join(root, 'home'); const caveatHome = join(root, 'caveat');
   const configHome = join(root, 'xdg-config'); const stateHome = join(root, 'xdg-state'); const localAppData = join(root, 'local-app-data');
   mkdirSync(home, { recursive: true }); mkdirSync(caveatHome, { recursive: true });
-  const reporterConfig = process.platform === 'win32'
-    ? join(localAppData, 'dotagents', 'factory-reporter', 'config.json')
-    : join(configHome, 'dotagents', 'factory-reporter.json');
-  mkdirSync(dirname(reporterConfig), { recursive: true });
-  writeFileSync(reporterConfig, JSON.stringify({ schema_version: '1.0', host: { id: 'fixture', profile: process.platform === 'win32' ? 'windows-native' : 'mac' }, collection: { enabled: true }, reporting: { enabled: false } }), { mode: 0o600 }); chmodSync(reporterConfig, 0o600);
-  if (process.platform === 'win32') runWindowsAcl(reporterConfig, false, true);
   const codexHome = join(root, 'codex');
-  return { root, home, caveatHome, codexHome, env: { ...process.env, HOME: home, USERPROFILE: home, LOCALAPPDATA: localAppData, CAVEAT_HOME: caveatHome, CODEX_HOME: codexHome, XDG_CONFIG_HOME: configHome, XDG_STATE_HOME: stateHome, PATH: process.env.PATH ?? '' } };
+  const env = { ...process.env, HOME: home, USERPROFILE: home, LOCALAPPDATA: localAppData, CAVEAT_HOME: caveatHome, CODEX_HOME: codexHome, XDG_CONFIG_HOME: configHome, XDG_STATE_HOME: stateHome, PATH: process.env.PATH ?? '' };
+  const runtimeConfig = runtimeErrorsConfigPath(env);
+  mkdirSync(dirname(runtimeConfig), { recursive: true });
+  writeFileSync(runtimeConfig, JSON.stringify({ runtimeErrors: true }));
+  return { root, home, caveatHome, codexHome, env };
 }
 
 function readyFactory(fixture: ReturnType<typeof isolated>) {
@@ -60,7 +58,7 @@ describe('built factory/runtime CLI contracts', { timeout: process.platform === 
   it('keeps prepared ready DB/config/git mtimes unchanged and exposes runtime JSON lifecycle plus negative arguments', () => {
     const fixture = isolated(); readyFactory(fixture); const dbPath = join(fixture.caveatHome, 'index', 'caveat.db');
     const own = join(fixture.caveatHome, 'own');
-    const config = join(fixture.home, '.caveatrc.json'); writeFileSync(config, '{}');
+    const config = runtimeErrorsConfigPath(fixture.env);
     const before = [statSync(dbPath).mtimeMs, statSync(config).mtimeMs, statSync(join(own, '.git')).mtimeMs];
     const diagnostic = run(['factory-diagnostics', '--json'], fixture.env); expect(diagnostic.status).toBe(0); const factory = json(diagnostic);
     expect(factory).toMatchObject({ schema: 'caveat.native_factory_diagnostics.v1', overall: { status: 'ready' } });

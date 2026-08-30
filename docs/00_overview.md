@@ -1,36 +1,40 @@
-# Caveat Documentation Overview
+# Caveat documentation overview
 
-This is the map for the repository's canonical docs. Start here, then follow the
-specific document for the task.
+このファイルが文書の入口である。通常作業で読むのは「現行」だけとし、履歴は理由や過去判断を
+調べる場合に限って開く。
 
-## Primary Entrypoints
+## 現行
 
-- [../README.md](../README.md) - human-facing product overview, install, usage, and repository layout.
-- [../CLAUDE.md](../CLAUDE.md) - AI-facing operational guide, architecture notes, and verification commands.
-- [01_plan.md](01_plan.md) - design source of truth for Caveat's storage, retrieval, sharing, and integration model.
-- [02_audit.md](02_audit.md) - audit history and rejected proposals that should not be reopened casually.
+| 文書 | 所有する判断 |
+|---|---|
+| [`../README.md`](../README.md) / [`../README.ja.md`](../README.ja.md) | install、設定、利用、同期、封緘公開、診断、復旧の利用者入口 |
+| [`../CLAUDE.md`](../CLAUDE.md) | 実装構造、検証コマンド、host・OS境界 |
+| [`../AGENTS.md`](../AGENTS.md) | Claude以外のagent向け入口と文書寿命 |
+| [`01_plan.md`](01_plan.md) | 製品契約、状態、配布、単独運用、文書所有境界 |
+| [`03_dual_agent_support.md`](03_dual_agent_support.md) | Claude / Codex / Cursor host adapterとsidecar境界 |
+| [`04_release_checklist.md`](04_release_checklist.md) | npm publishからfresh install・host smokeまでのrelease gate |
+| [`../keyserver/README.md`](../keyserver/README.md) | sealed bundleの鍵配布とrotation |
 
-## Active Reference Docs
+## 履歴
 
-- [03_dual_agent_support.md](03_dual_agent_support.md) - Claude/Codex contract, adapter policy, sidecar behavior, and smoke notes.
-- [04_release_checklist.md](04_release_checklist.md) - required publish and post-publish verification checklist.
-- [05_next_session.md](05_next_session.md) - current handoff and release closeout notes.
-- [adr/](adr/) - architecture decision records. Start with [ADR 0001](adr/0001-markdown-in-git-source-of-truth.md).
+- [`archive/`](archive/) — 完了済みplan、handoff、監査、release ledger、告知案、却下設計。
+- [`adr/`](adr/) — 採用済みarchitecture decision。
 
-## Supporting And Historical Docs
+履歴文書は現行仕様を上書きしない。過去のversionや当時の未完項目を現在の作業指示として扱わない。
 
-- [private-tier-design.md](private-tier-design.md) and [private-tier-implementation.md](private-tier-implementation.md) - private tier design and implementation planning history.
-- [CODEX_HOOK_SUPPORT_PLAN.md](CODEX_HOOK_SUPPORT_PLAN.md) and [CAVEAT_CODEX_DUAL_SUPPORT.md](CAVEAT_CODEX_DUAL_SUPPORT.md) - Codex support planning records; current contract lives in [03_dual_agent_support.md](03_dual_agent_support.md).
-- [announcements-v0.12.0.md](announcements-v0.12.0.md) - release announcement drafts.
-- [archive/](archive/) - superseded drafts and historical design notes.
-- [archive/11_precision_and_runtime_reliability.md](archive/11_precision_and_runtime_reliability.md) - completed 0.16.2 implementation, adversarial audit, Windows timing, and release ledger; BugHub integration was explicitly excluded.
+## 証拠
 
-## Repository Areas
+- [`../rag/INDEX.md`](../rag/INDEX.md) — 外部仕様・調査の索引。
+- `entries/` — public dogfood entryとformat例。公開knowledgeの生成物は`caveat publish`が所有する。
 
-- `packages/core/` - markdown parsing, DB schema, FTS indexing, record/update, community, and shared hook retrieval logic.
-- `apps/cli/` - published `caveat-cli` command.
-- `apps/mcp/` - stdio MCP server imported by the CLI.
-- `apps/web/` - read-only Hono web portal.
-- `entries/` - public dogfood caveat entries in markdown.
-- `hooks/` - pre-commit visibility gate wrapper and tests.
-- `rag/` - research asset ledger. Current primary-source and compiled notes are indexed in [`../rag/INDEX.md`](../rag/INDEX.md).
+## 文書寿命
+
+- 現行文書はこの「現行」表へ載せる。
+- 完了したplan、handoff、release closeout、監査、告知案は`archive/`へ物理移動する。
+- 同じ目的の説明は一つの現行文書へ統合する。別文書を増やして同期対象を増やさない。
+- 製品内部のinstall、config、state、schema、migration、diagnostics、recovery、update、releaseは
+  Caveat repositoryが所有する。dotagentsには複製しない。
+- `corepack pnpm check:docs`は現行索引、archive移動後を含むlocal link、未解決marker、
+  個人host固定pathに加え、実際の`npm pack --dry-run --ignore-scripts --json`に入る
+  Markdownの相対link・image targetが同じtarball内に存在することを検査する。
+  Markdown-only CIもこの製品所有commandを実行する。

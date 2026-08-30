@@ -17,7 +17,7 @@ the proposal takes more than that to explain, it probably needs to be split. -->
 ## Alignment with existing design
 
 <!-- Point to the section of docs/01_plan.md this extends, or explain why the plan
-should change. Read docs/02_audit.md first — rejected proposals are listed there. -->
+should change. Read docs/archive/02_audit.md first — rejected proposals are listed there. -->
 
 ## Out of scope
 

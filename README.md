@@ -7,12 +7,12 @@
 # Caveat
 
 [![npm](https://img.shields.io/npm/v/caveat-cli?color=cb3837&label=caveat-cli)](https://www.npmjs.com/package/caveat-cli)
-[![CI](https://github.com/kitepon-rgb/Caveat/actions/workflows/ci.yml/badge.svg)](https://github.com/kitepon-rgb/Caveat/actions/workflows/ci.yml)
+[![CI](https://github.com/kitepon/Caveat/actions/workflows/ci.yml/badge.svg)](https://github.com/kitepon/Caveat/actions/workflows/ci.yml)
 [![license](https://img.shields.io/npm/l/caveat-cli?color=blue)](LICENSE)
 [![node](https://img.shields.io/node/v/caveat-cli?color=339933&logo=node.js&logoColor=white)](https://nodejs.org/)
-[![GitHub release](https://img.shields.io/github/v/release/kitepon-rgb/Caveat?color=24292e&logo=github)](https://github.com/kitepon-rgb/Caveat/releases)
+[![GitHub release](https://img.shields.io/github/v/release/kitepon/Caveat?color=24292e&logo=github)](https://github.com/kitepon/Caveat/releases)
 
-> **Stop rediscovering the same trap.** Caveat is a long-term memory layer for Claude Code and Codex: every time you bleed for an external-spec quirk or a repo-specific oddity, write it down once — and the next time anyone (you or your AI) is about to step on the same rake, the relevant note surfaces automatically.
+> **Stop rediscovering the same trap.** Caveat is a long-term memory layer for Claude Code, Codex, and Cursor: every time you bleed for an external-spec quirk or a repo-specific oddity, write it down once — and the next time anyone (you or your AI) is about to step on the same rake, the relevant note surfaces automatically.
 
 🇯🇵 **日本語版**: [README.ja.md](README.ja.md)
 
@@ -20,11 +20,11 @@ Built and maintained by [Quo](https://x.com/QLyun35332) at [kitepon.dev](https:/
 
 ## Ownership boundary
 
-This repository owns Caveat's source, release, schema, and diagnostics.
-Cross-product installation and integration contracts are handled by
-[dotagents](https://github.com/kitepon-rgb/dotagents), the internal development
-toolchain behind kitepon.dev's products. The third-party MarkItDown CLI is
-managed separately.
+This repository owns Caveat's install, configuration, state, schema,
+migrations, diagnostics, recovery, updates, and releases. Caveat operates
+standalone. [dotagents](https://github.com/kitepon/dotagents) owns optional
+cross-product integration and compatibility contracts; it does not control
+Caveat's product state. The third-party MarkItDown CLI is managed separately.
 
 ## What it does in 30 seconds
 
@@ -38,9 +38,9 @@ caveat cursor-hook install           # optional: register native Cursor hooks
 On macOS with Homebrew Node, generated hook commands use the stable
 `/opt/homebrew/bin/node` symlink when it resolves to the current Node binary,
 instead of a versioned `/opt/homebrew/Cellar/node/<version>/...` path. That keeps
-Claude Code and Codex hooks alive across Homebrew Node upgrades.
+Claude Code, Codex, and Cursor hooks alive across Homebrew Node upgrades.
 
-With Claude Code or Codex hooks enabled:
+With Claude Code, Codex, or Cursor hooks enabled:
 
 1. **You type a prompt** → `UserPromptSubmit` hook surfaces matching entries via three structural gates: **co-occurrence + symptom-section match + rare topical anchor**. No keyword lists. Bare proper-noun mentions (`RTX 5090 CUDA で何かやってる`) stay silent; specific failure vocabulary plus a curated topic anchor (`cudaGetDeviceCount が 0 を返す`) fires the right entry. ([details](CHANGELOG.md#0142--2026-05-06))
 2. **A tool returns an error** → Claude hooks spawn a detached worker that searches in the background; the matching caveat lands on the next hook tick (~20ms foreground latency). Codex hooks do a bounded foreground lookup and surface the result on the next `UserPromptSubmit`. Claude Code also registers `PostToolUseFailure` for current failed-tool payloads.
@@ -52,7 +52,14 @@ Codex's native hook runtime and Codex-formatted hook output. That path calls
 Caveat CLI directly; `codex-sidecar` remains for bounded second opinions,
 review, risk-check, and isolated work.
 
-The knowledge repo is plain markdown-in-git. Open it as an Obsidian vault. Share it as a team repo with `git push`. There is no central server — trust is defined **socially**, by who you choose to subscribe to via `caveat community add <github-url>`.
+Cursor uses its native `beforeSubmitPrompt`, `postToolUse`,
+`postToolUseFailure`, and `stop` events. Caveat formats the same retrieval and
+pending-reminder results for Cursor without replacing unrelated Cursor hooks.
+
+The knowledge repo is plain markdown-in-git. Open it as an Obsidian vault. Use
+`caveat sync` for a private team/ownership boundary and `caveat publish` for a
+sealed public mirror. There is no central server — trust is defined **socially**,
+by who you choose to subscribe to via `caveat community add <github-url>`.
 
 ## How it compares
 
@@ -65,7 +72,9 @@ The knowledge repo is plain markdown-in-git. Open it as an Obsidian vault. Share
 | Catches struggle the AI didn't self-report | ✅ transcript signal mining | ❌ | ❌ | ❌ | ❌ |
 | Mixes external-spec gotchas with repo-specific context | ✅ public / private tiers | ⚠️ no separation | ⚠️ no separation | ⚠️ | ⚠️ |
 
-**Status**: v0.17.6. Windows Claude hooks now preserve absolute backslash paths under the hook shell. Single-user and small-team workflows are the primary supported path. No central DB; no auto-subscription on install. Current handoff notes live in [docs/05_next_session.md](docs/05_next_session.md).
+**Status**: v0.18.1. Claude Code, Codex, and Cursor have native integration
+paths. Single-user and small-team workflows are the primary supported path.
+There is no central DB and install does not auto-subscribe to one.
 
 <details>
 <summary><strong>Why no central shared DB?</strong> (v0.7 pivot)</summary>
@@ -81,7 +90,12 @@ Two tiers, distinguished by **third-party reproducibility**:
 - **Public** — external-spec gotchas any third party running the same tool/spec can hit (GPU drivers, native-module builds, IDE quirks, version constraints).
 - **Private** — repo-specific non-obvious context that code reading alone cannot reconstruct (intentional non-standard behavior, workarounds awaiting upstream fixes, cross-project personal conventions).
 
-Classification is automatic via a binary criterion in the `caveat_record` tool description; explicit user instruction always overrides. The pre-commit visibility gate keeps `private` entries out of any shared git repo. Retrieval is deliberately flat — body vocabulary naturally segregates the tiers (public bodies contain external tool names; private bodies contain repo-specific identifiers). See [docs/private-tier-design.md](docs/private-tier-design.md).
+Classification is automatic via a binary criterion in the `caveat_record` tool
+description; explicit user instruction always overrides. The pre-commit gate in
+this tool repository protects its public dogfood `entries/`; user-owned private
+repositories may contain both tiers and `caveat publish` enforces the public
+boundary. Retrieval is deliberately flat. See the current
+[product contract](docs/01_plan.md).
 </details>
 
 ## Concept
@@ -94,7 +108,7 @@ flowchart LR
 
     MD -->|caveat index| FTS[("SQLite + FTS5<br/>trigram")]
 
-    subgraph AG["Agent session (Claude Code / Codex)"]
+    subgraph AG["Agent session (Claude Code / Codex / Cursor)"]
         P["User prompt"]
         T["Tool error<br/>(is_error: true)"]
         S["Session end<br/>(transcript signals)"]
@@ -108,14 +122,14 @@ flowchart LR
     H2 --> FTS
     H3 --> FTS
 
-    FTS ==>|matched entries| R["Claude: &lt;system-reminder&gt;<br/>Codex: hook output"]
+    FTS ==>|matched entries| R["Claude: &lt;system-reminder&gt;<br/>Codex / Cursor: native hook output"]
     R ==> AG
 ```
 
 - **`markdown-in-git` is the source of truth.** SQLite (FTS5 trigram) is a rebuildable derived index, gitignored.
 - **Two sharing boundaries, enforced by the tool.** Your `~/.caveat/own/` is yours. `caveat sync` mirrors it (public + private) to a **private** remote for your machines/org — refusing any anonymously-readable remote. `caveat publish` mirrors **only public** entries to a **public** repo. Subscribers add a repo with `caveat community add <github-url-or-username>`; updates flow via `caveat community pull`. No central server; no automatic merge of strangers' entries — trust stays social.
-- **`visibility: public | private`** frontmatter + `.husky/pre-commit` gate keeps private entries out of any repo you commit to.
-- **Agent integrations.** Claude Code gets an MCP server exposing 6 tools (`caveat_search` / `caveat_get` / `caveat_record` / `caveat_update` / `caveat_list_recent` / `caveat_pull`) plus hooks. Codex gets native hooks through `caveat codex-hook install`. Both surfaces reuse the same retrieval gates — no hardcoded keyword lists:
+- **`visibility: public | private`** is a distribution ceiling. Private repos may contain both tiers; `caveat publish` filters and seals the public boundary.
+- **Agent integrations.** Claude Code gets an MCP server exposing 6 tools (`caveat_search` / `caveat_get` / `caveat_record` / `caveat_update` / `caveat_list_recent` / `caveat_pull`) plus hooks. Codex and Cursor get native hooks through their product-owned installers. All surfaces reuse the same retrieval gates — no hardcoded keyword lists:
   - **UserPromptSubmit** (事前発火): when you submit a prompt, tokenize it (path-stripping + self-identity + pure-hiragana glue removal + CJK group dedup), FTS the DB, and surface entries that pass **three structural gates** — (1) ≥ 2 distinct group matches (co-occurrence), (2) ≥ 1 match in the entry's `## Symptom` section (failure-state evidence), (3) ≥ 1 corpus-rarest prompt token in `topical_text` (title + tags + environment values, topic evidence). Bare proper-noun mentions like `RTX 5090 CUDA で何かやってる` stay silent; only specific failure-state vocabulary plus a curated topic anchor (`cudaGetDeviceCount`, `SQLITE_READONLY`, …) fires the gate. No hardcoded word lists.
   - **PostToolUse** (+ Claude **PostToolUseFailure**) (実行中発火): when a tool returns `is_error: true` or Claude Code emits a failed-tool `error` payload, Claude spawns a detached worker so the foreground hook returns in ~20ms. Codex performs a bounded foreground lookup because current Codex payloads and transcript timing make detached workers unreliable there. In both cases, the reminder lands on the next hook tick. In Claude-hosted sessions, an operational `codex-sidecar` can append Codex advice after Caveat's original text.
   - **Stop** (事後発火): parse the session transcript for objective struggle signals (tool failures, repeated file edits, web searches, bash retries). If any are present, queue a compact reminder for the next context-capable hook tick and nudge `caveat_update` or `caveat_record` there. In Claude-hosted sessions, optional Codex advice can challenge or sharpen that nudge without replacing Caveat's trigger logic.
@@ -128,6 +142,10 @@ flowchart LR
   `<system-reminder>` block per invocation; Codex hook stdout is a single JSON
   object per invocation. Pending reminders are compacted before being joined
   into one host-specific context string.
+- **Cursor primary hook adapter.** `caveat cursor-hook install` upserts
+  `beforeSubmitPrompt`, `postToolUse`, `postToolUseFailure`, and `stop` in
+  `~/.cursor/hooks.json`, preserves unrelated hooks, and uses Cursor-native
+  output shapes for context injection and pending reminders.
 - **Obsidian-compatible.** The knowledge repo is a valid Obsidian vault — open it as a folder, edit with Obsidian's graph/backlinks/Dataview, the tool re-indexes on `caveat index`.
 
 ## Layout
@@ -141,6 +159,7 @@ apps/cli/             caveat-cli (published to npm) — bundled CLI with subcomm
                         init / uninstall / index [--full] / search / list / stale / show /
                         stats / serve / mcp-server / hook <name> / community add|pull|list /
                         codex-hook install|uninstall|diagnostics|... /
+                        cursor-hook install|uninstall|diagnostics|... /
                         codex-sidecar diagnostics|smoke|run|work-smoke
 apps/mcp/             @caveat/mcp — stdio MCP server exposing 6 tools via
                       @modelcontextprotocol/sdk. Imported by caveat-cli as `mcp-server`
@@ -150,16 +169,13 @@ hooks/                pre-commit-visibility-gate.mjs (run by .husky/pre-commit) 
                       re-export wrapper around @caveat/core's findBlockedFiles
 .husky/               git pre-commit wiring (husky 9)
 docs/00_overview.md      Documentation map and reading order
-docs/01_plan.md          Design source of truth (audited through Round 5, then extended
-                      Phase 2 → 12 with implementation findings)
-docs/02_audit.md         Audit history (rejected proposals preserved so they don't reappear)
+docs/01_plan.md          Current product, state, sharing, and ownership contract
 docs/03_dual_agent_support.md
-                      Claude/Codex contract, sidecar policy, and smoke notes
+                      Claude/Codex/Cursor host contracts, sidecar policy, and smoke notes
 docs/04_release_checklist.md
                       Required publish and post-publish verification checklist
-docs/05_next_session.md  Current handoff: release state, remaining smoke, closeout checks
 docs/adr/            Architecture decision records
-docs/archive/         Superseded drafts (legacy brainstorms, etc.)
+docs/archive/         Completed plans, handoffs, audits, release ledgers, and superseded drafts
 rag/                  Research asset ledger; currently only INDEX.md
 ```
 
@@ -193,6 +209,39 @@ For Codex, run `caveat codex-hook diagnostics` first if you want a health check.
 It reports hook availability separately from whether Caveat-owned hooks are
 installed.
 
+### Runtime error diagnostics (explicit opt-in)
+
+Runtime error collection is local and disabled by default. Enable it in
+Caveat's existing user config, `~/.caveatrc.json`; no second config file or
+host-level controller is required:
+
+```json
+{
+  "runtimeErrors": true
+}
+```
+
+Keep any existing keys in that JSON object. A missing key, `false`, malformed
+JSON, or any value other than the boolean `true` leaves collection disabled.
+Inspect and maintain the bounded local store with:
+
+```sh
+caveat runtime-errors diagnostics --json
+caveat runtime-errors snapshot --json
+caveat runtime-errors ack <cursor> --json
+caveat runtime-errors resolve <fingerprint> --json
+caveat runtime-errors reopen <fingerprint> --json
+caveat runtime-errors compact --json
+```
+
+The state file is
+`$XDG_STATE_HOME/caveat/runtime-errors.json` (default
+`~/.local/state/caveat/runtime-errors.json`) on POSIX and
+`%LOCALAPPDATA%\caveat\runtime-errors.json` on Windows. If diagnostics reports
+`unavailable`, repair that file's owner/permissions or move a corrupt file aside
+for inspection before recording again. Re-indexing the knowledge database or
+reinstalling hooks does not repair this independent runtime error store.
+
 ### Sharing: two boundaries, two commands
 
 `visibility` is a **distribution ceiling**. Two commands enforce it:
@@ -211,20 +260,25 @@ installed.
   ends. It never blocks you, it obeys the same refuse-if-anonymously-readable rule, and repeated
   failures back off rather than stopping silently. Set `CAVEAT_AUTO_SYNC=off` to sync only by hand.
 
-- **`caveat publish`** — mirror **only** `visibility: public` entries to a **public** repo, one-way. Private entries are never written; the mirror is re-verified before every push and aborts entirely on any malformed entry.
+- **`caveat publish`** — scan only `visibility: public` entries, then generate a
+  deterministic AES-256-GCM sealed bundle plus a generated README. The public
+  mirror contains only `README.md` and `bundle/entries.caveat`; non-showcase
+  entry text is not materialized as a plaintext tree. Invalid entries or a
+  failed outbound scan abort the whole publish. Configure `publishTarget`,
+  `sealedKeyserverUrl`, and `sealedKeyId` first; see
+  [`keyserver/README.md`](keyserver/README.md).
 
   ```sh
   caveat publish --init     # gh-creates <you>/Caveat-Public (public)
-  caveat publish            # mirror public entries, show the diff, confirm, push
+  caveat publish            # seal public entries, show the logical diff, confirm, push
   ```
 
-Others read your public repo with `caveat community add <you>` (a bare GitHub username expands to `<you>/Caveat-Public`) then `caveat pull`. There is still no central server and no automatic merge of strangers' contributions — trust stays social. Contributions to someone's public repo go through its normal GitHub PR review.
-
-Deleting and recreating a generated `Caveat-Public` repository can stop future
-readers and crawlers from seeing the old repository, but it is **not retroactive
-erasure**. Existing clones and copies held by GitHub caches, forks, archival
-services such as Software Heritage, or event archives such as GH Archive may
-remain outside the publisher's control.
+Others read your public repo with `caveat community add <you>` (a bare GitHub
+username expands to `<you>/Caveat-Public`) then `caveat pull`. Caveat obtains the
+declared content key and decrypts the bundle in process memory for indexing; the
+sealed tier deters casual browsing and crawlers, but it is not authentication
+against a motivated human. There is still no central server and no automatic
+merge of strangers' contributions.
 
 The `entries/` directory in this tool repository is intentionally retained as
 dogfood and format examples. It is not the canonical published knowledge set;
@@ -257,14 +311,18 @@ Do not use `npm publish` directly; pnpm normalizes workspace dev dependencies
 in the packed manifest, while npm leaves `workspace:*` strings intact.
 Release work is not done at publish time: follow
 [`docs/04_release_checklist.md`](docs/04_release_checklist.md) through fresh npm
-install, Claude Haiku new-session smoke, Codex new-session smoke, CI, and npm
-registry verification.
+install, Claude/Codex new-session smoke, Cursor install/diagnostics smoke, CI,
+and npm registry verification.
 
 For iterative dev, `npm link` inside `apps/cli/` keeps the global shim tracking your local build.
 
-### (Optional) Pre-commit gate on your knowledge repo
+### (Optional) Pre-commit gate on a public-only authoring repo
 
-The tool repo already has `.husky/pre-commit` wired. To enable the same gate on your knowledge repo so private entries can't leak:
+The tool repo has `.husky/pre-commit` wired to protect its public dogfood
+`entries/`. Use the same gate only in a repository that is intentionally
+public-only. Do not add it to the private repository managed by `caveat sync`;
+that repository is allowed to contain both tiers, and `caveat publish` enforces
+the public boundary.
 
 ```sh
 cd /path/to/your/caveats-repo
@@ -277,7 +335,9 @@ cp /path/to/Caveat/hooks/pre-commit-visibility-gate.mjs hooks/
 # Edit .husky/pre-commit to exec that script (one line: `exec node "$(dirname "$0")/../hooks/pre-commit-visibility-gate.mjs"`)
 ```
 
-The gate rejects any commit that stages an `entries/**/*.md` with `visibility: private`. Bypass only with `git commit --no-verify` (git standard), not a custom flag.
+The gate rejects any commit that stages an `entries/**/*.md` with
+`visibility: private`. It is a dogfood/public-only repository guard, not the
+normal private-sharing mechanism.
 
 ### (Optional) Open knowledge repo in Obsidian
 
@@ -334,12 +394,15 @@ last_verified: 2026-04-18
 ## Evidence
 ```
 
-See [docs/01_plan.md](docs/01_plan.md) for the full schema, semver matching rules, and MCP tool specs.
+The canonical entry shape is `Frontmatter` in
+[`packages/core/src/types.ts`](packages/core/src/types.ts), the derived index is
+[`packages/core/src/schema.sql`](packages/core/src/schema.sql), and MCP input
+schemas live beside the handlers in [`apps/mcp/src/tools/`](apps/mcp/src/tools/).
 
 ## Development
 
 ```sh
-corepack pnpm -r test            # 259 tests across 5 packages
+corepack pnpm -r test
 corepack pnpm -r typecheck
 corepack pnpm -r build
 ```

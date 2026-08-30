@@ -11,7 +11,7 @@ v0.6.2 の「visibility は必ずユーザに聞け、自動分類するな」�
 
 波及する更新:
 
-- [apps/mcp/src/tools/record.ts:18-20](../apps/mcp/src/tools/record.ts#L18-L20) の現行説明（「Ask the user... never auto-classify」）は本計画ステップ 1 で書き換え
+- [apps/mcp/src/tools/record.ts:18-20](../../apps/mcp/src/tools/record.ts#L18-L20) の現行説明（「Ask the user... never auto-classify」）は本計画ステップ 1 で書き換え
 - メモリ `feedback_visibility_user_decides.md` は新方針に更新済（2026-04-23）
 - 01_plan.md / CLAUDE.md への反映はステップ 7 で実施
 
@@ -21,19 +21,19 @@ v0.6.2 の「visibility は必ずユーザに聞け、自動分類するな」�
 
 | ファイル | 変更内容 |
 |---|---|
-| [apps/mcp/src/tools/record.ts](../apps/mcp/src/tools/record.ts) | `visibilitySchema.describe(...)` を書き換え。二項基準 + 書き方誘導 + 明示依頼パターン |
-| [apps/mcp/src/tools/update.ts](../apps/mcp/src/tools/update.ts) | 必要なら `visibilitySchema` に同じ説明を追加。変更対象は `patchFrontmatterSchema.visibility` |
+| [apps/mcp/src/tools/record.ts](../../apps/mcp/src/tools/record.ts) | `visibilitySchema.describe(...)` を書き換え。二項基準 + 書き方誘導 + 明示依頼パターン |
+| [apps/mcp/src/tools/update.ts](../../apps/mcp/src/tools/update.ts) | 必要なら `visibilitySchema` に同じ説明を追加。変更対象は `patchFrontmatterSchema.visibility` |
 
 **テスト観点**:
-- 既存 [apps/mcp/tests/](../apps/mcp/tests/) の record/update ハンドラテストは動くか確認
+- 既存 [apps/mcp/tests/](../../apps/mcp/tests/) の record/update ハンドラテストは動くか確認
 - zod 説明文は振る舞いに影響しないので、テスト追加は不要。ただし schema stringification で説明文の存在を verify するテストを 1 つ足してもよい
 
 ### ステップ 2: Stop リマインダ文言更新
 
 | ファイル | 変更内容 |
 |---|---|
-| [packages/core/src/claudeHooks.ts](../packages/core/src/claudeHooks.ts) | `stopReminderText` に分類ヒント 1 行追加 + WebSearch/WebFetch 有無ヒント 1 行 |
-| [packages/core/tests/claudeHooks.test.ts](../packages/core/tests/claudeHooks.test.ts) | 既存のリマインダ文言検証テストの fixture 更新 |
+| [packages/core/src/claudeHooks.ts](../../packages/core/src/claudeHooks.ts) | `stopReminderText` に分類ヒント 1 行追加 + WebSearch/WebFetch 有無ヒント 1 行 |
+| [packages/core/tests/claudeHooks.test.ts](../../packages/core/tests/claudeHooks.test.ts) | 既存のリマインダ文言検証テストの fixture 更新 |
 
 **懸念**: 既存テストの多くが stopReminderText の出力文字列を assert している可能性が高い。fixture を漏れなく更新する必要あり。
 
@@ -41,26 +41,26 @@ v0.6.2 の「visibility は必ずユーザに聞け、自動分類するな」�
 
 | ファイル | 変更内容 |
 |---|---|
-| [apps/mcp/src/tools/search.ts](../apps/mcp/src/tools/search.ts) | `searchInputShape.filters` に `visibility: z.enum(['public','private','all']).optional()` を追加 |
+| [apps/mcp/src/tools/search.ts](../../apps/mcp/src/tools/search.ts) | `searchInputShape.filters` に `visibility: z.enum(['public','private','all']).optional()` を追加 |
 | 同上 | `handleSearch` で `args.filters.visibility` を `search()` に引き渡す |
 | 同上 | `searchInputShape.filters.describe(...)` または zod `.describe()` に 3 択の使い分け指針を 1 段落 |
 
 **テスト観点**:
-- [packages/core/tests/repository.test.ts](../packages/core/tests/repository.test.ts) には既に visibility フィルタのテストがあるはず、確認
+- [packages/core/tests/repository.test.ts](../../packages/core/tests/repository.test.ts) には既に visibility フィルタのテストがあるはず、確認
 - `apps/mcp/tests/` に search ハンドラの visibility 絞り込みテストを追加
 
 ### ステップ 4: 最後浮上時刻の記録（`last_hit_at`）
 
 | ファイル | 変更内容 |
 |---|---|
-| [packages/core/src/schema.sql](../packages/core/src/schema.sql) | `entries` テーブルに `last_hit_at TEXT` カラム追加、`PRAGMA user_version = 2` に更新 |
+| [packages/core/src/schema.sql](../../packages/core/src/schema.sql) | `entries` テーブルに `last_hit_at TEXT` カラム追加、`PRAGMA user_version = 2` に更新 |
 | `packages/core/src/migrations/002_last_hit_at.sql` | 新規ファイル。既存 DB に `ALTER TABLE entries ADD COLUMN last_hit_at TEXT` |
-| [packages/core/src/indexer.ts](../packages/core/src/indexer.ts) | インデックス再構築時に `last_hit_at` を保存/復元する扱いを追加（null OK） |
-| [packages/core/src/repository.ts](../packages/core/src/repository.ts) | `SearchResult` 型に `last_hit_at?: string` を追加（省略可） |
+| [packages/core/src/indexer.ts](../../packages/core/src/indexer.ts) | インデックス再構築時に `last_hit_at` を保存/復元する扱いを追加（null OK） |
+| [packages/core/src/repository.ts](../../packages/core/src/repository.ts) | `SearchResult` 型に `last_hit_at?: string` を追加（省略可） |
 | `packages/core/src/markHit.ts` | 新規ファイル。`markHit(db, ids: string[]): void` を export。`UPDATE entries SET last_hit_at = ? WHERE rowid IN (...)` |
-| [packages/core/src/index.ts](../packages/core/src/index.ts) | `markHit` を export |
-| [packages/core/src/claudeHooks.ts](../packages/core/src/claudeHooks.ts) | `findCaveatsForPrompt` 呼び出し後に `markHit(db, hits.map(h => h.rowid))` を呼ぶ |
-| [apps/mcp/src/tools/search.ts](../apps/mcp/src/tools/search.ts) | `handleSearch` で検索結果取得後に `markHit` を呼ぶ |
+| [packages/core/src/index.ts](../../packages/core/src/index.ts) | `markHit` を export |
+| [packages/core/src/claudeHooks.ts](../../packages/core/src/claudeHooks.ts) | `findCaveatsForPrompt` 呼び出し後に `markHit(db, hits.map(h => h.rowid))` を呼ぶ |
+| [apps/mcp/src/tools/search.ts](../../apps/mcp/src/tools/search.ts) | `handleSearch` で検索結果取得後に `markHit` を呼ぶ |
 
 **テスト観点**:
 - `packages/core/tests/markHit.test.ts` 新規: 複数 id に対する時刻更新を verify
@@ -72,8 +72,8 @@ v0.6.2 の「visibility は必ずユーザに聞け、自動分類するな」�
 | ファイル | 変更内容 |
 |---|---|
 | `packages/core/src/stale.ts` | 新規ファイル。`listStale(db, opts: { days: number, visibility?: Visibility }): Entry[]` を export |
-| [packages/core/src/index.ts](../packages/core/src/index.ts) | `listStale` を export |
-| [apps/cli/src/commands/list.ts](../apps/cli/src/commands/list.ts) | `--stale [days]` / `--visibility public\|private` オプション対応を追加 |
+| [packages/core/src/index.ts](../../packages/core/src/index.ts) | `listStale` を export |
+| [apps/cli/src/commands/list.ts](../../apps/cli/src/commands/list.ts) | `--stale [days]` / `--visibility public\|private` オプション対応を追加 |
 | CLI エントリ（`apps/cli/src/cli.ts` 等） | 新オプションのパーサ追加 |
 
 **代替案**: `list.ts` にフラグを足すのではなく `apps/cli/src/commands/stale.ts` を新規作成する方が責務が分かれる。現行の `list` が「最近追加順」なのに対し `stale` は「最後浮上からの経過日数順」で意味が違うので、分けるほうが筋が良い。
@@ -95,8 +95,8 @@ v0.6.2 の「visibility は必ずユーザに聞け、自動分類するな」�
 
 | ファイル | 変更内容 |
 |---|---|
-| [docs/01_plan.md](01_plan.md) | 本設計メモを取り込み。private tier / 二項基準 / `caveat list --stale` / 明示依頼パターンの記載 |
-| [CLAUDE.md](../CLAUDE.md) | 二項基準、明示依頼パターン、月次点検運用の要約を追記 |
+| [docs/01_plan.md](../01_plan.md) | 本設計メモを取り込み。private tier / 二項基準 / `caveat list --stale` / 明示依頼パターンの記載 |
+| [CLAUDE.md](../../CLAUDE.md) | 二項基準、明示依頼パターン、月次点検運用の要約を追記 |
 | メモリ `feedback_visibility_user_decides.md` | 2026-04-23 に更新済（新方針への反転） |
 
 ## 実装の依存関係
@@ -158,5 +158,5 @@ v0.6.2 の「visibility は必ずユーザに聞け、自動分類するな」�
 ## 関連
 
 - [private-tier-design.md](private-tier-design.md) — 設計思想と論拠
-- [01_plan.md](01_plan.md) — 設計の真実の源（本計画完了後にマージ）
-- [CLAUDE.md](../CLAUDE.md) — 現行仕様（本計画完了後に反映）
+- [01_plan.md](../01_plan.md) — 設計の真実の源（本計画完了後にマージ）
+- [CLAUDE.md](../../CLAUDE.md) — 現行仕様（本計画完了後に反映）

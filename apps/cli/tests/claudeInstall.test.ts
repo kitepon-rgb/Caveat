@@ -440,6 +440,12 @@ describe('installClaudeIntegration (hooks only — MCP spawn tolerated)', () => 
 });
 
 describe('isCanonicalCaveatClaudeHookCommand', () => {
+  it('rejects incomplete token candidates before canonical path checks', async () => {
+    const { isCanonicalCaveatClaudeHookCommand } = await import('../src/claudeInstall.js');
+    expect(isCanonicalCaveatClaudeHookCommand('/usr/bin/node hook stop', 'stop', '/usr/bin/node', '/tmp/caveat.js')).toBe(false);
+    expect(isCanonicalCaveatClaudeHookCommand('/usr/bin/node /tmp/caveat.js hook', 'stop', '/usr/bin/node', '/tmp/caveat.js')).toBe(false);
+  });
+
   it('accepts symlink-equivalent asset paths (stable bin path vs process.execPath)', async () => {
     const { isCanonicalCaveatClaudeHookCommand } = await import('../src/claudeInstall.js');
     const { symlinkSync, chmodSync } = await import('node:fs');

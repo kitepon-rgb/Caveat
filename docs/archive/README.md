@@ -1,8 +1,21 @@
 # docs/archive/
 
-設計の途中経過・没案・別 Claude との対話ログなどを置く場所。**現役の設計は [../01_plan.md](../01_plan.md) を参照**。
+完了済みplan、handoff、監査、release ledger、告知案、没案を置く履歴棚。
+**現行文書は [../00_overview.md](../00_overview.md) に列挙されたものだけ**であり、
+このdirectoryは通常作業の必読ではない。
 
 ## 中身
+
+2026-08-30に現行階層から移したもの:
+
+- `01_plan_history.md` — v0初期からの大規模実装計画。現行契約は`../01_plan.md`へ統合。
+- `02_audit.md` — 過去の監査と却下判断。
+- `05_next_session.md` — 0.14系のhandoff / release closeout。
+- `06_sharing_and_reindex.md` — 0.15の完了済み共有・再索引計画。
+- `12_bughub_factory_integration.md` — 完了済みfactory diagnostics / runtime error連携計画。
+- `CAVEAT_CODEX_DUAL_SUPPORT.md` / `CODEX_HOOK_SUPPORT_PLAN.md` — Codex対応の旧briefと実装計画。
+- `private-tier-design.md` / `private-tier-implementation.md` — v0.11当時のtier設計と実装履歴。
+- `announcements-v0.12.0.md` — 公開済みreleaseの告知案。
 
 ### [knowledge-base-design-notes.md](knowledge-base-design-notes.md)
 2026-04-18、別セッションの Claude とユーザーが練ったブレインストーム。優先度 A/B/C で項目を整理したもの。ECC 監査の結果：

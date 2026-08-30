@@ -6,7 +6,7 @@
 > が **v0.14.2** で投入され、`advisory` preset 化が **v0.14.7** で完了。
 > Claude / Codex 両ホストの実運用検証済 (詳細は
 > [docs/05_next_session.md](05_next_session.md)、`CHANGELOG.md`、
-> [docs/03_dual_agent_support.md](03_dual_agent_support.md))。
+> [docs/03_dual_agent_support.md](../03_dual_agent_support.md))。
 >
 > 本文中の `- [ ]` チェックボックスは**投入時の作業単位の記録**として
 > 残してあるが、計画段階の整理項目で実体は実装で解消済み。

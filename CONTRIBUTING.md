@@ -2,15 +2,19 @@
 
 Thanks for considering a contribution. This document covers contributions **to the tool itself** (`packages/`, `apps/`).
 
-> **v0.7 note**: Caveat used to ship a central shared community DB with a `caveat push` (fork + PR) flow. That was retired in v0.7. Knowledge sharing is now per-group: you and your teammates push to your own git repo, others subscribe via `caveat community add`. The tool stays out of the publish path. See [README.md](README.md#sharing-with-a-group--team--company) for the recommended pattern, and [docs/archive/auto-merge-design.md](docs/archive/auto-merge-design.md) for why the auto-merge approach was abandoned.
+> **Sharing note**: Caveat owns the current sharing boundary. Use `caveat sync` for an authenticated private remote and `caveat publish` for the public sealed mirror. See [README.md](README.md#sharing-two-boundaries-two-commands) for the current contract, and [docs/archive/auto-merge-design.md](docs/archive/auto-merge-design.md) for why the old central auto-merge approach was abandoned.
 
 This doc is short on purpose — Caveat is a small, opinionated tool, so the bar for changes is "does it match the design in `docs/01_plan.md`, and is it verified by tests?"
 
 ## Before you start
 
-Read [docs/01_plan.md](docs/01_plan.md). It is the **source of truth for design decisions**. The plan has been through 5 audit rounds plus Phase 2–10 implementation findings. If your idea conflicts with the plan, open an issue first with the rationale rather than a PR — the plan may need updating.
+Read [docs/01_plan.md](docs/01_plan.md). It is the current product, state,
+sharing, host, and ownership contract. If your idea conflicts with it, update the
+contract in the same change or open an issue explaining the intended change.
 
-Read [docs/02_audit.md](docs/02_audit.md). It lists proposals that were explicitly rejected during the design rounds. Please don't re-open those.
+Past audit rounds and rejected proposals are retained in
+[docs/archive/02_audit.md](docs/archive/02_audit.md). Read that history only
+when a proposal overlaps an earlier decision.
 
 ## Local setup
 
@@ -19,7 +23,7 @@ Requires Node 22.5+ and pnpm 10 (via corepack). Windows, macOS, and Linux are al
 ```sh
 corepack pnpm install
 corepack pnpm -r build
-corepack pnpm -r test        # expect 192 tests green
+corepack pnpm -r test
 corepack pnpm -r typecheck
 ```
 
@@ -28,7 +32,7 @@ corepack pnpm -r typecheck
 - **Small and focused.** One concern per PR. A new CLI flag, a bug fix, a new MCP tool — but not all three at once.
 - **Tested.** Unit tests for core logic. Integration / spawn tests for CLI and hooks. If you touch `packages/core`, add or update tests under `packages/core/tests/`.
 - **Design-aligned.** If you're adding a feature, point to the section of `docs/01_plan.md` that justifies it. If the plan doesn't cover it, update the plan in the same PR.
-- **No unnecessary fallbacks.** Caveat avoids multi-layer defensive code. If you want a second safeguard for something, show why one layer isn't enough. See [docs/02_audit.md](docs/02_audit.md) for examples of rejected layered defenses.
+- **No unnecessary fallbacks.** Caveat avoids multi-layer defensive code. If you want a second safeguard for something, show why one layer isn't enough. The historical audit records examples of rejected layered defenses.
 - **Typecheck + tests pass.** `pnpm -r typecheck && pnpm -r test` should be green before opening the PR.
 
 ## What a bad PR looks like
@@ -36,7 +40,7 @@ corepack pnpm -r typecheck
 - Mechanical framework upgrades with no behavior change (e.g. bumping dep major versions). Open an issue first.
 - Adding an abstraction "in case" something changes later. Ship the simplest thing that works; abstract when a second real caller appears.
 - Rewriting the plan to match your taste without concrete cause. The plan is audited; breaking changes there need an audit round.
-- Re-introducing a pattern that `docs/02_audit.md` lists as rejected.
+- Re-introducing a pattern that the archived audit explicitly rejected without new evidence.
 
 ## Areas that welcome contribution
 
@@ -49,7 +53,7 @@ corepack pnpm -r typecheck
 
 These are intentionally out-of-scope for v1:
 
-- **Non-GitHub community sources.** Plan [docs/01_plan.md](docs/01_plan.md) pins GitHub-only for v1; GitLab / self-hosted is a deliberate v2 topic. Don't loosen the URL regex in `validateCommunityUrl` without a design change.
+- **Non-GitHub community sources.** The current `validateCommunityUrl` contract accepts GitHub sources only. Do not loosen it without updating the product contract and its security tests.
 - **Custom YAML tags in frontmatter.** `gray-matter` is configured with `JSON_SCHEMA` specifically to reject `!!js/function` etc. Loosening that re-opens CVE class.
 - **Stringly-typed frontmatter.** The `Frontmatter` type and zod schemas in MCP tools are the canonical shape. Don't bypass via `Record<string, unknown>`.
 - **Auto-push on `caveat community add`.** Community repos are added as local clones only. Push / sync back to origin is out of scope for v1.
@@ -59,7 +63,7 @@ These are intentionally out-of-scope for v1:
 
 - **Bug reports**: include reproduction (md fixture, commands run, expected vs actual). Link the exact file + line if you can.
 - **Feature requests**: explain the real use case, link the 01_plan.md section it extends (or explain why the plan needs to change).
-- **Security**: if you find a way for a `visibility: private` entry to escape the pre-commit gate, or a way for `caveat_update` to mutate an immutable key, please open a private security advisory on GitHub rather than a public issue.
+- **Security**: if `sync` can cross the private remote boundary, `publish` can leak private/plaintext content, or `caveat_update` can mutate an immutable key, open a private security advisory rather than a public issue.
 
 ## Commit messages
 

@@ -4,6 +4,28 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ## Unreleased
 
+## [0.18.1] — 2026-08-30
+
+### Changed
+- Runtime error collection is now owned entirely by Caveat and is enabled with
+  `"runtimeErrors": true` in the existing `~/.caveatrc.json`. Existing configs
+  without the key remain disabled, and the public runtime error JSON shape is
+  unchanged.
+- Markdown-only CI now runs Caveat's own current-document index, archive-link,
+  unresolved-marker, and fixed-host-path checks. Windows native product CI uses
+  PowerShell 7 instead of Git Bash.
+- The documentation check now reads the CLI's actual npm dry-run pack manifest
+  and rejects relative links or images in packed Markdown when their targets are
+  absent from the published tarball.
+
+### Fixed
+- Runtime error collection now resolves the Windows user config through
+  `USERPROFILE` before `HOME`, matching Caveat's existing user-config location
+  when the two environment variables differ.
+- The canonical Claude hook detector now proves both parsed asset candidates
+  are present before calling string-only helpers, restoring CLI typecheck
+  without weakening its exact command validation.
+
 ## [0.18.0] — 2026-08-24
 
 ### Added
@@ -84,7 +106,7 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 - Factory diagnostics validate exact database and connector structures and report unavailable remote state as unverified instead of silently accepting stale local tracking data.
 
 ### Security
-- Runtime collection remains disabled unless the canonical dotagents factory config explicitly enables it. State/config ownership, size, symlink, POSIX mode, and Windows ACL checks fail closed.
+- Runtime collection shipped disabled by default and required explicit opt-in. Runtime state ownership, size, symlink, POSIX mode, and Windows ACL checks fail closed.
 
 ## [0.16.2] — 2026-07-13
 
@@ -143,7 +165,7 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 - **Automatic reindex** — Stop hooks detect when the entries tree changed (e.g. from `git pull` on another machine) via a content digest and reindex on a detached worker, so entries synced from other machines become searchable without a manual `caveat index`. Disable with `CAVEAT_INDEX_AUTOSYNC=off`.
 
 ### Changed
-- `visibility` now means **distribution ceiling**: `private` = shareable within your ownership boundary (your machines / your org's private remote), `public` = shareable with the world. The design canon is [docs/06_sharing_and_reindex.md](docs/06_sharing_and_reindex.md).
+- `visibility` now means **distribution ceiling**: `private` = shareable within your ownership boundary (your machines / your org's private remote), `public` = shareable with the world. The design canon is [docs/archive/06_sharing_and_reindex.md](docs/archive/06_sharing_and_reindex.md).
 - The default when `visibility` is omitted (core fallback) is now **`private`**, not `public` (leak-safety). The MCP `caveat_record` tool still requires it explicitly.
 
 ### Fixed
@@ -324,7 +346,7 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 ## [0.11.0] — 2026-04-23
 
 ### Changed (BREAKING)
-- **`caveat_record` visibility is now auto-classified by Claude, not asked every time.** The v0.6.2 rule "AI must ASK the user public/private before every call — never auto-classify" is retired. The tool description in `caveat_record` / `caveat_update` now carries a binary criterion: `public` if a third party running the same external tool/spec could reproduce the gotcha, `private` if the trap is specific to your repo / workflow / intentional non-standard design / cross-project personal context. When unclear, prefer `private` (leak-safety). Explicit user instruction ("record this as private", "これは自分用にメモして") always overrides the automatic classification. Rationale: quo's 50 recorded entries at v0.10 classified cleanly under this criterion without human-in-the-loop overhead, and the mandatory-asking pattern was blocking the `private` tier from ever accumulating (cold-start problem). See [docs/private-tier-design.md](docs/private-tier-design.md) for the full argument.
+- **`caveat_record` visibility is now auto-classified by Claude, not asked every time.** The v0.6.2 rule "AI must ASK the user public/private before every call — never auto-classify" is retired. The tool description in `caveat_record` / `caveat_update` now carries a binary criterion: `public` if a third party running the same external tool/spec could reproduce the gotcha, `private` if the trap is specific to your repo / workflow / intentional non-standard design / cross-project personal context. When unclear, prefer `private` (leak-safety). Explicit user instruction ("record this as private", "これは自分用にメモして") always overrides the automatic classification. Rationale: quo's 50 recorded entries at v0.10 classified cleanly under this criterion without human-in-the-loop overhead, and the mandatory-asking pattern was blocking the `private` tier from ever accumulating (cold-start problem). See [docs/archive/private-tier-design.md](docs/archive/private-tier-design.md) for the full argument.
 
 ### Added
 - **Private tier as a first-class target.** Caveat's scope widens from "external spec gotchas only" to "also repo-specific non-obvious context that code reading cannot reconstruct" (behavior that looks wrong but is intentional, workarounds that survive until upstream is fixed, cross-project conventions). Private entries live alongside public ones in `~/.caveat/own/` but the pre-commit visibility gate keeps them out of any shared git repo. Retrieval is deliberately flat — no source-tier filter switch at search time — because body vocabulary naturally segregates the two (public entries contain external tool names; private entries contain repo-specific identifiers). The 2-token co-occurrence FTS rule stays uniform across tiers.
@@ -355,7 +377,7 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 ## [0.8.0] — 2026-04-22
 
 ### Changed
-- **UserPromptSubmit hook (事前発火) rewritten from keyword-allowlist to co-occurrence FTS.** Tokenizes the prompt, runs a per-token FTS5 query, and counts how many distinct tokens co-occur in each entry. Only entries matching ≥ 2 distinct tokens are surfaced. No hardcoded keyword/stopword lists — a new gotcha category just needs a new `entries/*.md` file and the trigger self-extends. Rule design: a single common word like `make` / `new` can't fire a match on its own, but two+ technical tokens co-occurring in the same entry will. See [docs/01_plan.md#phase-15](docs/01_plan.md) and `feedback_no_hardcoded_lists` memory.
+- **UserPromptSubmit hook (事前発火) rewritten from keyword-allowlist to co-occurrence FTS.** Tokenizes the prompt, runs a per-token FTS5 query, and counts how many distinct tokens co-occur in each entry. Only entries matching ≥ 2 distinct tokens are surfaced. No hardcoded keyword/stopword lists — a new gotcha category just needs a new `entries/*.md` file and the trigger self-extends. Rule design: a single common word like `make` / `new` can't fire a match on its own, but two+ technical tokens co-occurring in the same entry will. See the historical [Phase 15 design](docs/archive/01_plan_history.md#phase-15) and `feedback_no_hardcoded_lists` memory.
 
 ## [0.7.0] — 2026-04-19
 
@@ -365,7 +387,7 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 - **`caveat_push` MCP tool** — removed. Claude no longer has a path to publicly publish caveats. Recording / updating writes to the user's local `~/.caveat/own/` only.
 - **`pushEntry` core function and `pullShared` core function** — both removed. `caveat pull` now uses `communityPull` + per-source re-index inline.
 - **`caveat init --skip-shared` flag** — removed (the bootstrap subscription it opted out of no longer exists).
-- **Auto-subscription to `kitepon-rgb/Caveat`** in `caveat init` — removed. New installs get an empty knowledge base; subscribe explicitly with `caveat community add <github-url>`.
+- **Auto-subscription to `kitepon/Caveat`** in `caveat init` — removed. New installs get an empty knowledge base; subscribe explicitly with `caveat community add <github-url>`.
 - **`sharedRepo` config field, `SHARED_REPO_URL` constant** — removed from `~/.caveatrc.json` and core defaults.
 - **`docs/auto-merge-design.md`** — moved to `docs/archive/` (the design was abandoned before implementation; archived for historical context).
 - **`.github/ISSUE_TEMPLATE/caveat_contribution.md`** — removed (manual PR contribution to a central DB is no longer the workflow).
@@ -408,7 +430,7 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 ## [0.5.0] — 2026-04-19
 
 ### Changed
-- **Merged the shared knowledge DB into the tool repo**. The former separate `kitepon-rgb/caveats-quo` repo was archived and deleted; all 35 entries moved to this repo's `entries/` directory. `SHARED_REPO_URL` now points at `https://github.com/kitepon-rgb/Caveat`. One repo to remember.
+- **Merged the shared knowledge DB into the tool repo**. The former separate `kitepon-rgb/caveats-quo` repo was archived and deleted; all 35 entries moved to this repo's `entries/` directory. The live repository is now `https://github.com/kitepon/Caveat`. One repo to remember.
 - `.gitignore` extended with `.obsidian/` and `community/` (the tool repo now also serves as an Obsidian vault).
 
 ### Migration
@@ -452,4 +474,4 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ## v0 implementation phases (pre-NPM)
 
-For the design history of the v0 feature set (Phase 0 through 11), see `docs/01_plan.md`. Those phases predate the NPM release and are captured in commit history on the `main` branch of `kitepon-rgb/Caveat`.
+For the design history of the v0 feature set (Phase 0 through 11), see `docs/archive/01_plan_history.md`. Those phases predate the NPM release and are captured in commit history on the `main` branch of `kitepon/Caveat`.

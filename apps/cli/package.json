@@ -1,13 +1,14 @@
 {
   "name": "caveat-cli",
-  "version": "0.18.0",
-  "description": "Long-term memory CLI for Claude Code and Codex (markdown + SQLite FTS5 + MCP + hooks)",
+  "version": "0.18.1",
+  "description": "Long-term memory CLI for Claude Code, Codex, and Cursor (markdown + SQLite FTS5 + MCP + hooks)",
   "keywords": [
     "caveat",
     "knowledge-base",
     "gotcha",
     "claude-code",
     "codex",
+    "cursor",
     "coding-agents",
     "openai",
     "mcp",
@@ -18,13 +19,13 @@
     "name": "Quo / クオ at kitepon.dev",
     "url": "https://kitepon.dev/"
   },
-  "homepage": "https://github.com/kitepon-rgb/Caveat#readme",
+  "homepage": "https://github.com/kitepon/Caveat#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kitepon-rgb/Caveat.git"
+    "url": "git+https://github.com/kitepon/Caveat.git"
   },
   "bugs": {
-    "url": "https://github.com/kitepon-rgb/Caveat/issues"
+    "url": "https://github.com/kitepon/Caveat/issues"
   },
   "type": "module",
   "engines": {

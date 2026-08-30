@@ -103,6 +103,7 @@ async function makeFixture(): Promise<Fixture> {
       publishTarget: remote,
       sealedKeyId: 'v1',
       sealedKeyserverUrl: keyServer.url,
+      runtimeErrors: false,
     },
   };
 }

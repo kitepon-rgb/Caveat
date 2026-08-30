@@ -1,20 +1,20 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/kitepon-rgb/Caveat/main/.github/og.png" alt="Caveat — long-term memory layer for coding agents" width="100%">
+  <img src="https://raw.githubusercontent.com/kitepon/Caveat/main/.github/og.png" alt="Caveat — long-term memory layer for coding agents" width="100%">
 </p>
 
 # Caveat
 
 [![npm](https://img.shields.io/npm/v/caveat-cli?color=cb3837&label=caveat-cli)](https://www.npmjs.com/package/caveat-cli)
-[![CI](https://github.com/kitepon-rgb/Caveat/actions/workflows/ci.yml/badge.svg)](https://github.com/kitepon-rgb/Caveat/actions/workflows/ci.yml)
-[![license](https://img.shields.io/npm/l/caveat-cli?color=blue)](https://github.com/kitepon-rgb/Caveat/blob/main/LICENSE)
+[![CI](https://github.com/kitepon/Caveat/actions/workflows/ci.yml/badge.svg)](https://github.com/kitepon/Caveat/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/caveat-cli?color=blue)](https://github.com/kitepon/Caveat/blob/main/LICENSE)
 
-> **Stop rediscovering the same trap.** Caveat is a long-term memory layer for Claude Code and Codex: record a hard-won external-spec quirk or repo-specific oddity once, and the relevant note surfaces before an AI repeats it.
+> **Stop rediscovering the same trap.** Caveat is a long-term memory layer for Claude Code, Codex, and Cursor: record a hard-won external-spec quirk or repo-specific oddity once, and the relevant note surfaces before an AI repeats it.
 
-🇯🇵 **日本語版**: [README.ja.md](https://github.com/kitepon-rgb/Caveat/blob/main/README.ja.md)
+🇯🇵 **日本語版**: [README.ja.md](https://github.com/kitepon/Caveat/blob/main/README.ja.md)
 
 Built and maintained by [Quo](https://x.com/QLyun35332) at [kitepon.dev](https://kitepon.dev/en).
 
-**Source / full docs**: [github.com/kitepon-rgb/Caveat](https://github.com/kitepon-rgb/Caveat)
+**Source / full docs**: [github.com/kitepon/Caveat](https://github.com/kitepon/Caveat)
 
 ## Install
 
@@ -27,7 +27,7 @@ caveat cursor-hook install           # optional: native Cursor hooks
 
 On macOS with Homebrew Node, Caveat installs hook commands through the stable
 `/opt/homebrew/bin/node` symlink when it points at the current Node binary. This
-keeps Claude Code and Codex hooks working after Homebrew moves Node between
+keeps Claude Code, Codex, and Cursor hooks working after Homebrew moves Node between
 `/opt/homebrew/Cellar/node/<version>/...` directories.
 
 `caveat init` (idempotent, `--dry-run` supported) does the Claude Code setup:
@@ -42,6 +42,11 @@ For Codex, run `caveat codex-hook diagnostics` first if you want a health check,
 then `caveat codex-hook install`. It registers Caveat-owned
 `UserPromptSubmit`, `PostToolUse`, and `Stop` entries in `~/.codex/hooks.json`
 and enables Codex's native hook runtime.
+
+For Cursor, run `caveat cursor-hook install`. It upserts Caveat-owned
+`beforeSubmitPrompt`, `postToolUse`, `postToolUseFailure`, and `stop` entries
+in `~/.cursor/hooks.json` while preserving unrelated hooks. Use
+`caveat cursor-hook diagnostics` to inspect the installed contract.
 
 With either host enabled, Caveat surfaces matching entries at three moments:
 before prompts, after failed tools, and after struggle-heavy sessions. Stop
@@ -63,15 +68,17 @@ caveat uninstall                    # reverse `caveat init` Claude integration
 caveat codex-hook diagnostics       # inspect Codex hook availability/install state
 ```
 
-## Sharing with a team
+## Sharing: two boundaries, two commands
 
-There is no `caveat push` (since v0.7). To share with teammates, use plain git:
+- `caveat sync` synchronizes both private and public entries to an authenticated,
+  non-anonymously-readable private remote owned by you or your group.
+- `caveat publish` writes only public entries to a separate public mirror. It
+  publishes a deterministic AES-256-GCM sealed bundle plus README metadata;
+  subscribers decrypt in-process with the configured keyserver.
 
-1. Create a GitHub repo (private or public), e.g. `acme-corp/caveats`, with an `entries/` directory.
-2. Either point your `knowledgeRepo` at that repo (write directly to it) or copy shareable entries into it by hand. Then `git push` as usual.
-3. Each teammate runs `caveat community add https://github.com/acme-corp/caveats` once, and `caveat pull` to refresh.
-
-Trust is defined socially — by who has write access to your group repo — instead of by automated content gates on stranger PRs.
+The publish scan fails closed if private content, an invalid destination, or
+missing keyserver configuration is detected. Trust in a private source is still
+social — subscribers choose which repository owners to trust.
 
 ## MCP tools (6)
 
@@ -79,7 +86,9 @@ Exposed to Claude Code via the MCP server that `caveat init` registers:
 
 `caveat_search`, `caveat_get`, `caveat_record`, `caveat_update`, `caveat_list_recent`, `caveat_pull`.
 
-Claude can autonomously pull subscribed-repo updates (safe, idempotent). Recording / updating writes to your local `~/.caveat/own/` only — sharing is done by you via `git push` to your group repo.
+Claude can autonomously pull subscribed-repo updates (safe, idempotent).
+Recording and updating writes locally; use `caveat sync` for the private
+ownership boundary and `caveat publish` for the public sealed boundary.
 
 Codex uses native hooks rather than MCP for automatic surfacing. The optional
 `codex-sidecar` commands remain available for bounded second opinions, review,
@@ -92,6 +101,22 @@ If you want `~/.caveat/own/` to live elsewhere (e.g. a git-tracked directory you
 ```json
 { "knowledgeRepo": "/absolute/path/to/your/caveats-repo" }
 ```
+
+## Runtime error diagnostics (explicit opt-in)
+
+Local runtime error collection is disabled by default. Enable it in the same
+`~/.caveatrc.json` file while preserving any existing keys:
+
+```json
+{ "runtimeErrors": true }
+```
+
+Use `caveat runtime-errors diagnostics --json` and
+`caveat runtime-errors snapshot --json` to inspect it. The lifecycle commands
+are `ack <cursor>`, `resolve <fingerprint>`, `reopen <fingerprint>`, and
+`compact`; each requires `--json`. A missing key or any value other than the
+boolean `true` keeps collection disabled. Runtime state lives under Caveat's
+own state directory, independently of the knowledge index and host hook files.
 
 ## Requirements
 

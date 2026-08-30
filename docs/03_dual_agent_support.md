@@ -1,7 +1,8 @@
-# Caveat Dual-Agent Support
+# Caveat Multi-Host Support
 
 This document is additive to `CLAUDE.md`. `CLAUDE.md` remains the canonical
-description of Caveat's existing Claude Code behavior.
+description of Caveat's existing Claude Code behavior. Codex and Cursor are
+additive host adapters over the same product-owned retrieval and pending state.
 
 ## Current Claude Contract
 
@@ -134,7 +135,30 @@ file before returning; the next `UserPromptSubmit` drains it.
 `codex-sidecar` remains appropriate for Claude-hosted second opinions and for
 Codex-hosted work that has a real boundary, such as an isolated worktree,
 structured result, explicit second pass, or review/risk role separation. The
-Codex hook implementation TODO lives in `docs/CODEX_HOOK_SUPPORT_PLAN.md`.
+completed Codex-hook implementation plan is retained only as history in
+[`archive/CODEX_HOOK_SUPPORT_PLAN.md`](archive/CODEX_HOOK_SUPPORT_PLAN.md).
+
+## Cursor Primary Hooks
+
+Cursor is a first-class native hook host. The product-owned entrypoints are:
+
+```bash
+caveat cursor-hook install
+caveat cursor-hook uninstall
+caveat cursor-hook diagnostics
+```
+
+Install upserts Caveat-owned `beforeSubmitPrompt`, `postToolUse`,
+`postToolUseFailure`, and `stop` entries in `~/.cursor/hooks.json`, preserving
+unrelated factory and user hooks. Commands use the installed CLI path and the
+shared host engine in `apps/cli/src/hookShared.ts`; Cursor-specific parsing and
+output remain in the Cursor adapter. `caveat init` installs this adapter when
+`~/.cursor` exists unless `--skip-cursor-hook` is supplied.
+
+Cursor reuses the same retrieval, pending-reminder, stop-signal, and dedupe
+contracts as Claude/Codex. It must not rename canonical frontmatter fields,
+write another product's state, or require dotagents to run. Diagnostics and
+uninstall are owned by Caveat and operate only on Caveat-managed hook entries.
 
 ## Execution Policy
 
@@ -181,18 +205,15 @@ consent 済み online observability の境界は
 
 ## Smoke Commands
 
-Release-grade Claude/Codex hook smoke is tracked in
+Release-grade Claude/Codex/Cursor hook installation smoke is tracked in
 [`04_release_checklist.md`](04_release_checklist.md). That checklist is the required
-post-publish path for proving the published npm package can install hooks and
-start fresh Claude/Codex sessions. The commands below are sidecar-specific
+post-publish path for proving the published npm package can install all host
+hooks and start fresh Claude/Codex sessions. The commands below are sidecar-specific
 diagnostics and do not replace release smoke.
 
-Current release status is tracked in [`05_next_session.md`](05_next_session.md).
-`caveat-cli` 0.16.2 and `codex-sidecar-core`, `codex-sidecar-cli`, and
-`codex-sidecar-mcp` 0.3.6 are published and installed. The published-package
-Codex/Claude and sidecar advisory smokes are complete; the implementation and
-adversarial-audit ledger is archived in
-[`archive/11_precision_and_runtime_reliability.md`](archive/11_precision_and_runtime_reliability.md).
+Release state is derived from `apps/cli/package.json`, `CHANGELOG.md`, and the
+release checklist rather than a mutable handoff note. Historical implementation
+and adversarial-audit ledgers are kept under [`archive/`](archive/).
 
 CI runs `corepack pnpm check:release-smoke` to keep release-smoke scripts
 syntactically valid, verify the packed npm manifest has no `workspace:`
@@ -210,10 +231,11 @@ caveat codex-sidecar diagnostics --project /path/to/repo --preset advisory
 Development-path diagnostics:
 
 ```bash
+export CODEX_SIDECAR_NODE_CLI=/absolute/path/to/codex-sidecar/packages/cli/dist/index.js
 caveat codex-sidecar diagnostics \
   --project /path/to/repo \
   --preset advisory \
-  --node-cli /home/kite/projects/codex-sidecar/packages/cli/dist/index.js
+  --node-cli "${CODEX_SIDECAR_NODE_CLI:?set CODEX_SIDECAR_NODE_CLI}"
 ```
 
 The `advisory` preset is the hook path and should resolve to
@@ -221,23 +243,15 @@ The `advisory` preset is the hook path and should resolve to
 `explore` uses `gpt-5.4-mini` medium; `review` and `opinion` use `gpt-5.5`
 medium; `risk` and `work` use `gpt-5.5` high.
 
-2026-07-13 のsynthetic/public評価では、明示したStop/tool-error signalとcontextを渡す契約に対して
-`gpt-5.6-luna` lowがminiより高い完遂率（8/8対4/8）と低い実測credit/runを示した。
-この結果に基づきproduction advisory presetも`gpt-5.6-luna` lowへ更新した。
-
-同日の追加実装では、生のhook本文を送らず、tool種別・failure種別とStopの構造countだけを
-`manual_note / caveat-hook-signal / local` blockとして渡す。paired synthetic比較（control/signal各4、
-Stop/tool-error各2）では、valid solutionが0/4から4/4、known-badが1/4から0/4になり、
-実測costは0.129121から0.134215 credits/run（+0.005094、約3.9%）だった。これは候補選択に
-構造signalが効くfeasibilityであり、実incident全体への一般化はしない。masked judgeのassistant
-primary modelは`claude-sonnet-5`、terminal usageには補助`claude-haiku-4-5-20251001`も記録された。
+Preset選定とbounded signal評価の根拠値は、完了記録
+[`archive/09_sidecar_hook_signal_contract.md`](archive/09_sidecar_hook_signal_contract.md)を正とする。
 
 Read-only operational smoke:
 
 ```bash
 caveat codex-sidecar smoke \
   --project /path/to/repo \
-  --node-cli /home/kite/projects/codex-sidecar/packages/cli/dist/index.js
+  --node-cli "${CODEX_SIDECAR_NODE_CLI:?set CODEX_SIDECAR_NODE_CLI}"
 ```
 
 These commands do not silently substitute another sidecar path. The selected
@@ -248,7 +262,7 @@ Work-capable smoke:
 ```bash
 caveat codex-sidecar work-smoke \
   --project /path/to/repo \
-  --node-cli /home/kite/projects/codex-sidecar/packages/cli/dist/index.js
+  --node-cli "${CODEX_SIDECAR_NODE_CLI:?set CODEX_SIDECAR_NODE_CLI}"
 ```
 
 This runs `codex_work` in an isolated git worktree and passes
@@ -277,7 +291,7 @@ caveat codex-sidecar run explore \
   --query "Claude Code hooks settings reload" \
   --limit 5 \
   --host-agent claude \
-  --node-cli /home/kite/projects/codex-sidecar/packages/cli/dist/index.js
+  --node-cli "${CODEX_SIDECAR_NODE_CLI:?set CODEX_SIDECAR_NODE_CLI}"
 ```
 
 Supported read-only workflows are `review`, `explore`, `opinion`, and

@@ -7,12 +7,12 @@
 # Caveat
 
 [![npm](https://img.shields.io/npm/v/caveat-cli?color=cb3837&label=caveat-cli)](https://www.npmjs.com/package/caveat-cli)
-[![CI](https://github.com/kitepon-rgb/Caveat/actions/workflows/ci.yml/badge.svg)](https://github.com/kitepon-rgb/Caveat/actions/workflows/ci.yml)
+[![CI](https://github.com/kitepon/Caveat/actions/workflows/ci.yml/badge.svg)](https://github.com/kitepon/Caveat/actions/workflows/ci.yml)
 [![license](https://img.shields.io/npm/l/caveat-cli?color=blue)](LICENSE)
 [![node](https://img.shields.io/node/v/caveat-cli?color=339933&logo=node.js&logoColor=white)](https://nodejs.org/)
-[![GitHub release](https://img.shields.io/github/v/release/kitepon-rgb/Caveat?color=24292e&logo=github)](https://github.com/kitepon-rgb/Caveat/releases)
+[![GitHub release](https://img.shields.io/github/v/release/kitepon/Caveat?color=24292e&logo=github)](https://github.com/kitepon/Caveat/releases)
 
-> **同じ罠を二度踏まないために。** Caveat は Claude Code と Codex のための長期記憶レイヤです。外部仕様の地雷を踏んで時間を溶かしたり、自分の repo 固有の独自設計を忘れたりしたとき、**一度書き留めておけば** 次に同じ場面に出くわした瞬間に自動で関連メモが浮上します（あなたが意識していなくても、AI が意識していなくても）。
+> **同じ罠を二度踏まないために。** Caveat は Claude Code、Codex、Cursor のための長期記憶レイヤです。外部仕様の地雷を踏んで時間を溶かしたり、自分の repo 固有の独自設計を忘れたりしたとき、**一度書き留めておけば** 次に同じ場面に出くわした瞬間に自動で関連メモが浮上します（あなたが意識していなくても、AI が意識していなくても）。
 
 🇬🇧 **English**: [README.md](README.md)
 
@@ -21,9 +21,9 @@
 
 ## 所有境界
 
-本repositoryはCaveatのsource、release、schema、diagnosticsを所有します。
-製品横断の導入・統合契約は、kitepon.devの製品開発を支える内部基盤
-[dotagents](https://github.com/kitepon-rgb/dotagents)が担当します。
+本repositoryはCaveatのinstall、設定、状態、schema、migration、diagnostics、復旧、更新、
+releaseを所有し、Caveat単独で動作します。製品横断の導入・互換契約は
+[dotagents](https://github.com/kitepon/dotagents)が担当しますが、Caveatの製品状態を制御しません。
 第三者CLIのMarkItDownは別区分です。
 
 ## 30 秒でわかる動作
@@ -37,10 +37,10 @@ caveat cursor-hook install           # 任意: Cursor native hooks を登録
 
 macOS の Homebrew Node 環境では、hook command の Node パスに現在の実体と一致する安定 symlink
 (`/opt/homebrew/bin/node`) を使います。`/opt/homebrew/Cellar/node/<version>/...` のような
-version 固定パスを書かないため、Homebrew で Node が更新されても Claude Code / Codex hook が
+version 固定パスを書かないため、Homebrew で Node が更新されても Claude Code / Codex / Cursor hook が
 古い Node パスに取り残されません。
 
-Claude Code または Codex の hook を有効にすると:
+Claude Code、Codex、Cursor のいずれかの hook を有効にすると:
 
 1. **プロンプト送信時** → `UserPromptSubmit` hook が **3 段の構造的ゲート**でマッチエントリを surface: 共起 + 症状セクション一致 + rare topical anchor。キーワード allowlist も stopword リストもなし。固有名詞だけの言及 (`RTX 5090 CUDA で何かやってる`) は silent、症状語彙と curated topic anchor (`cudaGetDeviceCount が 0 を返す`) が揃うと正解エントリだけ発火する。([詳細](CHANGELOG.md#0142--2026-05-06))
 2. **ツールがエラー返却したとき** → Claude hook は detached worker を起動して非同期に検索し、結果は次の hook tick で載ります。Codex hook は現行 payload と transcript timing の都合で bounded foreground lookup を行い、次の `UserPromptSubmit` で結果を載せます。現在の Claude Code では failed-tool payload 用に `PostToolUseFailure` も登録します。
@@ -52,7 +52,13 @@ runtime と Codex 用 formatter を使います。この経路は Caveat CLI を
 `codex-sidecar` を呼ぶ経路ではありません。sidecar は境界のある second opinion、
 review、risk-check、isolated work 用に残します。
 
-ナレッジ repo は **markdown-in-git** が真実の源。Obsidian の vault としてそのまま開けます。チームで共有したければ普通に `git push` すれば良い。中央サーバは存在しません — 信頼は「自動検査」ではなく「**社会的文脈**」で引きます（あなた・チーム・組織が誰を購読するかで決まる、`caveat community add <github-url>`）。
+Cursorはnativeの`beforeSubmitPrompt` / `postToolUse` / `postToolUseFailure` / `stop`
+を使い、既存のCursor hookを残したまま同じ検索・pending reminder契約を適用します。
+
+ナレッジ repo は **markdown-in-git** が真実の源。Obsidian の vault としてそのまま開けます。
+privateなチーム共有は`caveat sync`、公開は`caveat publish`の封緘mirrorを使います。
+中央サーバは存在しません — 信頼は「自動検査」ではなく「**社会的文脈**」で引きます
+（あなた・チーム・組織が誰を購読するかで決まる、`caveat community add <github-url>`）。
 
 ## 競合との違い
 
@@ -65,7 +71,8 @@ review、risk-check、isolated work 用に残します。
 | AI が自覚しないもがきも検出 | ✅ transcript シグナル抽出 | ❌ | ❌ | ❌ | ❌ |
 | 外部仕様の罠と repo 固有メモを混在管理 | ✅ public / private 2 tier | ⚠️ 分離なし | ⚠️ 分離なし | ⚠️ | ⚠️ |
 
-**ステータス**: v0.14.10、CI は Ubuntu / Windows × Node 22/24 で緑。個人および小規模チームが主な想定ユースケースです。中央 DB なし、インストール時の自動購読なし。最新の引き継ぎノートは [docs/05_next_session.md](docs/05_next_session.md) を参照。
+**ステータス**: v0.18.1。Claude Code、Codex、Cursorにnative統合経路があります。
+個人および小規模チームが主な想定で、中央DBとinstall時の自動購読はありません。
 
 <details>
 <summary><strong>なぜ中央 DB を持たない？</strong>（v0.7 での方針転換）</summary>
@@ -81,7 +88,10 @@ review、risk-check、isolated work 用に残します。
 - **Public** — 同じ外部ツール・仕様を使えば誰でも踏める罠（GPU ドライバ、ネイティブモジュールビルド、IDE の癖、バージョン制約等）。
 - **Private** — コードを読むだけでは復元できない repo 固有の非自明文脈（意図的な非標準挙動、upstream 修正待ちのワークアラウンド、プロジェクト横断の個人的な慣習等）。
 
-判定基準は `caveat_record` のツール記述に書かれており、実行中の agent がその二項基準で分類します（ユーザの明示指示が最優先）。`.husky/pre-commit` のゲートが `visibility: private` のエントリを共有 repo にコミットさせない仕組み。検索は意図的にフラット — 本文の語彙が自然に仕分けます（public は外部ツール名、private は repo 固有識別子）。詳細は [docs/private-tier-design.md](docs/private-tier-design.md)。
+判定基準は`caveat_record`のツール記述にあり、ユーザーの明示指示が最優先です。
+このtool repositoryのpre-commit gateはpublic dogfoodの`entries/`を守ります。ユーザー所有の
+private repositoryには両tierを置け、公開境界は`caveat publish`が執行します。詳細は
+[製品契約](docs/01_plan.md)を参照してください。
 </details>
 
 ## アーキテクチャ
@@ -94,7 +104,7 @@ flowchart LR
 
     MD -->|caveat index| FTS[("SQLite + FTS5<br/>trigram")]
 
-    subgraph AG["Agent session (Claude Code / Codex)"]
+    subgraph AG["Agent session (Claude Code / Codex / Cursor)"]
         P["プロンプト送信"]
         T["ツールエラー<br/>(is_error: true)"]
         S["セッション終了<br/>(transcript signals)"]
@@ -108,18 +118,20 @@ flowchart LR
     H2 --> FTS
     H3 --> FTS
 
-    FTS ==>|該当エントリ| R["Claude: &lt;system-reminder&gt;<br/>Codex: hook output"]
+    FTS ==>|該当エントリ| R["Claude: &lt;system-reminder&gt;<br/>Codex / Cursor: native hook output"]
     R ==> AG
 ```
 
 - **`markdown-in-git`** が真実の源。SQLite (FTS5 trigram) は再構築可能な派生 index で gitignore 済
 - 3 つの発火タイミング (UserPromptSubmit / PostToolUse 系 / Stop) は **同じ共起 FTS ロジック** を異なる入力（プロンプト / ツールエラー / セッションシグナル）で再利用
-- Claude ではマッチした既存エントリを最大 1 個の `<system-reminder>` でコンテキストに注入、Codex では Codex 用 hook output として返す
+- Claude ではマッチした既存エントリを最大 1 個の `<system-reminder>` でコンテキストに注入、Codex / Cursor では各native hook outputとして返す
 - Codex primary hook adapter は `~/.codex/hooks.json` に `UserPromptSubmit` /
   `PostToolUse` / `Stop` を登録し、Codex payload parser と Codex stdout formatter
   だけを差し替えて同じ Caveat ロジックを使います。Claude hook stdout は 1 invocation
   につき最大 1 個の `<system-reminder>` block、Codex hook stdout は単一 JSON object
   とし、pending reminder は compact してから 1 つの host-specific context 文字列へ結合します
+- Cursor primary hook adapter は`~/.cursor/hooks.json`へ`beforeSubmitPrompt` / `postToolUse` /
+  `postToolUseFailure` / `stop`をupsertし、無関係なhookを保持します
 - Claude-hosted session では、`codex-sidecar` が operational な project に限り、PostToolUse 系 / Stop の既存リマインダー末尾に Codex の second opinion を追記できます。Caveat の発火判定や記録思想は変えず、助言だけを外部化する補助経路です
 
 ## クイックスタート（NPM ユーザ）
@@ -146,6 +158,35 @@ Claude Code 向けの `caveat init` の動作:
 Codex 側は `caveat codex-hook diagnostics` で事前確認できます。diagnostics は
 Codex hook runtime が使えるかと、Caveat-owned hooks が install 済みかを分けて表示します。
 
+### runtime errorの診断（明示opt-in）
+
+runtime error収集はlocal限定で、既定では無効です。第二の設定ファイルやhost側controllerは
+不要です。Caveat既存のユーザー設定`~/.caveatrc.json`へ次のキーを追加すると有効になります。
+
+```json
+{
+  "runtimeErrors": true
+}
+```
+
+同じJSON objectにある既存キーは残してください。キーなし、`false`、壊れたJSON、booleanの
+`true`以外は収集無効として扱います。boundedなlocal storeの確認と保守は次の公開CLIを使います。
+
+```sh
+caveat runtime-errors diagnostics --json
+caveat runtime-errors snapshot --json
+caveat runtime-errors ack <cursor> --json
+caveat runtime-errors resolve <fingerprint> --json
+caveat runtime-errors reopen <fingerprint> --json
+caveat runtime-errors compact --json
+```
+
+state fileはPOSIXでは`$XDG_STATE_HOME/caveat/runtime-errors.json`（既定
+`~/.local/state/caveat/runtime-errors.json`）、Windowsでは
+`%LOCALAPPDATA%\caveat\runtime-errors.json`です。diagnosticsが`unavailable`なら、所有者・権限を
+直すか、壊れたfileを調査用に退避してから記録を再開します。knowledge DBの再indexやhookの
+再installでは、この独立したruntime error storeは直りません。
+
 ### 共有 — 2 つの境界、2 つのコマンド
 
 `visibility` は**配布範囲の上限**です。境界を執行するコマンドが 2 つあります:
@@ -158,14 +199,20 @@ Codex hook runtime が使えるかと、Caveat-owned hooks が install 済みか
   caveat sync --init --repo https://github.com/acme-corp/Caveat-Private.git   # 組織 / 自前ホスト
   ```
 
-- **`caveat publish`** — `visibility: public` のエントリ**だけ**を**公開** repo へ一方向ミラーします。private は一切書き出されず、push 前にミラー全体を再検証、不正なエントリが 1 件でもあれば全体を中止します。
+- **`caveat publish`** — `visibility: public`だけを検査し、決定的なAES-256-GCM封緘bundleと
+  生成READMEを公開repoへ一方向反映します。公開treeは`README.md`と
+  `bundle/entries.caveat`だけで、showcase以外の本文を平文配置しません。不正entryや
+  outbound scan失敗は全体を中止します。先に`publishTarget`、`sealedKeyserverUrl`、
+  `sealedKeyId`を設定します。鍵契約は[`keyserver/README.md`](keyserver/README.md)が正です。
 
   ```sh
   caveat publish --init     # gh で <you>/Caveat-Public（公開）を作成
-  caveat publish            # public エントリをミラー → 差分表示 → 確認 → push
+  caveat publish            # public entryを封緘 → 論理差分表示 → 確認 → push
   ```
 
-他の人はあなたの公開 repo を `caveat community add <you>`（裸の GitHub ユーザー名は `<you>/Caveat-Public` に展開）してから `caveat pull` で読みます。中央サーバは無く、見知らぬ他人の貢献を自動マージすることもありません — 信頼は社会的に引きます。公開 repo への貢献は通常の GitHub PR レビューを通します。
+他の人は`caveat community add <you>`の後に`caveat pull`で購読します。Caveatは宣言された
+content keyを取得し、process memory内で復号して索引します。封緘はカジュアル閲覧とcrawlerへの
+摩擦であり、動機ある人間に対する認証ではありません。中央serverも他人の自動mergeもありません。
 
 ## 開発（Caveat 本体への貢献）
 
@@ -180,7 +227,7 @@ npm release は `apps/cli` で `corepack pnpm publish` を使います。
 `npm publish` を直接使うと packed manifest に `workspace:*` が残るため禁止です。
 publish だけでは release 完了ではありません。
 [`docs/04_release_checklist.md`](docs/04_release_checklist.md) に従い、fresh npm
-install、Claude Haiku の新規 session smoke、Codex の新規 session smoke、CI、npm
+install、Claude の新規 session smoke、Codex の新規 session smoke、CI、npm
 registry 確認まで完了させます。
 
 iterative 開発時は `apps/cli/` 内で `npm link` するとグローバル shim がローカルビルドを追従します。

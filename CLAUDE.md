@@ -4,103 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクトの状態
 
-**v0.17.6（2026-08-24公開）**。WindowsのClaude hook commandで、空白を含まない
-`C:\\...` のCLIパスも必ずquoteする。ClaudeのPOSIX shellが未引用backslashをescapeとして
-消費し、cwd相対の壊れたmodule pathへ変換していた。共通installer helperで根治し、
-環境変数prefixを保持した旧command移行とfactory診断のlegacy拒否を追加した。
+**v0.18.1**。Claude Code、Codex、Cursorのnative integrationを持つ。runtime error収集は
+既存の`~/.caveatrc.json`で明示的に有効化し、製品文書とrelease gateはCaveat自身が所有する。
 
-**v0.17.5（2026-08-23公開）**。CI green 化の締めくくり。v0.17.4 は FOX runner の環境障害
-（ESET IDS が高頻度 loopback 接続をポートスキャン誤検知して 127.0.0.1 を間欠ブロック。
-`getaddrinfo() thread failed` と fixture 接続不能は同根）により CI green 前の例外 publish
-だった。ESET 側は IDS 例外（リモートIP 127.0.0.1・ブロックいいえ）で恒久対応。WSL2 の
-mirrored networking では閉じ loopback ポートが即 RST されないため、到達不能 keyserver 試験へ
-明示 `timeoutMs` を渡して環境非依存化（673ed6c）。全4環境 green の run 32622740838 から公開。
-
-**v0.17.4（2026-08-23公開）**。挙動不変の内部リファクタ。OS依存分岐を
-[packages/core/src/platform.ts](packages/core/src/platform.ts)へ、Claude/Codex両インストーラの逐語重複を
-[apps/cli/src/installShared.ts](apps/cli/src/installShared.ts)へ、hookCmd/codexHookCmdの逐語重複エンジンを
-[apps/cli/src/hookShared.ts](apps/cli/src/hookShared.ts)（`HookHost`設定で切替）へ集約した。
-「Macを直すとWinが壊れる／Claudeを直すとCodexが壊れる」構造の恒久対策。
-分離規約は下記「OS依存・ホスト依存の分離規約」節が正。
-
-**v0.17.1（2026-07-20公開）**。Windows native Codex hook commandのquoted Node実行に
-PowerShell call operator `&`を付け、reinstallで旧commandを移行する。v0.17.0では
-record/update直後のbackground sync、15分autosync、失敗時6時間backoff、Windows ACL seamの
-15秒boundとtyped failureを公開した。
-
-**v0.16.2（2026-07-13公開）**。Codex sidecar advisoryのproduction presetを、synthetic/publicの
-Stop・tool-error各4 independent runsで8/8完遂、known-bad 0、有効解8/8、miniより低い
-実測credits/runを示した`gpt-5.6-luna` lowへ更新。hookからは生error/search/path/sessionを送らず、
-閉じたtool/failure種別とStop countだけをstrictな`caveat-hook-signal` blockとして渡す。
-paired synthetic比較（control/signal各4）では有効解0/4→4/4、known-bad 1/4→0/4、
-追加cost +0.005094 credits/run（約3.9%）。実incident一般への外挿はしない（正典:
-[docs/archive/09_sidecar_hook_signal_contract.md](docs/archive/09_sidecar_hook_signal_contract.md)）。初回behavioral
-characterizationはbounded authorization scenario 1件を`gpt-5.6-sol` / `claude-sonnet-5`で
-control/caveat各2 run実行し、両hostともcontrol時点からsafe-and-useful 2/2、known-bad 0/2で
-差0。天井効果のため害も増分効果も未観測で、一般化はしない。
-
-**v0.15.0**（2026-07-11、272 tests passing、全 workspace typecheck passing）。**共有を製品化し、索引を自己修復にした（設計正典は [docs/06_sharing_and_reindex.md](docs/06_sharing_and_reindex.md)）**。(1) **visibility の定義を「配布範囲の上限」に更新** — `private` = 保有境界内（個人の全端末・組織 = 同じ private remote を push/pull できる人たち）、`public` = 世界。core の未指定フォールバックは `public` → `private` に変更（MCP は依然 zod 必須）。(2) **`caveat sync`** — own を private remote と同期。実効 push URL（`get-url --push --all`、insteadOf 適用後）を匿名可読 probe（credential 無しで smart-HTTP info/refs を GET）し、**anonymous-readable なら無条件拒否**（多重 pushurl・credential 埋め込み URL・403 の WAF 誤検知まで敵対的検証で塞いだ）。未設定時は `gh` で `<user>/Caveat-Private` を確認 1 回で自動作成。(3) **`caveat publish`** — `visibility: public` のみを `<user>/Caveat-Public` へ一方向全置換ミラー（`.git` 以外を全消し → public のみ再配置 → ミラー全ツリーを再検証、invalid 1 件で全体中止、TOCTOU 排除で検査済み bytes を持ち回り）。(4) **自動再索引** — Stop hook が entries ツリーの (source, relpath, mtime, size) ダイジェスト変化を検知し detached worker で全 source 再走査（他端末から git 同期されたエントリが hook・検索に載らなかった問題の恒久対策。`CAVEAT_INDEX_AUTOSYNC=off` で無効化）。(5) `caveat community add <username>` が裸ユーザー名を `<name>/Caveat-Public` に展開。source_project は引き続き null 固定（01_plan の cwd 自動推定は廃案として清算済み）。
-
-**v0.14.8**（2026-05-08 公開、259 tests passing、全 workspace typecheck passing）。**`<caveatHome>/pending/<sessionId>/` の自動掃除を追加**。Stop hook 冒頭で `maybeSweepPendingDirs` を 1 日デバウンスで呼び、最新 mtime が 7 日以上前のサブツリーを丸ごと削除する。マーカー `<caveatHome>/pending/.last-sweep` で同日中の連続発火をスキップ、`CAVEAT_PENDING_SWEEP=off` で完全停止。`caveat init` も belt-and-suspenders で同じ sweep を呼ぶ（`--pending-stale-days <n>` で閾値上書き、dry-run は予告ログのみ）。アクティブセッションは append/drain で mtime が更新されるため回収されない。
-
-**v0.14.7**（2026-05-06 公開、247 tests passing、全 workspace typecheck passing）。Codex sidecar advisory が明示モデルポリシ (`gpt-5.4-mini` low reasoning) で動作する `advisory` preset を採用し、Claude hook の advisory 呼び出しは `--preset advisory` 経由になった。リリース smoke スクリプトを再利用可能化、CI で `caveat-cli` packed tarball の `workspace:` リーク検査と install + `--version` 確認を追加。Windows release-pack ジョブは `corepack.cmd` / `npm.cmd` のためにシェル経由実行。2026-05-08 に Claude 生成応答 smoke を再実行して全項目クリア（[docs/05_next_session.md](docs/05_next_session.md)）。
-
-**v0.14.6**（2026-05-06、245 tests passing、全 workspace typecheck passing）。**Claude / Codex とも Stop reminder はその場で最終回答に混ぜず pending 化し、次の context-capable hook で compact して出す**。Codex 側は `caveat codex-hook install|diagnostics|user-prompt-submit|post-tool-use|stop` で Codex runtime から Caveat CLI を直接呼ぶ。Claude 側は従来の `caveat hook post-tool-use` を `PostToolUse` と `PostToolUseFailure` の両方に登録する。現行 Claude Code は失敗 tool で `PostToolUseFailure` を出し、payload の `error` field に失敗内容を入れるため、Caveat はこの field も既存の非同期 worker / pending reminder 経路へ流す。prompt surface は `symptom_text` が失敗状態を述べる根拠、`topical_text` が罠の主題と重なる根拠として独立に要求する。
-
-**v0.14.2**（2026-05-06、238 tests passing、全 workspace test/typecheck passing）。**Codex primary hooks を追加し、Claude hook 実運用の失敗イベントも補正済み。さらに事前発火 rare-anchor を `symptom_text` 依存から `topical_text` 依存へ修正**。Codex 側は `caveat codex-hook install|diagnostics|user-prompt-submit|post-tool-use|stop` で Codex runtime から Caveat CLI を直接呼ぶ。Claude 側は従来の `caveat hook post-tool-use` を `PostToolUse` と `PostToolUseFailure` の両方に登録する。現行 Claude Code は失敗 tool で `PostToolUseFailure` を出し、payload の `error` field に失敗内容を入れるため、Caveat はこの field も既存の非同期 worker / pending reminder 経路へ流す。prompt surface は `symptom_text` が失敗状態を述べる根拠、`topical_text` が罠の主題と重なる根拠として独立に要求する。
-
-**v0.13.0**（2026-05-05、217 tests passing）。**Codex sidecar advisory を Claude hook の補助経路として追加**。Caveat の思想は変更しない: 既存の UserPromptSubmit / PostToolUse / Stop が「いつCaveatを出すか」を決め、本文先頭の `[caveat]` リマインダーも従来通り維持する。その後ろに、現在の project で `.codex-sidecar.yml` があり `codex-sidecar` が operational な場合だけ `[caveat:codex-sidecar] Codex advisory:` を追記する。
-
-追加点:
-- `caveat codex-sidecar diagnostics|smoke|run|work-smoke` を CLI に追加。Caveat DB 検索 → `caveat_entry` context block → `codex-sidecar --context-file` → structured `SidecarResult` の経路を持つ
-- Hook advisory は `CAVEAT_HOOK_CODEX_SIDECAR=off|auto|require` で制御。default `auto` は `.codex-sidecar.yml` がある project だけ試す。失敗時は hidden fallback せず `[caveat:codex-sidecar] advisory unavailable: ...` を明示
-- `AGENTS.md` は Codex 向けの薄い入口で、`CLAUDE.md` を正本として扱う。Claude 固有の契約を Codex 風に書き換えない
-- `docs/03_dual_agent_support.md` に Claude contract / Codex adapter / hook advisory / execution policy を記録
-
-**v0.12.0**（2026-05-04、202 tests passing、schema v3）。**事前発火の精度改善 — 「固有名詞だけでHIT してはいけない」を構造的ゲートで実装**。語の偶然一致 (wide-net) では「関連性」が表現できないという根本反省から、**症状特異語ゲート + rare-anchor (min-DF) ゲート**を既存の 2-of-N 共起の上に追加。プロンプトが「話題に触れただけ」(`RTX 5090 CUDA で何かやってる`) の段階では silent、症状語彙が来た瞬間 (`RTX 5090 で cudaGetDeviceCount が 0 を返す`) に該当 entry を 1 件返す。
-
-主な追加ゲート (全て構造由来、リスト一切なし):
-- **schema v3**: `entries.topical_text` (title + tags + environment 値) と `entries.symptom_text` (`## Symptom` 本文) を indexer で派生。`migrations/003_section_roles.sql` で v2 → v3 自動 migration、JS 側 (`db.ts::backfillRoleTexts`) で既存行を backfill
-- **症状特異語ゲート**: マッチしたトークンのうち最低 1 つが entry の `symptom_text` に出現すること。title-only マッチ (例: `RTX 5090` だけ) は silent
-- **rare topical-anchor ゲート (min-DF、v0.14.2 修正)**: `topical_text` に出現した prompt token のうち最低 1 つが、prompt 内で corpus DF 最小タイのものであること。`symptom_text` は失敗状態、`topical_text` は罠の主題として独立に要求する。corpus 全域に蔓延する一般語 (`cuda`, `発生する` 等) は自動的に除外。閾値の magic number なし、corpus 自動算出
-- **パス除去**: `\\wsl...`, `C:\...`, `/home/...` 等の path-shape 部分文字列を tokenize 前に剥がす (URL は preserve)
-- **自己同名除去**: `os.userInfo().username` と `os.homedir()` の path 成分を `defaultSelfIdentityTokens()` として除外。**ハードコードリストは禁止** — `caveat` のツールブランド名も意図的に追加しない (rare-anchor が高 DF として構造的に弾く)
-- **純ひらがなトリグラム除外**: `してる` `のまま` `になっ` 等の純ひらがな 3-gram は conjugational glue として捨てる (Unicode 範囲ベース、リストなし)
-- **CJK 句単位グループ統合**: 1 CJK 連続 run から派生する複数の 3-gram を 1 グループ扱い。「発生する」が `発生す` + `生する` の 2 トークンに展開して 2-of-N を勝手に満たす問題を解決
-- **症状検査の word-boundary 化**: ASCII トークンは Unicode 単語境界 `(?:^|[^\p{L}\p{N}])tok(?:[^\p{L}\p{N}]|$)` で照合。`CUDA` が `cudaGetDeviceCount` の substring で誤マッチする問題を解決。CJK は substring 維持
-
-**設計思想**: 「list で除外する」のではなく「構造で要求する」が一貫した原則。閾値は 2-of-N の `2` のみ (= co-occurrence の最小定義)。これ以外の magic number / ハードコードリストは存在しない。新しい罠カテゴリは `entries/` に書くだけで自動的に取り扱い対象になる、という v0.8 の自己拡張性は維持。
-
-**v0.11.0**（2026-04-23、203 tests passing）。**Private tier 拡張 — Caveat の対象を「第三者の外部仕様の罠」だけから「コード読解では復元できない repo 固有文脈」まで広げる**。
-- v0.6.2 の「visibility は必ずユーザに聞け、自動分類禁止」は廃案。`caveat_record` / `caveat_update` は二項基準で自動判定する: 第三者が再現できる罠なら `public`、repo 固有 / 独自設計 / このプロジェクトでしか起きない文脈なら `private`、迷ったら `private`。ただしユーザ明示依頼（「これは private で記録して」等）は自動判定に優先
-- **検索層の切替はしない**。2 語共起ルールを両層で統一。本文語彙が自然に仕分ける（public は外部ツール名、private は repo 固有識別子）
-- **`caveat_search` に visibility 3 択**（`'public' | 'private' | 'all'`、default: 全部）を追加。Claude が自発的に絞りたい時のみ使う
-- **schema v2**: `entries.last_hit_at` カラム追加。検索ヒット後に `markHit(db, hits)` で時刻更新。既存 v1 DB は `migrations/002_last_hit_at.sql` で自動 migration
-- **`caveat stale` CLI 新規**: 最後浮上から N 日（default 90）経ったエントリ一覧、`--visibility private` で絞れる。月次点検で埋もれ検出 → 本文書き直し or 削除の判断材料
-- **Stop hook リマインダ拡張**: 分類ヒント（WebSearch/WebFetch あり→ public 寄り / なし→ private 寄り）と二項基準の一言を追加
-- 詳細: [docs/private-tier-design.md](docs/private-tier-design.md)（設計思想）、[docs/private-tier-implementation.md](docs/private-tier-implementation.md)（実装計画）
-
-**v0.10.0**（2026-04-22、192 tests passing）。**実行中発火（PostToolUse hook）を追加、3 発火点の非同期アーキテクチャに**。tool_response が `is_error: true` のとき前景 hook は「pending queue の drain + 検索タスクの detached worker spawn」を ~20ms で返し、worker が非同期に FTS を走らせて pending ファイルに reminder を書き込む → 次の hook 呼び出しで drain されて Claude のコンテキストに載る。ユーザー応答はブロックしない。詳細は下記「Claude Code Hook の実装」節。
-
-**v0.9.0**（2026-04-22）。**事後発火（Stop hook）を signal-based gate + co-occurrence FTS に刷新**。transcript JSONL を解析して tool failure / 同一ファイル複数編集 / WebSearch / WebFetch / Bash 再実行 の客観シグナルを抽出 → いずれか 1 つでも観測されたら発火（閾値チューニング不要）。発火時はリマインダに具体的シグナル数値 + error message / 検索クエリを元に co-occurrence FTS した既存罠を埋め込み、`caveat_update` or `caveat_record` の判断材料を渡す。無自覚に乗り越えたケースも transcript の fingerprint で拾える。
-
-**v0.8.0**（2026-04-22）。**事前発火（UserPromptSubmit hook）を keyword allowlist から co-occurrence ベースに置換**。プロンプトを tokenize → 各 token を個別に FTS5 検索 → **≥ 2 個の distinct token が共起する entry のみ** を hit とみなし、リマインダ本文に id/title/症状抜粋を直接埋め込む。hardcoded list（keyword allowlist / stopword list）を一切使わない構造的ルール。新しい罠カテゴリを `entries/` に書くだけで trigger が自己拡張する。
-
-**v0.7.0**（2026-04-19）。**中央 shared community DB を全廃止し、個人 / グループ単位の repo 共有モデルに pivot 済**。各ユーザーは自分の `~/.caveat/own/` に書き、共有は自分・知人・組織の git repo に普通の `git push` で行い、他のグループの知識は `caveat community add <github-url>` で取り込む。tool 側は publish 経路に介在しない。MCP tool は 6 種（search/get/record/update/list_recent/pull）— v0.7 で `caveat_push` を削除。
-
-**v0.7 pivot の根拠**: 自動マージ厳密化を検討した結果、赤の他人からの貢献を auto-validate するモデル自体が原理的に脆弱と判明。LLM oracle (Opus 含) を gate に置いても adversarial gradient 攻撃で破られる、xz-utils 型の long-game は静的検査で検知不能。よって信頼を「自動検査」ではなく「社会的文脈」で引く方針に転換。詳細は [docs/archive/auto-merge-design.md](docs/archive/auto-merge-design.md)（廃止された自動マージ設計）参照。
-
-**GitHub に push 済**:
-- Tool (public): https://github.com/kitepon-rgb/Caveat
-- 旧 `kitepon-rgb/caveats-quo` は削除済。kitepon-rgb/Caveat 自体の `entries/` は公開 dogfood reference として残す（tool は自動 subscribe しない、他人が手動 `community add` 可）
-
-**`docs/00_overview.md` が文書の入口、`docs/01_plan.md` が設計の真実の源**。アーキテクチャ判断の前に必ず読む。`docs/02_audit.md` には過去に議論・却下した論点が残っているので蒸し返さない。`docs/archive/` には没案や別セッション由来の設計メモが置いてある（現役資料ではない）。
+**`docs/00_overview.md` が文書の入口、`docs/01_plan.md` が現行の製品契約**。
+通常作業ではoverviewの「現行」だけを読む。過去versionの変更履歴は
+[`CHANGELOG.md`](CHANGELOG.md)、完了plan・handoff・監査・release ledgerは[`docs/archive/`](docs/archive/)を
+正とし、必要な時だけ参照する。Caveatは単独でinstall、設定、診断、復旧、更新、releaseできる
+状態を保ち、dotagentsを製品制御の依存先にしない。
 
 ## コマンド
 
 pnpm 10.0.0 が `packageManager` で pin。pnpm 10 はビルドスクリプトをデフォルトブロック、ホワイトリストは root `package.json` の `pnpm.onlyBuiltDependencies`。CLI パッケージ名は `caveat-cli`（bin は `caveat`）、他の workspace パッケージは `@caveat/core` / `@caveat/mcp` / `@caveat/web`。
 
-**root の script（`check:release-smoke` / `check:npm-pack` / `eval:*` など、内部で `scripts/pnpm.mjs` を呼ぶもの）は `corepack` を挟まずに実行する**。`corepack pnpm <script>` は子プロセスへ `COREPACK_ROOT` を継承させる。`scripts/pnpm.mjs` は PATH 上の `pnpm` を最優先で拾うので、**PATH に pin と違う major の pnpm がある端末**では、その pnpm が `COREPACK_ROOT` を見て「corepack 配下では version を切り替えられない」と判断して硬エラーになる（単体で叩けば同じ pnpm が `packageManager` を読んで pin へ self-switch するため、`corepack` を外すだけで通る）。`--pm-on-fail=ignore` での黙らせは、pin と違う版で走らせることになるので使わない。PATH に pnpm が無い端末では `scripts/pnpm.mjs` が corepack へ fallback するため、この罠は出ない。
+**rootのscript（`check:release-smoke` / `check:npm-pack` / `eval:*`など）はCorepack経由で実行できる**。内部の`scripts/pnpm.mjs`は、明示した`CAVEAT_PNPM_BIN`、Corepack、PATH上の`pnpm`、`npx pnpm@10.0.0`の順で選ぶ。CIも`corepack pnpm <script>`を正規入口とし、`packageManager`でpinした10.0.0を使う。`CAVEAT_PNPM_BIN`にpin外の実行ファイルを指したり、`--pm-on-fail=ignore`で版の不一致を黙らせたりしない。
 
 ```sh
 corepack pnpm install                              # workspace 依存をインストール
@@ -111,6 +28,7 @@ corepack pnpm --filter caveat-cli build            # CLI ビルド（bundle + wo
 corepack pnpm --filter @caveat/mcp test            # MCP tool-handler tests（8 tests）
 corepack pnpm --filter @caveat/web test            # Web tests（17 tests）
 corepack pnpm -r build                             # 全 workspace パッケージをビルド
+corepack pnpm check:docs                          # 現行索引・archive link・未解決marker・固定pathを検査
 node scripts/pnpm.mjs eval:hook-search             # private golden による hook 検索 characterization
 node scripts/pnpm.mjs prepare:proposal-review      # local-only masked review packet を生成
 node scripts/pnpm.mjs prepare:proposal-execution   # local-only execution plan を生成（モデル未呼出し）
@@ -132,8 +50,8 @@ node apps/cli/dist/caveat.js serve --port 4242     # Web ポータル
 node apps/cli/dist/caveat.js mcp-server            # MCP stdio（手動テスト時）
 ```
 
-単一テストファイル: `corepack pnpm --filter @caveat/core test -- tests/env.test.ts`
-単一 describe/it: `corepack pnpm --filter @caveat/core test -- -t "envMatch"`
+単一テストファイル: `corepack pnpm --filter @caveat/core exec vitest run tests/env.test.ts`
+単一 describe/it: `corepack pnpm --filter @caveat/core exec vitest run tests/env.test.ts -t "envMatch"`
 
 ### 評価レーンの分離
 
@@ -165,6 +83,8 @@ Project-local `.claude/settings.json` は端末固有の permission allowlist �
 
 **caveatHome の解決**: `findCaveatHome(userHome)` → `process.env.CAVEAT_HOME ?? join(userHome, '.caveat')`。NPM グローバルインストール時、tool の実体は `node_modules/caveat-cli/` に置かれるが、**ユーザーデータ（DB・own repo）は常に `~/.caveat/` 側**。テストは `CAVEAT_HOME` override で一時ディレクトリに隔離する。
 
+**runtime error収集**: opt-inの正本は既存`~/.caveatrc.json`の`runtimeErrors: boolean`（既定false）だけ。状態はPOSIXの`$XDG_STATE_HOME/caveat/runtime-errors.json`またはWindowsの`%LOCALAPPDATA%\caveat\runtime-errors.json`へ置き、外部productのconfigを読まない。公開するsnapshot / diagnostics JSON shapeは`packages/core/src/runtimeErrors.ts`が所有する。
+
 **source 名前空間**: 全行が `source ∈ {'own', 'community/<handle>'}` を持つ。PK は `(source, id)` 複合 — community 取り込みで `own` と衝突しないための必須条件。`packages/core/src/schema.sql` 参照。
 
 **FTS5 はトリガ経由で同期**: `entries_fts` は `entries.rowid` に対する external-content。`schema.sql` の 3 トリガ（ai/ad/au）が FTS を同期する。インデクサコードは `entries_fts` を直接触らない — `entries` への UPDATE/INSERT/DELETE のみ。
@@ -192,8 +112,8 @@ Project-local `.claude/settings.json` は端末固有の permission allowlist �
 ## OS依存・ホスト依存の分離規約（2026-08-23 リファクタ）
 
 - **`process.platform` / `win32` の分岐を書けるのは [packages/core/src/platform.ts](packages/core/src/platform.ts) だけ**（テストのスキップ条件と、telemetry 用の値変換 `normalizeOs` は除く）。owner-only 所有判定・PowerShell call prefix・node 実行ファイル名・パス case 正規化はここの関数を使う。全関数は `platform` を引数で受けてテスト可能
-- **Claude / Codex 両インストーラの共通ヘルパは [apps/cli/src/installShared.ts](apps/cli/src/installShared.ts)**（`quoteIfSpaces` / `commandTokens` / `isCanonicalAsset` / backup 付き書込）。claudeInstall / codexHookInstall に残るのは「そのホストの設定ファイル形式と command の形」だけ
-- **hook のベンダー中立エンジンは [apps/cli/src/hookShared.ts](apps/cli/src/hookShared.ts)**。`HookHost` 設定（agent / stderrTag / errorCode / stop-state dir / dedupe key）で Claude / Codex を切り替え、stdin 処理・DB 検索（markHit / query-miss log 込み）・pending drain / compact・stop 重複抑止を 1 実装で共有する。hookCmd / codexHookCmd に残るのは出力形式（`<system-reminder>` vs JSON）・payload 解釈・reminder 本文組み立て・worker 方式だけ
+- **Claude / Codex / Cursor 各インストーラの共通ヘルパは [apps/cli/src/installShared.ts](apps/cli/src/installShared.ts)**（`quoteIfSpaces` / `commandTokens` / `isCanonicalAsset` / backup 付き書込）。各installerに残るのは「そのホストの設定ファイル形式と command の形」だけ
+- **hook のベンダー中立エンジンは [apps/cli/src/hookShared.ts](apps/cli/src/hookShared.ts)**。`HookHost` 設定（agent / stderrTag / errorCode / stop-state dir / dedupe key）で Claude / Codex / Cursor を切り替え、stdin 処理・DB 検索（markHit / query-miss log 込み）・pending drain / compact・stop 重複抑止を 1 実装で共有する。各host commandに残るのは出力形式・payload 解釈・reminder 本文組み立て・worker 方式だけ
 - 片方のホスト / OS を直す時は、共有モジュール側を直せば両方に効く。共有モジュールを迂回して cmd ファイルに同種ロジックを再複製しない
 
 ## Import 規約

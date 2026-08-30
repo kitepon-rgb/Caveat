@@ -28,7 +28,7 @@ caveat の md ファイルを大量に書き起こすとき、title に `permiss
 YAML parser が title 内の `: ` を別 key-value の区切りと解釈して fail。
 
 ## Cause
-gray-matter は js-yaml を JSON_SCHEMA で噛ませる設定（[caveat の CLAUDE.md 参照](https://github.com/kitepon-rgb/Caveat/blob/main/CLAUDE.md)）。YAML の plain scalar は**以下を含むと key として解釈される**：
+gray-matter は js-yaml を JSON_SCHEMA で噛ませる設定（[caveat の CLAUDE.md 参照](https://github.com/kitepon/Caveat/blob/main/CLAUDE.md)）。YAML の plain scalar は**以下を含むと key として解釈される**：
 - `: ` (colon + space) → key-value separator
 - `#` (space 前後) → comment start
 - 先頭 `[`, `{`, `|`, `>`, `*`, `&`, `!`, `%`, `@`, ` `` ` ` 等 → flow/block indicator
@@ -76,4 +76,4 @@ done
 ## Evidence
 - Caveat プロジェクトの 31 件 bulk 追加で発生、single-quote 方針で全解消
 - YAML 1.2 仕様: https://yaml.org/spec/1.2.2/#731-double-quoted-style
-- gray-matter のエンジン設定は [packages/core/src/frontmatter.ts](https://github.com/kitepon-rgb/Caveat/blob/main/packages/core/src/frontmatter.ts)
+- gray-matter のエンジン設定は [packages/core/src/frontmatter.ts](https://github.com/kitepon/Caveat/blob/main/packages/core/src/frontmatter.ts)

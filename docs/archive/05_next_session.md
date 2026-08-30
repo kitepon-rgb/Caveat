@@ -111,8 +111,8 @@ hook happened to fire outside that window.
 ## Canonical References
 
 - AutoSync contract: `CLAUDE.md` (自動同期（AutoSync）)
-- Release procedure: [`04_release_checklist.md`](04_release_checklist.md)
+- Release procedure: [`04_release_checklist.md`](../04_release_checklist.md)
 - Claude/Codex and sidecar contract:
-  [`03_dual_agent_support.md`](03_dual_agent_support.md)
+  [`03_dual_agent_support.md`](../03_dual_agent_support.md)
 - Sharing and reindex design:
   [`06_sharing_and_reindex.md`](06_sharing_and_reindex.md)

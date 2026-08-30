@@ -15,7 +15,7 @@ last_verified: 2026-04-18
 ---
 
 ## Context
-Caveat プロジェクトの Phase 10（MCP サーバ登録 + Claude Code hooks 追記）で `~/.claude/settings.json` に `mcpServers` ブロックを追加しようとした。`docs/01_plan.md` の旧設計はこの方式を前提にしていた。
+Caveat プロジェクトの Phase 10（MCP サーバ登録 + Claude Code hooks 追記）で `~/.claude/settings.json` に `mcpServers` ブロックを追加しようとした。`docs/archive/01_plan_history.md` の旧設計はこの方式を前提にしていた。
 
 ## Symptom
 `Edit` ツールでの書き込みが **schema validation でリジェクト** される:

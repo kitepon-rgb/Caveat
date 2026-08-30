@@ -128,12 +128,13 @@ function isCaveatClaudeHookCommand(
 /** Exact read-only detector used by factory diagnostics; accepts only installer-owned assets. */
 export function isCanonicalCaveatClaudeHookCommand(actual: string, event: 'user-prompt-submit' | 'post-tool-use' | 'stop', nodePath: string, cliScriptPath: string): boolean {
   const tokens = commandTokens(actual);
-  if (tokens?.length !== 4 || tokens[2] !== 'hook' || tokens[3] !== event) return false;
+  const [actualNodePath, actualCliScriptPath, subcommand, actualEvent] = tokens ?? [];
+  if (tokens?.length !== 4 || actualNodePath === undefined || actualCliScriptPath === undefined || subcommand !== 'hook' || actualEvent !== event) return false;
   // quoting はコマンド内の実パスから再構成した正規形と一致する場合だけ認める（legacy unsafe shape の拒否）。
   // パス同一性は realpath 照合（isCanonicalAsset）が持つ——installer の安定パス（symlink）と
   // 診断側の process.execPath（実体）は文字列一致しないため、期待文字列との完全一致では比較しない。
-  if (actual !== hookCommand(tokens[0], tokens[1], event)) return false;
-  return isCanonicalAsset(tokens[0], nodePath, constants.X_OK) && isCanonicalAsset(tokens[1], cliScriptPath, constants.R_OK);
+  if (actual !== hookCommand(actualNodePath, actualCliScriptPath, event)) return false;
+  return isCanonicalAsset(actualNodePath, nodePath, constants.X_OK) && isCanonicalAsset(actualCliScriptPath, cliScriptPath, constants.R_OK);
 }
 
 /** Read-only detector for the exact stdio registration emitted by registerMcp. */

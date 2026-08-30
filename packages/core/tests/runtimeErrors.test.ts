@@ -4,20 +4,17 @@ import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { acknowledgeRuntimeErrors, compactRuntimeErrors, recordRuntimeError, runWindowsAcl, runtimeCollectionEnabled, runtimeErrorsDiagnostics, runtimeErrorsInternal, runtimeErrorsSnapshot, runtimeErrorsStatePath, setRuntimeErrorStatus } from '../src/runtimeErrors.js';
+import { acknowledgeRuntimeErrors, compactRuntimeErrors, recordRuntimeError, runtimeCollectionEnabled, runtimeErrorsConfigPath, runtimeErrorsDiagnostics, runtimeErrorsInternal, runtimeErrorsSnapshot, runtimeErrorsStatePath, setRuntimeErrorStatus } from '../src/runtimeErrors.js';
 
 function env(root: string, enabled: unknown): NodeJS.ProcessEnv {
-  const isWindows = process.platform === 'win32';
   const configHome = join(root, 'config');
-  const config = isWindows
-    ? join(root, 'dotagents', 'factory-reporter', 'config.json')
-    : join(configHome, 'dotagents', 'factory-reporter.json');
+  const result = { ...process.env, HOME: root, USERPROFILE: root, LOCALAPPDATA: root, XDG_CONFIG_HOME: configHome, XDG_STATE_HOME: join(root, 'state') };
+  const config = runtimeErrorsConfigPath(result);
   mkdirSync(dirname(config), { recursive: true });
-  writeFileSync(config, JSON.stringify({ schema_version: '1.0', host: { id: 'test', profile: isWindows ? 'windows-native' : 'mac' }, collection: { enabled }, reporting: { enabled: false } }), { mode: 0o600 });
-  if (isWindows) runWindowsAcl(config, false, true); else chmodSync(config, 0o600);
-  return { ...process.env, HOME: root, USERPROFILE: root, LOCALAPPDATA: root, XDG_CONFIG_HOME: configHome, XDG_STATE_HOME: join(root, 'state') };
+  writeFileSync(config, JSON.stringify({ runtimeErrors: enabled }));
+  return result;
 }
-function configPath(root: string) { return process.platform === 'win32' ? join(root, 'dotagents', 'factory-reporter', 'config.json') : join(root, 'config', 'dotagents', 'factory-reporter.json'); }
+function configPath(root: string) { return runtimeErrorsConfigPath(absentEnv(root)); }
 function absentEnv(root: string): NodeJS.ProcessEnv { return { ...process.env, HOME: root, USERPROFILE: root, LOCALAPPDATA: root, XDG_CONFIG_HOME: join(root, 'config'), XDG_STATE_HOME: join(root, 'state') }; }
 const definition = 'CAVEAT.DATABASE_OPEN_FAILED' as const;
 
@@ -38,22 +35,38 @@ function childExit(childProcess: ReturnType<typeof spawn>) {
 }
 
 describe('runtime errors', { timeout: process.platform === 'win32' ? 60_000 : 5_000 }, () => {
+  it('uses the Caveat user config and keeps existing configs disabled until explicitly enabled', () => {
+    const root = mkdtempSync(join(tmpdir(), 'caveat-runtime-')); const e = absentEnv(root); const path = runtimeErrorsConfigPath(e);
+    expect(path).toBe(join(root, '.caveatrc.json'));
+    writeFileSync(path, JSON.stringify({ knowledgeRepo: 'own' }));
+    expect(runtimeCollectionEnabled(e)).toBe(false);
+    writeFileSync(path, JSON.stringify({ knowledgeRepo: 'own', runtimeErrors: true }));
+    expect(runtimeCollectionEnabled(e)).toBe(true);
+  });
+  it('uses USERPROFILE for the Windows user config when HOME differs', () => {
+    const root = mkdtempSync(join(tmpdir(), 'caveat-runtime-')); const home = join(root, 'home'); const userProfile = join(root, 'profile');
+    const e = { ...process.env, OS: 'Windows_NT', HOME: home, USERPROFILE: userProfile, LOCALAPPDATA: join(root, 'local-app-data') };
+    mkdirSync(home, { recursive: true }); mkdirSync(userProfile, { recursive: true });
+    writeFileSync(join(home, '.caveatrc.json'), JSON.stringify({ runtimeErrors: false }));
+    writeFileSync(join(userProfile, '.caveatrc.json'), JSON.stringify({ runtimeErrors: true }));
+    expect(runtimeErrorsConfigPath(e)).toBe(join(userProfile, '.caveatrc.json'));
+    expect(runtimeCollectionEnabled(e)).toBe(true);
+  });
   it('is strictly opt-in and creates no state while disabled', () => {
     const root = mkdtempSync(join(tmpdir(), 'caveat-runtime-')); const e = env(root, false);
     expect(runtimeCollectionEnabled(e)).toBe(false); recordRuntimeError(definition, { env: e });
     expect(existsSync(runtimeErrorsStatePath(e))).toBe(false);
     expect(runtimeErrorsSnapshot(0, 256, e).diagnostics.collection).toBe('disabled');
   });
-  it('fails closed without creating state for absent, malformed, oversized config and unsafe fresh state paths', () => {
+  it('fails closed without creating state for absent, malformed, invalid-shape config and unsafe fresh state paths', () => {
     const absentRoot = mkdtempSync(join(tmpdir(), 'caveat-runtime-'));
     const absent = absentEnv(absentRoot);
     recordRuntimeError(definition, { env: absent });
     expect(existsSync(runtimeErrorsStatePath(absent))).toBe(false);
 
-    for (const configBody of ['{bad', `${JSON.stringify({ schema_version: '1.0', host: { id: 'test', profile: 'mac' }, collection: { enabled: true }, reporting: { enabled: false } })}${' '.repeat(1024 * 1024)}`]) {
+    for (const configBody of ['{bad', JSON.stringify({ runtimeErrors: 'true' }), JSON.stringify({ runtimeErrors: { enabled: true } })]) {
       const root = mkdtempSync(join(tmpdir(), 'caveat-runtime-')); const e = env(root, true);
       writeFileSync(configPath(root), configBody);
-      if (process.platform === 'win32') runWindowsAcl(configPath(root), false, true);
       recordRuntimeError(definition, { env: e });
       expect(existsSync(runtimeErrorsStatePath(e))).toBe(false);
     }
@@ -133,7 +146,7 @@ describe('runtime errors', { timeout: process.platform === 'win32' ? 60_000 : 5_
   });
   it('fails closed when the Windows ACL seam cannot apply or verify', () => {
     const root = mkdtempSync(join(tmpdir(), 'caveat-runtime-')); const e = env(root, true);
-    expect(recordRuntimeError(definition, { env: e, version: '0.16.2', isWindows: () => true, aclRunner: () => { throw Error('acl failed'); } })).toMatchObject({ status: 'disabled' });
+    expect(() => recordRuntimeError(definition, { env: e, version: '0.16.2', isWindows: () => true, aclRunner: () => { throw Error('acl failed'); } })).toThrow('store_unsafe');
     expect(existsSync(runtimeErrorsStatePath(e))).toBe(false);
   });
   it.skipIf(process.platform === 'win32')('serializes 20 truly concurrent child recorders without corrupting JSON', { timeout: 30_000 }, async () => {

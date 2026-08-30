@@ -1,16 +1,16 @@
 import { spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { arch as hostArch, homedir, platform as hostPlatform } from 'node:os';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { loadConfig } from './config.js';
 import { isWindowsEnv } from './platform.js';
 
 export const RUNTIME_ERRORS_SCHEMA = 'caveat.runtime_errors.v1';
 const STATE_VERSION = '1.0';
 const MAX_RECORDS = 256;
 const RETENTION_MS = 30 * 86_400_000;
-const MAX_CONFIG_BYTES = 64 * 1024;
 const definitions = {
   'CAVEAT.DATABASE_OPEN_FAILED': { component: 'database', severity: 'high', template: 'Caveat database open failed' },
   'CAVEAT.INDEX_FAILED': { component: 'index', severity: 'high', template: 'Caveat index operation failed' },
@@ -38,9 +38,11 @@ const validOs = (v: unknown) => typeof v === 'string' && ['darwin', 'linux', 'wi
 const validArch = (v: unknown) => typeof v === 'string' && ['x64', 'arm64', 'arm', 'ia32'].includes(v);
 const windows = (env: NodeJS.ProcessEnv) => isWindowsEnv(env, hostPlatform());
 
-export function defaultFactoryReporterConfigPath(env: NodeJS.ProcessEnv = process.env) {
-  const home = env.HOME || env.USERPROFILE || homedir();
-  return windows(env) ? join(env.LOCALAPPDATA || join(home, 'AppData', 'Local'), 'dotagents', 'factory-reporter', 'config.json') : join(env.XDG_CONFIG_HOME || join(home, '.config'), 'dotagents', 'factory-reporter.json');
+export function runtimeErrorsConfigPath(env: NodeJS.ProcessEnv = process.env) {
+  const home = windows(env)
+    ? env.USERPROFILE || env.HOME || homedir()
+    : env.HOME || env.USERPROFILE || homedir();
+  return join(home, '.caveatrc.json');
 }
 export function runtimeErrorsStatePath(env: NodeJS.ProcessEnv = process.env) {
   const home = env.HOME || env.USERPROFILE || homedir();
@@ -49,25 +51,14 @@ export function runtimeErrorsStatePath(env: NodeJS.ProcessEnv = process.env) {
 function collectionEnabled(options: RuntimeErrorOptions = {}) {
   const env = options.env ?? process.env;
   try {
-    const path = options.configPath ?? defaultFactoryReporterConfigPath(env);
-    const isWin = (options.isWindows ?? windows)(env); const before = lstatSync(path);
-    if (!before.isFile() || before.isSymbolicLink() || before.size > MAX_CONFIG_BYTES) return false;
-    if (isWin) secureWindowsAcl(path, options.aclRunner); else assertPosix(before, 0o600);
-    const fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0)); let text: string;
-    try { const after = fstatSync(fd); if (before.dev !== after.dev || before.ino !== after.ino || after.size > MAX_CONFIG_BYTES) return false; if (!isWin) assertPosix(after, 0o600); text = readFileSync(fd, 'utf8'); } finally { closeSync(fd); }
-    const config: unknown = JSON.parse(text);
-    return plain(config) && exact(config, ['schema_version', 'host', 'collection', 'reporting'])
-      && config.schema_version === '1.0' && plain(config.host) && exact(config.host, ['id', 'profile'])
-      && typeof config.host.id === 'string' && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(config.host.id) && ['server', 'mac', 'wsl', 'windows-native'].includes(config.host.profile as string)
-      && plain(config.collection) && exact(config.collection, ['enabled']) && config.collection.enabled === true
-      && canonicalReporting(config.reporting);
+    const path = options.configPath ?? runtimeErrorsConfigPath(env);
+    return loadConfig(path).runtimeErrors === true;
   } catch { return false; }
 }
 export function runtimeCollectionEnabled(env: NodeJS.ProcessEnv = process.env, configPath?: string) { return collectionEnabled({ env, configPath }); }
 const empty = (): Store => ({ schema: RUNTIME_ERRORS_SCHEMA, next_sequence: 1, acknowledged_through: 0, records: [] });
 function fingerprint(code: RuntimeErrorCode) { const d = definitions[code]; return createHash('sha256').update(`caveat\0${d.component}\0${code}\0${d.template}`).digest('hex'); }
 function ensureSafeDir(dir: string, isWin: boolean, options: RuntimeErrorOptions = {}) { const existed = existsSync(dir); mkdirSync(dir, { recursive: true, mode: 0o700 }); const s = lstatSync(dir); if (!s.isDirectory() || s.isSymbolicLink()) throw Error('store_unsafe'); if (isWin) secureWindowsAcl(dir, options.aclRunner, true, !existed); else assertPosix(s, 0o700); }
-function canonicalReporting(value: unknown) { if (!plain(value) || !Object.keys(value).every((key) => ['enabled','endpoint','credential_file'].includes(key)) || typeof value.enabled !== 'boolean') return false; if (value.endpoint !== undefined) { if (typeof value.endpoint !== 'string' || value.endpoint.length > 2048) return false; try { if (!['http:','https:'].includes(new URL(value.endpoint).protocol)) return false; } catch { return false; } } if (value.credential_file !== undefined && (typeof value.credential_file !== 'string' || value.credential_file.length < 1 || value.credential_file.length > 4096)) return false; return !value.enabled || (value.endpoint !== undefined && value.credential_file !== undefined); }
 const WINDOWS_ACL_VERIFY = String.raw`$p=$env:CAVEAT_ACL_PATH;$isDir=$env:CAVEAT_ACL_DIRECTORY -eq '1';$sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value;$acl=if($isDir){[System.IO.Directory]::GetAccessControl($p)}else{[System.IO.File]::GetAccessControl($p)};$owner=$acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value;if($owner -ne $sid){exit 41};$rules=@($acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]));if($rules.Count -ne 1){exit 42};$r=$rules[0];if($r.IdentityReference.Value -ne $sid -or $r.AccessControlType -ne 'Allow' -or $r.IsInherited -or ($r.FileSystemRights -band [System.Security.AccessControl.FileSystemRights]::FullControl) -ne [System.Security.AccessControl.FileSystemRights]::FullControl){exit 43}`;
 const WINDOWS_ACL_APPLY = String.raw`$p=$env:CAVEAT_ACL_PATH;$isDir=$env:CAVEAT_ACL_DIRECTORY -eq '1';$sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User;$acl=if($isDir){New-Object System.Security.AccessControl.DirectorySecurity}else{New-Object System.Security.AccessControl.FileSecurity};$acl.SetAccessRuleProtection($true,$false);$flags=if($isDir){[System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'}else{[System.Security.AccessControl.InheritanceFlags]::None};$rule=New-Object System.Security.AccessControl.FileSystemAccessRule($sid,'FullControl',$flags,[System.Security.AccessControl.PropagationFlags]::None,[System.Security.AccessControl.AccessControlType]::Allow);$acl.SetOwner($sid);$acl.AddAccessRule($rule);if($isDir){[System.IO.Directory]::SetAccessControl($p,$acl)}else{[System.IO.File]::SetAccessControl($p,$acl)};` + WINDOWS_ACL_VERIFY;
 // Hang guard, not a latency budget, and sized against the slowest machine that

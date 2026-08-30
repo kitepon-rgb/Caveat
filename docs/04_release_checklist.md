@@ -2,7 +2,7 @@
 
 Use this checklist for every `caveat-cli` npm release. Do not stop at publish:
 the release is only complete after the published package passes fresh-install
-and new-session Claude/Codex smoke checks.
+checks for Claude/Codex/Cursor and the available new-session host smokes.
 
 ## Pre-Publish
 
@@ -10,19 +10,18 @@ Run workspace checks sequentially. Do not run `build` and `typecheck` in
 parallel: `build` may clean package `dist/` output while downstream packages are
 resolving generated declarations.
 
-Do not wrap the root scripts in `corepack`. `corepack pnpm <script>` exports
-`COREPACK_ROOT` to child processes, and the root scripts shell back out through
-`scripts/pnpm.mjs`, which prefers `pnpm` on `PATH`. On a machine whose `PATH`
-pnpm is a different major than the pinned 10.0.0, that pnpm sees `COREPACK_ROOT`,
-refuses to self-switch, and fails hard. Invoked directly it reads
-`packageManager` and switches itself. Never silence this with
-`--pm-on-fail=ignore`: that runs the release on an unpinned pnpm.
+Use the repository-pinned pnpm through Corepack. Root scripts delegate through
+`scripts/pnpm.mjs`, whose order is an explicit `CAVEAT_PNPM_BIN`, Corepack,
+`pnpm` on `PATH`, then `npx pnpm@10.0.0`. CI intentionally invokes root scripts
+through Corepack, so the nested delegation remains on the pinned package
+manager. Do not set `CAVEAT_PNPM_BIN` to an unpinned binary or silence a package
+manager mismatch with `--pm-on-fail=ignore`.
 
 ```bash
-pnpm -r build
-pnpm -r typecheck
-pnpm check:release-smoke
-pnpm -r test
+corepack pnpm -r build
+corepack pnpm -r typecheck
+corepack pnpm check:release-smoke
+corepack pnpm -r test
 git diff --check
 ```
 
@@ -30,22 +29,28 @@ Update the version and release notes, then verify the packed manifest again
 before publishing. `check:npm-pack` packs `apps/cli` with pnpm, fails if
 `workspace:` protocols, missing bin files, or non-executable `dist/caveat.js`
 leak into the tarball, then installs the tarball with npm and verifies
-`caveat --version`. Publish from `apps/cli` with pnpm; direct `npm publish` is
+`caveat --version`. `check:docs` also reads npm's dry-run pack manifest and
+requires every relative link and image in packed Markdown to resolve inside
+that same tarball. Publish from `apps/cli` with pnpm; direct `npm publish` is
 forbidden because it can leave `workspace:*` strings in the packed manifest.
+Derive the release version from that package manifest in the same shell used
+for the remaining release commands.
 
 ```bash
-pnpm check:npm-pack
-cd apps/cli
-pnpm publish --dry-run --no-git-checks
+VERSION=$(node -p "require('./apps/cli/package.json').version")
+corepack pnpm check:docs
+corepack pnpm check:npm-pack
+corepack pnpm --dir apps/cli publish --dry-run --no-git-checks
 ```
 
 Commit, tag, push, wait for CI, then publish:
 
 ```bash
 git status --short --branch
+git tag -a "v$VERSION" -m "v$VERSION"
 git push
 git push origin "v$VERSION"
-pnpm publish --no-git-checks
+corepack pnpm --dir apps/cli publish --no-git-checks
 ```
 
 ## Published Package Smoke
@@ -56,10 +61,11 @@ Install from npm into a temporary prefix, not from the local workspace.
 root=$(mktemp -d)
 prefix="$root/npm"
 mkdir -p "$prefix"
-rtk proxy npm install -g "caveat-cli@$VERSION" --prefix "$prefix"
-rtk "$prefix/bin/caveat" --version
-rtk stat -c '%a %n' "$prefix/lib/node_modules/caveat-cli/dist/caveat.js"
-rtk node -e 'const p=require(process.argv[1]); console.log(JSON.stringify({version:p.version,bin:p.bin,commander:p.dependencies.commander}, null, 2))' \
+npm install -g "caveat-cli@$VERSION" --prefix "$prefix"
+"$prefix/bin/caveat" --version
+node -e 'const p=process.argv[1],m=require("node:fs").statSync(p).mode&0o777; console.log(m.toString(8),p)' \
+  "$prefix/lib/node_modules/caveat-cli/dist/caveat.js"
+node -e 'const p=require(process.argv[1]); console.log(JSON.stringify({version:p.version,bin:p.bin,commander:p.dependencies.commander}, null, 2))' \
   "$prefix/lib/node_modules/caveat-cli/package.json"
 ```
 
@@ -71,7 +77,7 @@ Expected:
 
 ## Fresh Install Hook Smoke
 
-Use a temporary `HOME` so the user's real Claude/Codex config is not modified.
+Use a temporary `HOME` so the user's real Claude/Codex/Cursor config is not modified.
 
 ```bash
 original_home=${HOME:?}
@@ -84,11 +90,15 @@ mkdir -p "$prefix" "$home"
 export HOME="$home"
 export PATH="$prefix/bin:$PATH"
 export CODEX_HOME="$home/.codex"
+export CURSOR_DIR="$home/.cursor"
+mkdir -p "$CURSOR_DIR"
 
-rtk proxy npm install -g "caveat-cli@$VERSION" --prefix "$prefix"
-rtk caveat init
-rtk caveat codex-hook install --codex-home "$CODEX_HOME"
-rtk caveat codex-hook diagnostics --codex-home "$CODEX_HOME"
+npm install -g "caveat-cli@$VERSION" --prefix "$prefix"
+caveat init
+caveat codex-hook install --codex-home "$CODEX_HOME"
+caveat codex-hook diagnostics --codex-home "$CODEX_HOME"
+caveat cursor-hook install --cursor-dir "$CURSOR_DIR"
+caveat cursor-hook diagnostics --cursor-dir "$CURSOR_DIR"
 ```
 
 Verify generated config:
@@ -101,9 +111,14 @@ Verify generated config:
   ignored `timeoutSec` key must not appear.
 - `~/.codex/config.toml` contains `[features] hooks = true` and no deprecated
   `codex_hooks` alias.
+- `~/.cursor/hooks.json` contains Caveat `beforeSubmitPrompt`, `postToolUse`,
+  `postToolUseFailure`, and `stop` commands, while unrelated existing hooks are
+  preserved.
 
-Run install twice and require `unchanged` on the second run. Run uninstall and
-require zero remaining Caveat hook entries.
+Run each install twice and require `unchanged` on the second run. Run each
+uninstall and require zero remaining Caveat hook entries. Cursor has no
+repository-owned live-session smoke harness; its release gate is the focused
+installer/adapter tests plus this packed-package install/diagnostics smoke.
 
 ## New Codex Session Smoke
 
@@ -119,7 +134,7 @@ ln -sfn "$REAL_CODEX_HOME/installation_id" "$CODEX_HOME/installation_id"
 
 out="$root/codex-exec.jsonl"
 last="$root/codex-last.txt"
-rtk proxy codex exec \
+codex exec \
   --json \
   -C /tmp \
   --skip-git-repo-check \
@@ -128,7 +143,7 @@ rtk proxy codex exec \
   -o "$last" \
   "Reply exactly: caveat-new-session-ok" >"$out"
 
-if rtk rg -i "hook returned invalid|hook.*failed|invalid user prompt" "$out"; then
+if rg -i "hook returned invalid|hook.*failed|invalid user prompt" "$out"; then
   exit 1
 fi
 ```
@@ -156,14 +171,14 @@ completed turn in the raw App Server log.
 must point at the command to use.
 
 ```bash
-repo=$(rtk git rev-parse --show-toplevel)
-CODEX_HOME="$REAL_CODEX_HOME" rtk node "$repo/scripts/codex-sidecar-advisory-smoke.mjs" \
+repo=$(git rev-parse --show-toplevel)
+CODEX_HOME="$REAL_CODEX_HOME" node "$repo/scripts/codex-sidecar-advisory-smoke.mjs" \
   --repo "$repo" \
   --surface stop \
   --caveat-command caveat \
   --codex-sidecar-command "${CAVEAT_CODEX_SIDECAR_COMMAND:-codex-sidecar}"
 
-CODEX_HOME="$REAL_CODEX_HOME" rtk node "$repo/scripts/codex-sidecar-advisory-smoke.mjs" \
+CODEX_HOME="$REAL_CODEX_HOME" node "$repo/scripts/codex-sidecar-advisory-smoke.mjs" \
   --repo "$repo" \
   --surface tool-error \
   --caveat-command caveat \
@@ -173,18 +188,19 @@ CODEX_HOME="$REAL_CODEX_HOME" rtk node "$repo/scripts/codex-sidecar-advisory-smo
 Development path equivalent:
 
 ```bash
-repo=$(rtk git rev-parse --show-toplevel)
-rtk corepack pnpm smoke:codex-sidecar-advisory -- \
+repo=$(git rev-parse --show-toplevel)
+: "${CAVEAT_CODEX_SIDECAR_NODE_CLI:?set this to the development codex-sidecar dist/index.js}"
+corepack pnpm smoke:codex-sidecar-advisory -- \
   --repo "$repo" \
   --surface stop \
   --caveat-node-cli "$repo/apps/cli/dist/index.js" \
-  --codex-sidecar-node-cli /home/kite/projects/codex-sidecar/packages/cli/dist/index.js
+  --codex-sidecar-node-cli "$CAVEAT_CODEX_SIDECAR_NODE_CLI"
 
-rtk corepack pnpm smoke:codex-sidecar-advisory -- \
+corepack pnpm smoke:codex-sidecar-advisory -- \
   --repo "$repo" \
   --surface tool-error \
   --caveat-node-cli "$repo/apps/cli/dist/index.js" \
-  --codex-sidecar-node-cli /home/kite/projects/codex-sidecar/packages/cli/dist/index.js
+  --codex-sidecar-node-cli "$CAVEAT_CODEX_SIDECAR_NODE_CLI"
 ```
 
 The script writes a JSON summary with the verified `rawEventLogRef`. Temporary
@@ -219,9 +235,9 @@ user's keychain authentication. This is a release-only human smoke; CI runs
 the separate fake CLI contract test and never invokes real Claude.
 
 ```bash
-repo=$(rtk git rev-parse --show-toplevel)
+repo=$(git rev-parse --show-toplevel)
 mkdir -p "$root/caveat-home"
-HOME="$original_home" USER="$original_user" LOGNAME="$original_logname" rtk node "$repo/scripts/claude-fresh-session-smoke.mjs" \
+HOME="$original_home" USER="$original_user" LOGNAME="$original_logname" node "$repo/scripts/claude-fresh-session-smoke.mjs" \
   --settings "$home/.claude/settings.json" \
   --mcp-config "$home/.claude.json" \
   --caveat-home "$root/caveat-home"
@@ -237,20 +253,29 @@ Expected:
 - If `claude auth status` is unavailable or unauthenticated, the script exits
   unavailable rather than treating the smoke as a pass; authenticate and rerun.
 
+After the published-package and available host smokes pass, publish the GitHub
+Release for the already-pushed annotated tag:
+
+```bash
+gh release create "v$VERSION" --verify-tag --title "Caveat $VERSION" --generate-notes
+```
+
 ## Closeout
 
 Before reporting the release complete:
 
 ```bash
-rtk gh run list --limit 5
-rtk gh pr list --state open --json number,title,author
-rtk npm view caveat-cli version
-rtk git status --short --branch
+gh run list --limit 5
+gh pr list --state open --json number,title,author
+gh release view "v$VERSION" --json tagName,isDraft,isPrerelease,url
+npm view caveat-cli version
+git status --short --branch
 ```
 
 Expected:
 
 - Latest `main` CI is green.
 - No superseded Dependabot PR remains open.
+- GitHub Release `v$VERSION` exists and is neither draft nor prerelease.
 - npm latest equals `$VERSION`.
 - Worktree is clean and synced with `origin/main`.

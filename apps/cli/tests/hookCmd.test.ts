@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { appendPendingReminder, drainPendingReminders, openDb, runWindowsAcl, runtimeErrorsSnapshot, runtimeErrorsStatePath } from '@caveat/core';
+import { appendPendingReminder, drainPendingReminders, openDb, runtimeErrorsConfigPath, runtimeErrorsSnapshot, runtimeErrorsStatePath } from '@caveat/core';
 import { claudePendingCleanupFailureText, sweepStaleWorkerDirs, workerRoot } from '../src/commands/hookCmd.js';
 
 it('formats Claude pending cleanup failures with a fixed stderr prefix', () => {
@@ -133,10 +133,9 @@ describe('Claude hook output', () => {
     const caveatHome = join(root, 'caveat-home'); const userHome = join(root, 'home'); const configHome = join(root, 'xdg-config'); const stateHome = join(root, 'xdg-state'); const localAppData = join(root, 'local-app-data');
     const runtimeEnv = { ...process.env, CAVEAT_HOME: caveatHome, HOME: userHome, USERPROFILE: userHome, LOCALAPPDATA: localAppData, XDG_CONFIG_HOME: configHome, XDG_STATE_HOME: stateHome };
     try {
-      const reporterConfig = process.platform === 'win32' ? join(localAppData, 'dotagents', 'factory-reporter', 'config.json') : join(configHome, 'dotagents', 'factory-reporter.json');
-      mkdirSync(userHome, { recursive: true }); mkdirSync(dirname(reporterConfig), { recursive: true });
-      writeFileSync(reporterConfig, JSON.stringify({ schema_version: '1.0', host: { id: 'fixture', profile: process.platform === 'win32' ? 'windows-native' : 'mac' }, collection: { enabled: true }, reporting: { enabled: false } }), { mode: 0o600 }); chmodSync(reporterConfig, 0o600);
-      if (process.platform === 'win32') runWindowsAcl(reporterConfig, false, true);
+      const runtimeConfig = runtimeErrorsConfigPath(runtimeEnv);
+      mkdirSync(userHome, { recursive: true }); mkdirSync(dirname(runtimeConfig), { recursive: true });
+      writeFileSync(runtimeConfig, JSON.stringify({ runtimeErrors: true }));
       mkdirSync(join(caveatHome, 'index', 'caveat.db'), { recursive: true });
       const failed = runHook('user-prompt-submit', { session_id: 's', prompt: 'search this' }, runtimeEnv);
       expect(failed.status).toBe(0); expect(failed.stderr).toContain('[caveat:hook] search error:');

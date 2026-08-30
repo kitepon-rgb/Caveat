@@ -18,15 +18,17 @@ repositories selected by the user.
 ## Decision
 
 The canonical knowledge store remains markdown files managed by git. SQLite is a
-derived index and must be rebuildable from markdown. Sharing remains plain git
-between users, teams, or organizations; Caveat does not define a central trust
-server.
+derived index and must be rebuildable from markdown. Git remotes remain the
+transport, while `caveat sync` enforces the private ownership boundary and
+`caveat publish` emits the public sealed mirror. Caveat does not define a
+central trust server.
 
 ## Consequences
 
 - Entry format, frontmatter, and markdown parsing are compatibility-critical.
 - DB schema and indexing code must not become the only place where knowledge
 state exists.
-- Sharing and trust decisions stay outside the tool's central control path.
+- The user chooses trusted publishers; Caveat owns and enforces the declared
+  private/public transport boundary without becoming a central trust authority.
 - Obsidian and similar tools may act as windows over the markdown, but they are
 not the source of truth.
