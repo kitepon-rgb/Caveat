@@ -95,9 +95,12 @@ Claude can autonomously pull subscribed-repo updates (safe, idempotent).
 Recording and updating writes locally; use `caveat sync` for the private
 ownership boundary and `caveat publish` for the public sealed boundary.
 
-Codex uses native hooks rather than MCP for automatic surfacing. The optional
-`codex-sidecar` commands remain available for bounded second opinions, review,
-risk-check, and isolated work.
+Codex and Cursor use native hooks rather than MCP for automatic surfacing. A
+native reminder inspects an entry with
+`caveat show <id> --source <source>`, then updates or creates Markdown in the
+own knowledge repo and runs `caveat index`. Community entries are subscriptions
+and are not edited locally. The optional `codex-sidecar` commands remain
+available for bounded second opinions, review, risk-check, and isolated work.
 
 ## Pointing at a different knowledge repo
 

@@ -41,6 +41,8 @@ keyserverは無認証なので、動機ある人間による解析を防ぐと�
 - Codex: `caveat codex-hook install`でnative hooksを登録する。
 - Cursor: `caveat cursor-hook install`で`~/.cursor/hooks.json`へnative hooksをupsertする。
 - host固有adapterは同じ検索・pending・同期coreを再利用し、別hostのfieldやstdout契約を改名しない。
+- 検索結果は共有しても操作案内はhostごとに分ける。ClaudeはMCP、Codex / Cursorは
+  Caveat CLIとown Markdownを使い、別hostにしかない入口を案内しない。
 
 詳細なhost契約は[`03_dual_agent_support.md`](03_dual_agent_support.md)、利用手順は
 [`../README.md`](../README.md)と[`../README.ja.md`](../README.ja.md)を正とする。

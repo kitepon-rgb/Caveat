@@ -109,7 +109,7 @@ export async function runCursorHook(name: CursorHookName, arg?: string): Promise
       failureText: prompt,
       surface: 'user_prompt',
     });
-    if (hits.length > 0) contexts.push(userPromptSubmitReminderText(hits));
+    if (hits.length > 0) contexts.push(userPromptSubmitReminderText(hits, 'native-cli'));
     const compacted = compactContexts(CURSOR_HOST, contexts);
     if (compacted.length > 0) {
       process.stdout.write(`${cursorContextOutput(compacted.join('\n\n'))}\n`);
@@ -127,7 +127,7 @@ export async function runCursorHook(name: CursorHookName, arg?: string): Promise
         failureText: errText,
         surface: 'tool_error',
       });
-      if (hits.length > 0) contexts.push(toolErrorReminderText(hits));
+      if (hits.length > 0) contexts.push(toolErrorReminderText(hits, 'native-cli'));
     }
     const compacted = compactContexts(CURSOR_HOST, contexts);
     if (compacted.length > 0) {
@@ -164,7 +164,7 @@ export async function runCursorHook(name: CursorHookName, arg?: string): Promise
       failureText,
       surface: 'stop' as const,
     })));
-    queueStopForSession(CURSOR_HOST, sessionId, signals, related, () => stopReminderText(signals, related));
+    queueStopForSession(CURSOR_HOST, sessionId, signals, related, () => stopReminderText(signals, related, 'native-cli'));
     process.exit(0);
   }
 

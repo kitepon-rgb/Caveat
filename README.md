@@ -54,6 +54,12 @@ Cursor uses its native `beforeSubmitPrompt`, `postToolUse`,
 `postToolUseFailure`, and `stop` events. Caveat formats the same retrieval and
 pending-reminder results for Cursor without replacing unrelated Cursor hooks.
 
+The next action in a reminder follows the active host. Claude uses the Caveat
+MCP tools. Codex and Cursor inspect an entry with
+`caveat show <id> --source <source>`, update or create Markdown in the own
+knowledge repo, and run `caveat index`. Community entries are subscriptions and
+are not edited locally.
+
 The knowledge repo is plain markdown-in-git. Open it as an Obsidian vault. Use
 `caveat sync` for a private team/ownership boundary and `caveat publish` for a
 sealed public mirror. There is no central server — trust is defined **socially**,
@@ -66,7 +72,7 @@ by who you choose to subscribe to via `caveat community add <github-url>`.
 | Surfaces context **automatically** | ✅ 3 hook firing points | ❌ always-on, fills context | ❌ re-reads the whole bank each task | ⚠️ on explicit query | ❌ manual recall |
 | Granular per-trap retrieval | ✅ FTS5 co-occurrence | ❌ monolithic file | ❌ loads the entire folder | ✅ embeddings | ❌ |
 | Source of truth | markdown-in-git | a single rules file | markdown folder in workspace | vector DB | proprietary |
-| Records new traps from session | ✅ via `caveat_record` MCP tool | ❌ | ⚠️ manual "update memory bank" command | ❌ | manual |
+| Records new traps from session | ✅ Claude MCP or Codex/Cursor own Markdown + `caveat index` | ❌ | ⚠️ manual "update memory bank" command | ❌ | manual |
 | Catches struggle the AI didn't self-report | ✅ transcript signal mining | ❌ | ❌ | ❌ | ❌ |
 | Mixes external-spec gotchas with repo-specific context | ✅ public / private tiers | ⚠️ no separation | ⚠️ no separation | ⚠️ | ⚠️ |
 
@@ -88,11 +94,11 @@ Two tiers, distinguished by **third-party reproducibility**:
 - **Public** — external-spec gotchas any third party running the same tool/spec can hit (GPU drivers, native-module builds, IDE quirks, version constraints).
 - **Private** — repo-specific non-obvious context that code reading alone cannot reconstruct (intentional non-standard behavior, workarounds awaiting upstream fixes, cross-project personal conventions).
 
-Classification is automatic via a binary criterion in the `caveat_record` tool
-description; explicit user instruction always overrides. The pre-commit gate in
-this tool repository protects its public dogfood `entries/`; user-owned private
-repositories may contain both tiers and `caveat publish` enforces the public
-boundary. Retrieval is deliberately flat. See the current
+Claude's `caveat_record` tool description and the Codex/Cursor native reminder
+use the same binary criterion; explicit user instruction always overrides. The
+pre-commit gate in this tool repository protects its public dogfood `entries/`;
+user-owned private repositories may contain both tiers and `caveat publish`
+enforces the public boundary. Retrieval is deliberately flat. See the current
 [product contract](docs/01_plan.md).
 </details>
 
@@ -130,7 +136,7 @@ flowchart LR
 - **Agent integrations.** Claude Code gets an MCP server exposing 6 tools (`caveat_search` / `caveat_get` / `caveat_record` / `caveat_update` / `caveat_list_recent` / `caveat_pull`) plus hooks. Codex and Cursor get native hooks through their product-owned installers. All surfaces reuse the same retrieval gates — no hardcoded keyword lists:
   - **UserPromptSubmit** (事前発火): when you submit a prompt, tokenize it (path-stripping + self-identity + pure-hiragana glue removal + CJK group dedup), FTS the DB, and surface entries that pass **three structural gates** — (1) ≥ 2 distinct group matches (co-occurrence), (2) ≥ 1 match in the entry's `## Symptom` section (failure-state evidence), (3) ≥ 1 corpus-rarest prompt token in `topical_text` (title + tags + environment values, topic evidence). Bare proper-noun mentions like `RTX 5090 CUDA で何かやってる` stay silent; only specific failure-state vocabulary plus a curated topic anchor (`cudaGetDeviceCount`, `SQLITE_READONLY`, …) fires the gate. No hardcoded word lists.
   - **PostToolUse** (+ Claude **PostToolUseFailure**) (実行中発火): when a tool returns `is_error: true` or Claude Code emits a failed-tool `error` payload, Claude spawns a detached worker so the foreground hook returns in ~20ms. Codex performs a bounded foreground lookup because current Codex payloads and transcript timing make detached workers unreliable there. In both cases, the reminder lands on the next hook tick. In Claude-hosted sessions, an operational `codex-sidecar` can append Codex advice after Caveat's original text.
-  - **Stop** (事後発火): parse the session transcript for objective struggle signals (tool failures, repeated file edits, web searches, bash retries). If any are present, queue a compact reminder for the next context-capable hook tick and nudge `caveat_update` or `caveat_record` there. In Claude-hosted sessions, optional Codex advice can challenge or sharpen that nudge without replacing Caveat's trigger logic.
+  - **Stop** (事後発火): parse the session transcript for objective struggle signals (tool failures, repeated file edits, web searches, bash retries). If any are present, queue a compact reminder for the next context-capable hook tick and nudge through that host's available action surface: Caveat MCP for Claude, or the Caveat CLI and own Markdown for Codex/Cursor. In Claude-hosted sessions, optional Codex advice can challenge or sharpen that nudge without replacing Caveat's trigger logic.
 - **Codex primary hook adapter.** `caveat codex-hook install` registers
   `UserPromptSubmit`, `PostToolUse`, and `Stop` in `~/.codex/hooks.json` and
   enables `[features].hooks = true`. Existing `codex_hooks = true` installs are

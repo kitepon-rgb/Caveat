@@ -114,3 +114,24 @@ test('public docs expose one product-owned non-interactive setup entry', async (
     assert.match(content, /非0終了|non-zero/u, `${path}に明示sync失敗の契約がない`);
   }
 });
+
+test('current host docs separate Claude MCP actions from native CLI actions', async () => {
+  for (const path of ['README.md', 'README.ja.md', 'apps/cli/README.md']) {
+    const content = await readFile(join(ROOT, path), 'utf8');
+    assert.match(content, /caveat show <id> --source <source>/u, `${path}にnative詳細取得入口がない`);
+    assert.match(content, /caveat index/u, `${path}にnative index更新入口がない`);
+  }
+
+  const hostContract = await readFile(join(ROOT, 'docs/03_dual_agent_support.md'), 'utf8');
+  const actionSection = hostContract.match(/^## Reminder Action Surfaces\s*$([\s\S]*?)(?=^## )/mu)?.[1];
+  assert.ok(actionSection, 'host契約にReminder Action Surfaces節がない');
+  assert.match(actionSection, /mcp__caveat__caveat_get/u);
+  assert.match(actionSection, /mcp__caveat__caveat_update/u);
+  assert.match(actionSection, /mcp__caveat__caveat_record/u);
+  assert.match(actionSection, /caveat show <id> --source <source>/u);
+  assert.match(actionSection, /caveat index/u);
+  assert.match(actionSection, /community entryは購読物/u);
+  const nativeGuidance = actionSection.match(/^- Codex \/ Cursor[^\n]*(?:\n {2}[^\n]*)*/mu)?.[0];
+  assert.ok(nativeGuidance, 'host契約にCodex / Cursorのnative操作案内がない');
+  assert.doesNotMatch(nativeGuidance, /mcp__caveat__/u);
+});

@@ -699,6 +699,55 @@ describe('toolErrorReminderText', () => {
   });
 });
 
+describe('native CLI reminder guidance', () => {
+  const hit = {
+    id: 'node-sqlite-experimental-warning',
+    source: 'own',
+    title: 'Node 22.5+ node:sqlite ExperimentalWarning',
+    symptomExcerpt: 'import emits ExperimentalWarning once per process',
+    confidence: 'reproduced' as const,
+    visibility: 'public' as const,
+    environment: {},
+  };
+  const signals = {
+    toolFailureCount: 1,
+    fileEditCounts: [],
+    webSearchCount: 0,
+    webFetchCount: 0,
+    bashRetryCount: 0,
+    durationMinutes: 0,
+    errorSnippets: ['ExperimentalWarning'],
+    searchQueries: [],
+  };
+
+  it('uses the standalone CLI to inspect hits instead of Claude MCP tools', () => {
+    for (const text of [
+      toolErrorReminderText([hit], 'native-cli'),
+      userPromptSubmitReminderText([hit], 'native-cli'),
+    ]) {
+      expect(text).toContain('caveat show <id> --source <source>');
+      expect(text).not.toContain('mcp__caveat__');
+    }
+  });
+
+  it('guides native hosts to update own Markdown and rebuild the product-owned index', () => {
+    const related = stopReminderText(signals, [hit], 'native-cli');
+    expect(related).toContain('caveat show <id> --source <source>');
+    expect(related).toContain('last_verified');
+    expect(related).toContain('community エントリは購読物なので直接編集しません');
+    expect(related).toContain('own knowledge repo');
+    expect(related).toContain('caveat index');
+    expect(related).not.toContain('mcp__caveat__');
+
+    const newEntry = stopReminderText(signals, [], 'native-cli');
+    expect(newEntry).toContain('own knowledge repo');
+    expect(newEntry).toContain('caveat index');
+    expect(newEntry).toContain('public = 第三者再現可能 / private = repo 固有');
+    expect(newEntry).not.toContain('mcp__caveat__');
+    expect(newEntry).not.toContain('tool 説明');
+  });
+});
+
 describe('stopReminderText', () => {
   const sig = {
     toolFailureCount: 5,

@@ -282,6 +282,9 @@ describe('Codex stop hook', () => {
       expect(reminders).toHaveLength(1);
       expect(reminders[0]).toContain('[caveat]');
       expect(reminders[0]).toContain('tool failure: 1');
+      expect(reminders[0]).toContain('own knowledge repo');
+      expect(reminders[0]).toContain('caveat index');
+      expect(reminders[0]).not.toContain('mcp__caveat__');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

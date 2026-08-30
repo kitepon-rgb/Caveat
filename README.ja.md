@@ -53,6 +53,11 @@ review、risk-check、isolated work 用に残します。
 Cursorはnativeの`beforeSubmitPrompt` / `postToolUse` / `postToolUseFailure` / `stop`
 を使い、既存のCursor hookを残したまま同じ検索・pending reminder契約を適用します。
 
+reminderが案内する次の操作はhostごとに分かれます。ClaudeはCaveat MCP toolsを使います。
+Codex / Cursorは`caveat show <id> --source <source>`で詳細を確認し、own knowledge repoの
+Markdownを更新または新規作成して`caveat index`を実行します。community entryは購読物なので
+localでは編集しません。
+
 ナレッジ repo は **markdown-in-git** が真実の源。Obsidian の vault としてそのまま開けます。
 privateなチーム共有は`caveat sync`、公開は`caveat publish`の封緘mirrorを使います。
 中央サーバは存在しません — 信頼は「自動検査」ではなく「**社会的文脈**」で引きます
@@ -65,7 +70,7 @@ privateなチーム共有は`caveat sync`、公開は`caveat publish`の封緘mi
 | 関連コンテキストの **自動 surface** | ✅ 3 発火点 hook | ❌ 常時 on、コンテキスト圧迫 | ❌ 各タスクで bank 全体を読む | ⚠️ 明示クエリ要 | ❌ 自分で思い出す |
 | 罠ごとの粒度で取り出し | ✅ FTS5 共起 | ❌ モノリシックなファイル | ❌ フォルダ全体を一括ロード | ✅ embeddings | ❌ |
 | 真実の源 | markdown-in-git | 単一の rules ファイル | workspace の markdown フォルダ | vector DB | プロプライエタリ |
-| セッションから新規罠を記録 | ✅ `caveat_record` MCP tool | ❌ | ⚠️ "update memory bank"（手動トリガ） | ❌ | 手動 |
+| セッションから新規罠を記録 | ✅ Claude MCPまたはCodex / Cursorのown Markdown + `caveat index` | ❌ | ⚠️ "update memory bank"（手動トリガ） | ❌ | 手動 |
 | AI が自覚しないもがきも検出 | ✅ transcript シグナル抽出 | ❌ | ❌ | ❌ | ❌ |
 | 外部仕様の罠と repo 固有メモを混在管理 | ✅ public / private 2 tier | ⚠️ 分離なし | ⚠️ 分離なし | ⚠️ | ⚠️ |
 
@@ -86,7 +91,8 @@ privateなチーム共有は`caveat sync`、公開は`caveat publish`の封緘mi
 - **Public** — 同じ外部ツール・仕様を使えば誰でも踏める罠（GPU ドライバ、ネイティブモジュールビルド、IDE の癖、バージョン制約等）。
 - **Private** — コードを読むだけでは復元できない repo 固有の非自明文脈（意図的な非標準挙動、upstream 修正待ちのワークアラウンド、プロジェクト横断の個人的な慣習等）。
 
-判定基準は`caveat_record`のツール記述にあり、ユーザーの明示指示が最優先です。
+Claudeの`caveat_record`ツール記述とCodex / Cursorのnative reminderは同じ二項基準を使い、
+ユーザーの明示指示が最優先です。
 このtool repositoryのpre-commit gateはpublic dogfoodの`entries/`を守ります。ユーザー所有の
 private repositoryには両tierを置け、公開境界は`caveat publish`が執行します。詳細は
 [製品契約](docs/01_plan.md)を参照してください。

@@ -48,6 +48,19 @@ of being emitted directly from Stop.
 Codex support must not rename these fields, rewrite hook text, or replace Claude
 commands. Codex receives an adapter output derived from the same entry.
 
+## Reminder Action Surfaces
+
+Reminderの検索結果と発火判定はhost間で共有するが、次の操作を示す文面は共有しない。
+
+- Claudeは`mcp__caveat__caveat_get`で詳細を取得し、
+  `mcp__caveat__caveat_update` / `mcp__caveat__caveat_record`で更新・記録する。
+- Codex / Cursorは`caveat show <id> --source <source>`で詳細とpathを取得する。既存own entryは
+  そのpathのMarkdownを更新し、新規entryはCaveatのown knowledge repoへMarkdownで作成して、
+  `caveat index`を実行する。community entryは購読物なのでlocalで直接編集しない。
+
+`caveat init`はCodex / CursorへMCPを登録しないため、native hook reminderからClaude専用MCP名を
+案内してはいけない。この境界はdotagentsではなくCaveat自身のhost adapterが所有する。
+
 ## Codex Adapter
 
 `@caveat/core` exposes `caveatEntryToSidecarContextBlock(entry)`, which converts

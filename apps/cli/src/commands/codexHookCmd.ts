@@ -285,7 +285,7 @@ async function processCodexWorkerJob(
   try {
     result = buildAndPublishPendingReminder(ctx.caveatHome, job.sessionId, buildPendingSemanticKey({
       agent: 'codex', surface: 'tool_error', refs: hits,
-    }), () => toolErrorReminderText(hits));
+    }), () => toolErrorReminderText(hits, 'native-cli'));
   } catch {
     process.stderr.write('[caveat:codex-hook] pending reminder build or publish failed\n');
     return;
@@ -375,7 +375,7 @@ export async function runCodexHook(name: CodexHookName, arg?: string): Promise<v
     const prompt = typeof payload.prompt === 'string' ? payload.prompt : '';
     const hits = searchCaveatsSafely(CODEX_HOST, { topicText: prompt, failureText: prompt, surface: 'user_prompt' });
     if (hits.length > 0) {
-      contexts.push(userPromptSubmitReminderText(hits));
+      contexts.push(userPromptSubmitReminderText(hits, 'native-cli'));
     }
     const compacted = compactContexts(CODEX_HOST, contexts);
     if (compacted.length > 0) {
@@ -419,7 +419,7 @@ export async function runCodexHook(name: CodexHookName, arg?: string): Promise<v
       failureText,
       surface: 'stop' as const,
     })));
-    if (sessionId) queueStopForSession(CODEX_HOST, sessionId, signals, related, () => stopReminderText(signals, related));
+    if (sessionId) queueStopForSession(CODEX_HOST, sessionId, signals, related, () => stopReminderText(signals, related, 'native-cli'));
     process.exit(0);
   }
 
