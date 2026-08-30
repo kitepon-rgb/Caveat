@@ -99,7 +99,7 @@ describe('caveat init integrated setup', () => {
     expect(fx.messages.join('\n')).not.toContain('would configure publish target');
   });
 
-  it('initializes an explicit file URL without gh and absorbs OWN_REPO_EXISTS on re-init', async () => {
+  it('initializes an explicit file URL without gh and syncs it on re-init', async () => {
     const remote = join(fx.root, 'private.git');
     execFileSync('git', ['init', '--bare', '--initial-branch=main', remote]);
     const remoteUrl = pathToFileURL(remote).href;
@@ -126,11 +126,28 @@ describe('caveat init integrated setup', () => {
     expect(ghRunner).not.toHaveBeenCalled();
     expect(confirm).not.toHaveBeenCalled();
     expect(existsSync(join(ctx.paths.knowledgeRepo, '.git'))).toBe(true);
-    expect(fx.messages.join('\n')).toContain('private sync already configured (own repo exists); skipped');
+    expect(fx.messages.join('\n')).toContain('synced existing private remote:');
     expect(fx.messages.join('\n')).toContain(`private remote: ${remoteUrl}`);
     expect(fx.messages.join('\n')).toContain('publish target: https://github.com/example/Caveat-Public.git');
     expect(fx.messages.join('\n')).toContain('community sources: 0');
     expect(fx.messages.join('\n')).toContain('codex hook: skipped');
+  });
+
+  it('fails loud when explicitly requested private sync cannot be initialized', async () => {
+    const missingRemote = pathToFileURL(join(fx.root, 'missing-private.git')).href;
+    const ctx = buildContext(fx.logger, { userHome: fx.userHome, caveatHome: fx.caveatHome });
+
+    await expect(runInit(
+      ctx,
+      {
+        skipClaude: true,
+        dryRun: false,
+        sync: missingRemote,
+        skipCodexHook: true,
+        skipCursorHook: true,
+      },
+      { isTty: () => false, codexAvailable: () => false },
+    )).rejects.toThrow(/private sync setup failed/u);
   });
 
   it('reports explicit Codex feature refusal and never overwrites it', async () => {

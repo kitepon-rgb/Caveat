@@ -66,7 +66,7 @@ for (const action of ['resolve', 'reopen'] as const) runtimeErrors.command(`${ac
 program
   .command('init')
   .description(
-    'Initialize ~/.caveatrc.json, ~/.caveat/, and register Claude Code integration. Add knowledge sources later with `caveat community add <github-url>`.',
+    'Initialize Caveat state and available host integrations, with optional private sync. Add knowledge sources later with `caveat community add <github-url>`.',
   )
   .option('--skip-claude', 'skip Claude Code MCP + hook registration', false)
   .option('--sync [url]', 'initialize private sync (optionally with its URL)')

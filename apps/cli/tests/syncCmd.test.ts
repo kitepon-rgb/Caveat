@@ -74,6 +74,7 @@ describe('caveat sync command', () => {
       init: true, dryRun: false, trustRemotePrivate: false, yes: false,
     }, { ghRunner: runner, isTty: () => true, confirm });
     expect(confirm).toHaveBeenCalledTimes(1);
+    expect(runner).toHaveBeenCalledWith(['auth', 'setup-git']);
     expect(runner).toHaveBeenCalledWith(['repo', 'create', 'Caveat-Private', '--private']);
     expect(core.initOwnSync).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://github.com/alice/Caveat-Private.git' }));
   });
@@ -82,6 +83,7 @@ describe('caveat sync command', () => {
     const runner = (args: string[]) => {
       if (args[0] === '--version') return { status: 0, stdout: 'gh', stderr: '' };
       if (args[0] === 'api') return { status: 0, stdout: 'alice', stderr: '' };
+      if (args[0] === 'auth' && args[1] === 'setup-git') return { status: 0, stdout: '', stderr: '' };
       return { status: 1, stdout: '', stderr: 'not found' };
     };
     await runSync(ctx, {

@@ -30,9 +30,7 @@ Caveat's product state. The third-party MarkItDown CLI is managed separately.
 
 ```sh
 npm install -g caveat-cli
-caveat init                          # registers Claude Code MCP + hooks
-caveat codex-hook install            # optional: register native Codex hooks
-caveat cursor-hook install           # optional: register native Cursor hooks
+caveat init                          # provisions state and available Claude/Codex/Cursor integrations
 ```
 
 On macOS with Homebrew Node, generated hook commands use the stable
@@ -190,24 +188,38 @@ rag/                  Research asset ledger; currently only INDEX.md
 ```sh
 npm install -g caveat-cli
 caveat init                                                # one-time setup (see below)
-caveat codex-hook install                                  # optional native Codex hook setup
 caveat search "rtx"                                        # search your local entries
 caveat community add https://github.com/acme-corp/caveats  # subscribe to a group repo
 caveat pull                                                # git-pull subscribed repos and re-index
 caveat serve                                               # http://localhost:4242/ read-only portal
 ```
 
-What `caveat init` does on first run for Claude Code:
+What `caveat init` does:
 - Writes `~/.caveatrc.json` (empty `{}` — defaults come from a constant in the CLI)
 - Scaffolds `~/.caveat/own/` (your knowledge repo root) + `~/.caveat/index/caveat.db`
 - Runs `claude mcp add --scope user caveat -- <node> --disable-warning=ExperimentalWarning <cliPath> mcp-server`
 - Merges `UserPromptSubmit` / `PostToolUse` / `PostToolUseFailure` / `Stop` hook entries into `~/.claude/settings.json` (existing entries preserved; backup written before any change)
+- Installs the product-owned Codex and Cursor hooks when those hosts are available, while preserving explicit hook refusal
+
+For a non-interactive machine setup that also initializes or synchronizes the
+private ownership remote, use this single product-owned entry with stdin closed:
+
+```sh
+caveat init --sync --yes
+```
+
+It uses the GitHub account currently authenticated in `gh`, creates that
+account's conventional private repository when absent, checks out or syncs an
+existing remote, and configures every available integration above. Re-running
+the command is idempotent, and an explicitly requested sync failure exits
+non-zero. Callers do not inspect Caveat's state, switch GitHub identities, or
+run host-specific Caveat hook installers around this entry.
 
 Use `--skip-claude` to skip Claude Code wiring, or `--dry-run` to preview. `caveat uninstall` reverses Claude Code changes without touching `~/.caveat/`. **No central DB is auto-subscribed** — add knowledge sources explicitly with `caveat community add`.
 
-For Codex, run `caveat codex-hook diagnostics` first if you want a health check.
-It reports hook availability separately from whether Caveat-owned hooks are
-installed.
+For a targeted Codex repair, run `caveat codex-hook diagnostics` and then
+`caveat codex-hook install`. Diagnostics reports hook availability separately
+from whether Caveat-owned hooks are installed.
 
 ### Runtime error diagnostics (explicit opt-in)
 

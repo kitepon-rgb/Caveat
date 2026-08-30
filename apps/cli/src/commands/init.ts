@@ -11,7 +11,7 @@ import {
   openDb,
   prewarmSealedKeys,
   reindexAllSources,
-  SyncError,
+  syncOwn,
   writeUserConfigPatch,
   writeDigestMarker,
 } from '@caveat/core';
@@ -136,39 +136,49 @@ export async function runInit(
         const target = typeof opts.sync === 'string' ? opts.sync : '<user>/Caveat-Private';
         ctx.logger.info(`[dry-run] would initialize private sync: ${target}`);
       } else {
-        const url = typeof opts.sync === 'string'
-          ? opts.sync
-          : defaultGitHubRepoUrl({
-              repositoryName: 'Caveat-Private',
-              visibility: 'private',
-              yes: (opts.yes ?? false) || syncNudgeAccepted,
-              retryCommand: 'caveat init --sync <url>',
-              ghRunner,
-              isTty,
-              confirm,
-            });
-        const result = await initOwnSync({
-          ownDir: ctx.paths.knowledgeRepo,
-          url,
-          caveatHome: ctx.caveatHome,
-          paths: ctx.paths,
-          logger: ctx.logger,
-          // file: remotes are governed by local filesystem permissions and have
-          // no anonymous HTTP surface for the remote-visibility probe to inspect.
-          trustRemotePrivate: isFileRemote(url),
-        });
-        ctx.logger.info(
-          result.remoteWasEmpty
-            ? `initialized private sync remote: ${url}`
-            : `checked out existing private remote: ${url} (branch ${result.branch})`,
-        );
+        const ownGit = join(ctx.paths.knowledgeRepo, '.git');
+        if (existsSync(ownGit)) {
+          const remote = gitOutput(['-C', ctx.paths.knowledgeRepo, 'remote', 'get-url', 'origin']);
+          const result = await syncOwn({
+            ownDir: ctx.paths.knowledgeRepo,
+            caveatHome: ctx.caveatHome,
+            paths: ctx.paths,
+            logger: ctx.logger,
+            trustRemotePrivate: remote !== null && isFileRemote(remote),
+          });
+          const rebased = result.pulled ? ', rebased onto remote' : '';
+          ctx.logger.info(`synced existing private remote: ${result.branch} (${result.changedFiles} local change(s)${rebased})`);
+        } else {
+          const url = typeof opts.sync === 'string'
+            ? opts.sync
+            : defaultGitHubRepoUrl({
+                repositoryName: 'Caveat-Private',
+                visibility: 'private',
+                yes: (opts.yes ?? false) || syncNudgeAccepted,
+                retryCommand: 'caveat init --sync <url>',
+                ghRunner,
+                isTty,
+                confirm,
+              });
+          const result = await initOwnSync({
+            ownDir: ctx.paths.knowledgeRepo,
+            url,
+            caveatHome: ctx.caveatHome,
+            paths: ctx.paths,
+            logger: ctx.logger,
+            // file: remotes are governed by local filesystem permissions and have
+            // no anonymous HTTP surface for the remote-visibility probe to inspect.
+            trustRemotePrivate: isFileRemote(url),
+          });
+          ctx.logger.info(
+            result.remoteWasEmpty
+              ? `initialized private sync remote: ${url}`
+              : `checked out existing private remote: ${url} (branch ${result.branch})`,
+          );
+        }
       }
     } catch (err) {
-      if (err instanceof SyncError && err.code === 'OWN_REPO_EXISTS') {
-        ctx.logger.info('private sync already configured (own repo exists); skipped');
-      } else {
-        ctx.logger.warn(`private sync setup skipped: ${errorMessage(err)}`);
-      }
+      throw new Error(`private sync setup failed: ${errorMessage(err)}`, { cause: err });
     }
   }
 

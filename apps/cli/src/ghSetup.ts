@@ -40,6 +40,10 @@ export function defaultGitHubRepoUrl(opts: DefaultGitHubRepoOptions): string {
   }
 
   const login = user.stdout.trim();
+  const setupGit = opts.ghRunner(['auth', 'setup-git']);
+  if (setupGit.status !== 0) {
+    throw commandError(setupGit, 'gh auth setup-git failed');
+  }
   const qualifiedName = `${login}/${opts.repositoryName}`;
   const view = opts.ghRunner(['repo', 'view', qualifiedName]);
   if (view.status !== 0) {

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { initOwnSync, preflightSync, syncOwn, SyncError, type ProbeImpl } from '../src/sync.js';
+import { initOwnSync, KNOWLEDGE_GITIGNORE, preflightSync, syncOwn, SyncError, type ProbeImpl } from '../src/sync.js';
 
 const denied: ProbeImpl = async () => ({ kind: 'denied', status: 404 });
 const readable: ProbeImpl = async () => ({ kind: 'anonymous-readable' });
@@ -172,5 +172,33 @@ describe('initOwnSync / syncOwn (local bare remote)', { timeout: GIT_TEST_TIMEOU
     await expect(
       initOwnSync({ ownDir: fixture.own, caveatHome: fixture.home, paths: fixture.paths, url: fixture.remote, logger, probeImpl: denied }),
     ).rejects.toMatchObject({ code: 'BOTH_HAVE_ENTRIES' });
+  });
+
+  it('checks out an existing remote over the canonical init scaffold', async () => {
+    const seed = join(fixture.root, 'seed-scaffold');
+    git(['clone', fixture.remote, seed]);
+    configureIdentity(seed);
+    git(['checkout', '-b', 'main'], seed);
+    mkdirSync(join(seed, 'entries'), { recursive: true });
+    writeFileSync(join(seed, '.gitignore'), KNOWLEDGE_GITIGNORE);
+    writeFileSync(join(seed, 'entries', 'remote.md'), '# remote\n');
+    git(['add', '-A'], seed);
+    git(['commit', '-m', 'seed scaffold'], seed);
+    git(['push', '-u', 'origin', 'main'], seed);
+
+    mkdirSync(join(fixture.own, 'entries'), { recursive: true });
+    writeFileSync(join(fixture.own, '.gitignore'), KNOWLEDGE_GITIGNORE);
+    const result = await initOwnSync({
+      ownDir: fixture.own,
+      caveatHome: fixture.home,
+      paths: fixture.paths,
+      url: fixture.remote,
+      logger,
+      probeImpl: denied,
+    });
+
+    expect(result).toMatchObject({ branch: 'main', remoteWasEmpty: false });
+    expect(readFileSync(join(fixture.own, '.gitignore'), 'utf-8')).toBe(KNOWLEDGE_GITIGNORE);
+    expect(readFileSync(join(fixture.own, 'entries', 'remote.md'), 'utf-8')).toBe('# remote\n');
   });
 });

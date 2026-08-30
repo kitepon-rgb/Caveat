@@ -20,9 +20,7 @@ Built and maintained by [Quo](https://x.com/QLyun35332) at [kitepon.dev](https:/
 
 ```sh
 npm install -g caveat-cli
-caveat init                          # Claude Code MCP + hooks
-caveat codex-hook install            # optional: native Codex hooks
-caveat cursor-hook install           # optional: native Cursor hooks
+caveat init                          # state + available Claude/Codex/Cursor integrations
 ```
 
 On macOS with Homebrew Node, Caveat installs hook commands through the stable
@@ -30,20 +28,27 @@ On macOS with Homebrew Node, Caveat installs hook commands through the stable
 keeps Claude Code, Codex, and Cursor hooks working after Homebrew moves Node between
 `/opt/homebrew/Cellar/node/<version>/...` directories.
 
-`caveat init` (idempotent, `--dry-run` supported) does the Claude Code setup:
+`caveat init` (idempotent, `--dry-run` supported) does the product setup:
 
 1. Scaffolds `~/.caveat/own/` (your personal knowledge repo) + `~/.caveat/index/caveat.db`
 2. Registers the MCP server with Claude Code (`claude mcp add --scope user`)
 3. Merges `UserPromptSubmit` / `PostToolUse` / `PostToolUseFailure` / `Stop` hooks into `~/.claude/settings.json` (existing entries preserved, backup written before any change)
+4. Installs product-owned Codex and Cursor hooks when those hosts are available
+
+For one non-interactive setup that also creates, checks out, or synchronizes the
+private ownership remote, invoke `caveat init --sync --yes` with stdin closed.
+It uses the account already authenticated in `gh`, is idempotent, and exits
+non-zero if the explicitly requested sync fails. Callers do not inspect product
+state or run separate Caveat hook installers around this entry.
 
 Opt-out: `--skip-claude`. `caveat uninstall` reverses the Claude Code changes without touching `~/.caveat/`. **No central DB is auto-subscribed** — add knowledge sources explicitly with `caveat community add`.
 
-For Codex, run `caveat codex-hook diagnostics` first if you want a health check,
+For a targeted Codex repair, run `caveat codex-hook diagnostics` first,
 then `caveat codex-hook install`. It registers Caveat-owned
 `UserPromptSubmit`, `PostToolUse`, and `Stop` entries in `~/.codex/hooks.json`
 and enables Codex's native hook runtime.
 
-For Cursor, run `caveat cursor-hook install`. It upserts Caveat-owned
+For a targeted Cursor repair, run `caveat cursor-hook install`. It upserts Caveat-owned
 `beforeSubmitPrompt`, `postToolUse`, `postToolUseFailure`, and `stop` entries
 in `~/.cursor/hooks.json` while preserving unrelated hooks. Use
 `caveat cursor-hook diagnostics` to inspect the installed contract.

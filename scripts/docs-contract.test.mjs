@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { assertPackedMarkdownClosed, documentTargets } from './docs-contract.mjs';
+
+const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
 test('extracts effective Markdown links, references, and HTML image candidates through ASTs', () => {
   const targets = documentTargets(`
@@ -100,4 +105,12 @@ test('parses single-character and comma-bearing srcset URLs without dropping tar
     () => assertPackedMarkdownClosed(new Set(['README.md']), 'README.md', '<img srcset="a">'),
     /同梱されないtargetを参照しています: a/,
   );
+});
+
+test('public docs expose one product-owned non-interactive setup entry', async () => {
+  for (const path of ['README.md', 'README.ja.md', 'apps/cli/README.md']) {
+    const content = await readFile(join(ROOT, path), 'utf8');
+    assert.match(content, /caveat init --sync --yes/u, `${path}に一回setup入口がない`);
+    assert.match(content, /非0終了|non-zero/u, `${path}に明示sync失敗の契約がない`);
+  }
 });

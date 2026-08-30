@@ -30,9 +30,7 @@ releaseを所有し、Caveat単独で動作します。製品横断の導入・�
 
 ```sh
 npm install -g caveat-cli
-caveat init                          # Claude Code MCP + hooks を登録
-caveat codex-hook install            # 任意: Codex native hooks を登録
-caveat cursor-hook install           # 任意: Cursor native hooks を登録
+caveat init                          # 状態と利用可能なClaude/Codex/Cursor連携を配備
 ```
 
 macOS の Homebrew Node 環境では、hook command の Node パスに現在の実体と一致する安定 symlink
@@ -139,24 +137,34 @@ flowchart LR
 ```sh
 npm install -g caveat-cli
 caveat init                                                # 初回セットアップ
-caveat codex-hook install                                  # 任意: Codex native hook セットアップ
-caveat cursor-hook install                                 # 任意: Cursor native hook セットアップ
 caveat search "rtx"                                        # ローカルエントリを検索
 caveat community add https://github.com/acme-corp/caveats  # チームの repo を購読
 caveat pull                                                # 購読 repo を git-pull + 再 index
 caveat serve                                               # http://localhost:4242/ 読み取り専用ポータル
 ```
 
-Claude Code 向けの `caveat init` の動作:
+`caveat init` の動作:
 - `~/.caveatrc.json` を生成（中身は空 `{}` — デフォルトは CLI 内部の定数）
 - `~/.caveat/own/`（ナレッジ repo ルート）と `~/.caveat/index/caveat.db` を scaffold
 - `claude mcp add --scope user caveat ...` で MCP サーバを登録
 - `~/.claude/settings.json` に `UserPromptSubmit` / `PostToolUse` / `PostToolUseFailure` / `Stop` hook をマージ（既存エントリは保持、書き込み前にバックアップ作成）
+- Codex / Cursor が利用可能なら製品所有hookを導入し、明示的なhook拒否設定は保持
+
+privateな所有remoteの初期化または同期まで非対話で行う場合は、stdinを閉じて次の製品入口を一度だけ呼びます。
+
+```sh
+caveat init --sync --yes
+```
+
+この入口は現在`gh`で認証中のGitHub accountを使い、そのaccountの慣例的なprivate repositoryが
+無ければ作成し、既存remoteならcheckoutまたはsyncしたうえで、利用可能な上記連携をすべて設定します。
+再実行は冪等で、明示したsyncが失敗した時は非0終了します。呼出し側はCaveatの状態を直接判定せず、
+GitHub identityを切り替えず、host別Caveat hook installerを前後に重ねません。
 
 `--skip-claude` で Claude 連携をスキップ、`--dry-run` でプレビュー。`caveat uninstall` で `~/.caveat/` を残したまま Claude 連携だけ解除。**自動購読される中央 DB はありません** — 知識ソースは `caveat community add` で明示的に追加してください。
 
-Codex 側は `caveat codex-hook diagnostics` で事前確認できます。diagnostics は
-Codex hook runtime が使えるかと、Caveat-owned hooks が install 済みかを分けて表示します。
+Codexだけを修復する時は`caveat codex-hook diagnostics`の後に`caveat codex-hook install`を使います。
+diagnosticsはCodex hook runtimeが使えるかと、Caveat-owned hooksがinstall済みかを分けて表示します。
 
 ### runtime errorの診断（明示opt-in）
 
