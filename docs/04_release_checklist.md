@@ -40,15 +40,20 @@ for the remaining release commands.
 VERSION=$(node -p "require('./apps/cli/package.json').version")
 corepack pnpm check:docs
 corepack pnpm check:npm-pack
-corepack pnpm --dir apps/cli publish --dry-run --no-git-checks
 ```
 
-Commit, tag, push, wait for CI, then publish:
+Commit and push `main`, then wait for that commit's CI. The CLI's
+`prepublishOnly` gate requires a clean release commit that is already an
+ancestor of `origin/main`, so both the publish dry-run and the real publish
+must run only after this landing step. Once CI is green, verify the publish
+payload, create and push the annotated tag, then publish:
 
 ```bash
 git status --short --branch
-git tag -a "v$VERSION" -m "v$VERSION"
 git push
+gh run list --commit "$(git rev-parse HEAD)" --limit 5
+corepack pnpm --dir apps/cli publish --dry-run --no-git-checks
+git tag -a "v$VERSION" -m "v$VERSION"
 git push origin "v$VERSION"
 corepack pnpm --dir apps/cli publish --no-git-checks
 ```

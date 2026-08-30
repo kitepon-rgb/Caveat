@@ -6,6 +6,13 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 
 ## [0.18.1] — 2026-08-30
 
+### Added
+- `caveat factory-diagnostics --json` now reports product-owned Cursor
+  compatibility without changing the v1 default readiness set. Hosts that
+  require Cursor can pass `--require-connector cursor`; Caveat then validates
+  its exact hook set, command assets, and timeout, folds the result into
+  `overall.status`, and exits non-zero unless the aggregate is ready.
+
 ### Changed
 - Runtime error collection is now owned entirely by Caveat and is enabled with
   `"runtimeErrors": true` in the existing `~/.caveatrc.json`. Existing configs

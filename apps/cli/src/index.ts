@@ -33,7 +33,7 @@ import {
   runCommunityRemove,
 } from './commands/community.js';
 import { resolveHookNodePath } from './nodePath.js';
-import { factoryDiagnostics } from './commands/factoryDiagnostics.js';
+import { factoryDiagnostics, type FactoryConnector } from './commands/factoryDiagnostics.js';
 import { parseCursor, runRuntimeErrors } from './commands/runtimeErrors.js';
 
 const program = new Command();
@@ -50,8 +50,12 @@ program
   .command('factory-diagnostics')
   .description('Emit read-only factory diagnostics')
   .requiredOption('--json', 'emit the versioned JSON contract')
-  .action((opts: { json: boolean }) => {
-    const output = factoryDiagnostics(buildContext(stdoutLogger));
+  .option('--require-connector <name>', 'include a connector in overall readiness (repeatable)', collectRepeatable, [])
+  .action((opts: { json: boolean; requireConnector: string[] }) => {
+    const unsupported = opts.requireConnector.filter((name) => name !== 'cursor');
+    if (unsupported.length > 0) throw new Error(`unsupported factory connector: ${unsupported.join(', ')}`);
+    const requiredConnectors = [...new Set(opts.requireConnector)] as FactoryConnector[];
+    const output = factoryDiagnostics(buildContext(stdoutLogger), undefined, requiredConnectors);
     process.stdout.write(`${JSON.stringify(output)}\n`);
     if (output.overall.status !== 'ready') process.exitCode = 1;
   });

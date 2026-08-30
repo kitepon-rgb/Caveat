@@ -135,3 +135,19 @@ test('current host docs separate Claude MCP actions from native CLI actions', as
   assert.ok(nativeGuidance, 'host契約にCodex / Cursorのnative操作案内がない');
   assert.doesNotMatch(nativeGuidance, /mcp__caveat__/u);
 });
+
+test('product docs keep Cursor machine diagnostics behind the Caveat aggregate contract', async () => {
+  const productContract = await readFile(join(ROOT, 'docs/01_plan.md'), 'utf8');
+  assert.match(productContract, /caveat\.native_factory_diagnostics\.v1/u);
+  assert.match(productContract, /caveat factory-diagnostics --json --require-connector cursor/u);
+  assert.match(productContract, /connectors\.cursor\.compatibility_status/u);
+  assert.match(productContract, /overall\.status/u);
+  assert.match(productContract, /hook名、必要集合、command、timeoutを複製しない/u);
+
+  for (const path of ['README.md', 'README.ja.md', 'apps/cli/README.md', 'docs/03_dual_agent_support.md']) {
+    const content = await readFile(join(ROOT, path), 'utf8');
+    assert.match(content, /caveat factory-diagnostics --json --require-connector cursor/u, `${path}にCursor集約診断入口がない`);
+    assert.match(content, /connectors\.cursor\.compatibility_status/u, `${path}にCursor互換判定がない`);
+    assert.match(content, /overall\.status/u, `${path}にtop-level判定契約がない`);
+  }
+});

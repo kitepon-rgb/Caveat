@@ -38,6 +38,18 @@ export interface CursorInstallStatus {
   };
 }
 
+export type CursorConnectorStatus = 'ready' | 'not_ready' | 'unverified';
+
+export interface CursorConnectorDiagnostics {
+  compatibility_status: CursorConnectorStatus;
+  hooks: {
+    before_submit_prompt: { status: CursorConnectorStatus; reason_code: string };
+    post_tool_use: { status: CursorConnectorStatus; reason_code: string };
+    post_tool_use_failure: { status: CursorConnectorStatus; reason_code: string };
+    stop: { status: CursorConnectorStatus; reason_code: string };
+  };
+}
+
 type CursorHookEvent =
   | 'beforeSubmitPrompt'
   | 'postToolUse'
@@ -256,6 +268,58 @@ export function detectCursorHookInstallation(cursorDir: string): CursorInstallSt
   return {
     installation: count === 0 ? 'not-installed' : count === 4 ? 'installed' : 'partial',
     hooksPath,
+    hooks,
+  };
+}
+
+/**
+ * Exact, read-only Cursor connector diagnostics for machine consumers.
+ *
+ * The product owns the required event set and command semantics here. Factory
+ * integrators only need the aggregate schema/status/exit contract exposed by
+ * `caveat factory-diagnostics --json`.
+ */
+export function diagnoseCursorHookConnector(
+  cursorDir: string,
+  nodePath: string,
+  cliScriptPath: string,
+): CursorConnectorDiagnostics {
+  type HookDiagnostic = { status: CursorConnectorStatus; reason_code: string };
+  const ready = (): HookDiagnostic => ({ status: 'ready', reason_code: 'ready' });
+  const notReady = (): HookDiagnostic => ({ status: 'not_ready', reason_code: 'not_installed' });
+  const unreadable = (): HookDiagnostic => ({ status: 'unverified', reason_code: 'config_unreadable' });
+  const unreadableHooks = {
+    before_submit_prompt: unreadable(),
+    post_tool_use: unreadable(),
+    post_tool_use_failure: unreadable(),
+    stop: unreadable(),
+  };
+  const hooksPath = join(cursorDir, 'hooks.json');
+  let file: CursorHooksFile;
+  try {
+    file = existsSync(hooksPath) ? readHooks(hooksPath) : { version: 1, hooks: {} };
+  } catch {
+    return { compatibility_status: 'unverified', hooks: unreadableHooks };
+  }
+  const exact = (
+    event: CursorHookEvent,
+    subcommand: 'user-prompt-submit' | 'post-tool-use' | 'stop',
+  ): HookDiagnostic => listFor(file, event).some((entry) =>
+    isCanonicalCaveatCursorHookEntry(entry, subcommand, nodePath, cliScriptPath)
+  ) ? ready() : notReady();
+  const hooks = {
+    before_submit_prompt: exact('beforeSubmitPrompt', 'user-prompt-submit'),
+    post_tool_use: exact('postToolUse', 'post-tool-use'),
+    post_tool_use_failure: exact('postToolUseFailure', 'post-tool-use'),
+    stop: exact('stop', 'stop'),
+  };
+  const statuses = Object.values(hooks).map((item) => item.status);
+  return {
+    compatibility_status: statuses.includes('not_ready')
+      ? 'not_ready'
+      : statuses.includes('unverified')
+        ? 'unverified'
+        : 'ready',
     hooks,
   };
 }

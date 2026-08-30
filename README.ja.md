@@ -172,6 +172,15 @@ GitHub identityを切り替えず、host別Caveat hook installerを前後に重�
 Codexだけを修復する時は`caveat codex-hook diagnostics`の後に`caveat codex-hook install`を使います。
 diagnosticsはCodex hook runtimeが使えるかと、Caveat-owned hooksがinstall済みかを分けて表示します。
 
+機械判定には`caveat factory-diagnostics --json`を使います。version付きschema
+`caveat.native_factory_diagnostics.v1`は`connectors.cursor.compatibility_status`を公開し、引数なしの
+既存Claude/Codex readiness契約は変えません。Cursorを必須とするhostは
+`caveat factory-diagnostics --json --require-connector cursor`を実行します。Cursor connectorが
+未導入、partial、または正規形でなければ`overall.status`が非readyとなり、commandも非0終了します。
+呼出し側は`schema`を検証してtop-levelの`overall.status`とexit statusだけでgateを判定します。
+必要hook集合、command形、timeoutはCaveatが所有し、`~/.cursor/hooks.json`やhook別fieldを外側で
+再解釈しません。
+
 ### runtime errorの診断（明示opt-in）
 
 runtime error収集はlocal限定で、既定では無効です。第二の設定ファイルやhost側controllerは

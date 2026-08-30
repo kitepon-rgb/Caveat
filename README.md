@@ -164,6 +164,7 @@ apps/cli/             caveat-cli (published to npm) — bundled CLI with subcomm
                         stats / serve / mcp-server / hook <name> / community add|pull|list /
                         codex-hook install|uninstall|diagnostics|... /
                         cursor-hook install|uninstall|diagnostics|... /
+                        factory-diagnostics [--require-connector cursor] /
                         codex-sidecar diagnostics|smoke|run|work-smoke
 apps/mcp/             @caveat/mcp — stdio MCP server exposing 6 tools via
                       @modelcontextprotocol/sdk. Imported by caveat-cli as `mcp-server`
@@ -226,6 +227,17 @@ Use `--skip-claude` to skip Claude Code wiring, or `--dry-run` to preview. `cave
 For a targeted Codex repair, run `caveat codex-hook diagnostics` and then
 `caveat codex-hook install`. Diagnostics reports hook availability separately
 from whether Caveat-owned hooks are installed.
+
+For a machine-readable product gate, use `caveat factory-diagnostics --json`.
+The versioned `caveat.native_factory_diagnostics.v1` output includes
+`connectors.cursor.compatibility_status`, while the base command preserves the
+existing Claude/Codex readiness meaning. A host that requires Cursor runs
+`caveat factory-diagnostics --json --require-connector cursor`; a missing,
+partial, or non-canonical Cursor connector then makes `overall.status`
+non-ready and the command exit non-zero. Consumers validate `schema`, then use
+only top-level `overall.status` and the exit status for the gate. Caveat owns
+the required Cursor hook set, command shape, and timeout; callers do not
+reconstruct those details from `~/.cursor/hooks.json` or the per-hook fields.
 
 ### Runtime error diagnostics (explicit opt-in)
 

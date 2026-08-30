@@ -43,6 +43,11 @@ keyserverは無認証なので、動機ある人間による解析を防ぐと�
 - host固有adapterは同じ検索・pending・同期coreを再利用し、別hostのfieldやstdout契約を改名しない。
 - 検索結果は共有しても操作案内はhostごとに分ける。ClaudeはMCP、Codex / Cursorは
   Caveat CLIとown Markdownを使い、別hostにしかない入口を案内しない。
+- 機械可読な製品集約診断のschemaは`caveat.native_factory_diagnostics.v1`。既定overallは既存の
+  Claude / Codex readinessを維持し、Cursorを必須とするhostは
+  `caveat factory-diagnostics --json --require-connector cursor`を使う。Caveatが
+  `connectors.cursor.compatibility_status`とoverall、exitを決める。呼出し側はschemaとtop-level
+  `overall.status`、exitだけで合否を決め、Cursorのhook名、必要集合、command、timeoutを複製しない。
 
 詳細なhost契約は[`03_dual_agent_support.md`](03_dual_agent_support.md)、利用手順は
 [`../README.md`](../README.md)と[`../README.ja.md`](../README.ja.md)を正とする。
@@ -53,7 +58,7 @@ keyserverは無認証なので、動機ある人間による解析を防ぐと�
 |---|---|
 | install / config / update / uninstall | [`../README.md`](../README.md) |
 | state / schema / migration / source構造 | [`../CLAUDE.md`](../CLAUDE.md)と実装 |
-| host diagnostics | `caveat codex-hook diagnostics`、`caveat cursor-hook diagnostics`、`caveat factory-diagnostics --json` |
+| host diagnostics | 人の個別修復は`caveat codex-hook diagnostics` / `caveat cursor-hook diagnostics`。機械判定は`caveat factory-diagnostics --json [--require-connector cursor]` |
 | runtime error設定・確認・復旧 | [`../README.md`](../README.md#runtime-error-diagnostics-explicit-opt-in)と`caveat runtime-errors ... --json` |
 | sealed publish / key rotation | [`../keyserver/README.md`](../keyserver/README.md) |
 | npm release | [`04_release_checklist.md`](04_release_checklist.md) |

@@ -53,6 +53,14 @@ For a targeted Cursor repair, run `caveat cursor-hook install`. It upserts Cavea
 in `~/.cursor/hooks.json` while preserving unrelated hooks. Use
 `caveat cursor-hook diagnostics` to inspect the installed contract.
 
+Automation uses the aggregate product contract instead:
+`caveat factory-diagnostics --json --require-connector cursor`. Its versioned
+schema, top-level `overall.status`, and exit status are the complete gate. The
+output also exposes `connectors.cursor.compatibility_status` for diagnosis,
+but callers do not duplicate Caveat's Cursor event set, command rules, or
+timeout checks. Without `--require-connector cursor`, the v1 aggregate keeps
+its existing Claude/Codex readiness semantics.
+
 With either host enabled, Caveat surfaces matching entries at three moments:
 before prompts, after failed tools, and after struggle-heavy sessions. Stop
 reminders are queued for the next context-capable hook tick so the agent's final
@@ -71,6 +79,8 @@ caveat pull                         # community pull + re-index everything
 caveat serve                        # http://localhost:4242 read-only portal
 caveat uninstall                    # reverse `caveat init` Claude integration
 caveat codex-hook diagnostics       # inspect Codex hook availability/install state
+caveat factory-diagnostics --json --require-connector cursor
+                                    # machine gate for a host that requires Cursor
 ```
 
 ## Sharing: two boundaries, two commands

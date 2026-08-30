@@ -173,6 +173,16 @@ contracts as Claude/Codex. It must not rename canonical frontmatter fields,
 write another product's state, or require dotagents to run. Diagnostics and
 uninstall are owned by Caveat and operate only on Caveat-managed hook entries.
 
+`caveat cursor-hook diagnostics` is the human-facing targeted repair view.
+Factory automation uses
+`caveat factory-diagnostics --json --require-connector cursor` and validates
+the `caveat.native_factory_diagnostics.v1` schema, top-level `overall.status`,
+and process exit only. Caveat owns the exact Cursor event set, canonical
+command assets, and timeout validation behind
+`connectors.cursor.compatibility_status`; an integrator must not reproduce
+those rules. Omitting `--require-connector cursor` preserves the v1 aggregate's
+existing Claude/Codex readiness meaning for hosts where Cursor is not required.
+
 ## Execution Policy
 
 `decideCodexSidecarExecution` prevents accidental recursive delegation.

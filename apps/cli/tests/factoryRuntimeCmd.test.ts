@@ -46,6 +46,13 @@ function readyFactory(fixture: ReturnType<typeof isolated>) {
   mkdirSync(fixture.codexHome, { recursive: true }); writeFileSync(join(fixture.codexHome, 'config.toml'), '[features]\nhooks = true\n'); writeFileSync(join(fixture.codexHome, 'hooks.json'), JSON.stringify({ hooks: { UserPromptSubmit: [{ hooks: [codexHook('user-prompt-submit')] }], PostToolUse: [{ hooks: [codexHook('post-tool-use')] }], Stop: [{ hooks: [codexHook('stop')] }] } }));
 }
 
+function readyCursor(fixture: ReturnType<typeof isolated>) {
+  const quoted = (value: string) => /[\s\\]/.test(value) ? `"${value}"` : value;
+  const nodeCommand = quoted(process.execPath); const cliCommand = quoted(cli);
+  const cursorHook = (subcommand: string) => ({ command: `${nodeCommand} ${cliCommand} cursor-hook ${subcommand}`, timeout: 10 });
+  const cursorDir = join(fixture.home, '.cursor'); mkdirSync(cursorDir, { recursive: true }); writeFileSync(join(cursorDir, 'hooks.json'), JSON.stringify({ version: 1, hooks: { beforeSubmitPrompt: [cursorHook('user-prompt-submit')], postToolUse: [cursorHook('post-tool-use')], postToolUseFailure: [cursorHook('post-tool-use')], stop: [cursorHook('stop')] } }));
+}
+
 describe('built factory/runtime CLI contracts', { timeout: process.platform === 'win32' ? 30_000 : 5_000 }, () => {
   it('keeps a missing isolated home read-only and emits one JSON diagnostic with non-ready exit', () => {
     const fixture = isolated(); const db = join(fixture.caveatHome, 'index', 'caveat.db');
@@ -61,7 +68,22 @@ describe('built factory/runtime CLI contracts', { timeout: process.platform === 
     const config = runtimeErrorsConfigPath(fixture.env);
     const before = [statSync(dbPath).mtimeMs, statSync(config).mtimeMs, statSync(join(own, '.git')).mtimeMs];
     const diagnostic = run(['factory-diagnostics', '--json'], fixture.env); expect(diagnostic.status).toBe(0); const factory = json(diagnostic);
-    expect(factory).toMatchObject({ schema: 'caveat.native_factory_diagnostics.v1', overall: { status: 'ready' } });
+    expect(factory).toMatchObject({
+      schema: 'caveat.native_factory_diagnostics.v1',
+      overall: { status: 'ready' },
+      connectors: { cursor: { compatibility_status: 'not_ready' } },
+    });
+    const requiredMissing = run(['factory-diagnostics', '--json', '--require-connector', 'cursor'], fixture.env);
+    expect(requiredMissing.status).toBe(1);
+    expect(json(requiredMissing)).toMatchObject({ schema: 'caveat.native_factory_diagnostics.v1', overall: { status: 'not_ready' } });
+    readyCursor(fixture);
+    const requiredReady = run(['factory-diagnostics', '--json', '--require-connector', 'cursor'], fixture.env);
+    expect(requiredReady.status).toBe(0);
+    expect(json(requiredReady)).toMatchObject({
+      schema: 'caveat.native_factory_diagnostics.v1',
+      overall: { status: 'ready' },
+      connectors: { cursor: { compatibility_status: 'ready' } },
+    });
     expect([statSync(dbPath).mtimeMs, statSync(config).mtimeMs, statSync(join(own, '.git')).mtimeMs]).toEqual(before);
 
     const recorded = recordRuntimeError('CAVEAT.DATABASE_OPEN_FAILED', { env: fixture.env, version: '0.16.3' });
@@ -78,6 +100,7 @@ describe('built factory/runtime CLI contracts', { timeout: process.platform === 
     expect(run(['runtime-errors', 'resolve', 'nope', '--json'], fixture.env).status).not.toBe(0);
     expect(run(['runtime-errors', 'snapshot', '--after-cursor', '99', '--json'], fixture.env).status).not.toBe(0);
     expect(run(['factory-diagnostics'], fixture.env).status).not.toBe(0);
+    expect(run(['factory-diagnostics', '--json', '--require-connector', 'unknown'], fixture.env).status).not.toBe(0);
   });
 
   it('rejects lookalike DB and connector registrations instead of emitting false ready', () => {
@@ -91,6 +114,49 @@ describe('built factory/runtime CLI contracts', { timeout: process.platform === 
     const fakeConnector = json(run(['factory-diagnostics', '--json'], connectorFixture.env));
     expect(fakeConnector.connectors.claude.mcp.status).toBe('not_ready'); expect(fakeConnector.connectors.codex.status).toBe('not_ready'); expect(fakeConnector.overall.status).toBe('not_ready');
 
+    const partialCursorFixture = isolated(); readyFactory(partialCursorFixture); readyCursor(partialCursorFixture);
+    const cursorPath = join(partialCursorFixture.home, '.cursor', 'hooks.json');
+    const partialCursor = JSON.parse(readFileSync(cursorPath, 'utf8')) as { hooks: Record<string, unknown> };
+    delete partialCursor.hooks.postToolUseFailure;
+    writeFileSync(cursorPath, JSON.stringify(partialCursor));
+    const cursorDiagnostic = run(['factory-diagnostics', '--json', '--require-connector', 'cursor'], partialCursorFixture.env);
+    expect(cursorDiagnostic.status).toBe(1);
+    expect(json(cursorDiagnostic)).toMatchObject({
+      schema: 'caveat.native_factory_diagnostics.v1',
+      overall: { status: 'not_ready' },
+      connectors: {
+        cursor: {
+          compatibility_status: 'not_ready',
+          hooks: { post_tool_use_failure: { status: 'not_ready', reason_code: 'not_installed' } },
+        },
+      },
+    });
+
+    readyCursor(partialCursorFixture);
+    const wrongTimeout = JSON.parse(readFileSync(cursorPath, 'utf8')) as { hooks: { stop: Array<{ timeout: number }> } };
+    wrongTimeout.hooks.stop[0]!.timeout = 9;
+    writeFileSync(cursorPath, JSON.stringify(wrongTimeout));
+    const wrongTimeoutDiagnostic = run(['factory-diagnostics', '--json', '--require-connector', 'cursor'], partialCursorFixture.env);
+    expect(wrongTimeoutDiagnostic.status).toBe(1);
+    expect(json(wrongTimeoutDiagnostic)).toMatchObject({
+      overall: { status: 'not_ready' },
+      connectors: { cursor: { compatibility_status: 'not_ready', hooks: { stop: { status: 'not_ready' } } } },
+    });
+
+    writeFileSync(cursorPath, '{');
+    const malformedDefault = run(['factory-diagnostics', '--json'], partialCursorFixture.env);
+    expect(malformedDefault.status).toBe(0);
+    expect(json(malformedDefault)).toMatchObject({
+      overall: { status: 'ready' },
+      connectors: { cursor: { compatibility_status: 'unverified' } },
+    });
+    const malformedRequired = run(['factory-diagnostics', '--json', '--require-connector', 'cursor'], partialCursorFixture.env);
+    expect(malformedRequired.status).toBe(1);
+    expect(json(malformedRequired)).toMatchObject({
+      overall: { status: 'unverified' },
+      connectors: { cursor: { compatibility_status: 'unverified' } },
+    });
+
     const legacyTimeoutFixture = isolated(); readyFactory(legacyTimeoutFixture);
     const legacyPath = join(legacyTimeoutFixture.codexHome, 'hooks.json');
     const legacyHooks = JSON.parse(readFileSync(legacyPath, 'utf8')) as { hooks: Record<string, Array<{ hooks: Array<Record<string, unknown>> }>> };
@@ -102,14 +168,15 @@ describe('built factory/runtime CLI contracts', { timeout: process.platform === 
     const legacyTimeout = json(run(['factory-diagnostics', '--json'], legacyTimeoutFixture.env));
     expect(legacyTimeout.connectors.codex.status).toBe('not_ready');
 
-    const executorFixture = isolated(); readyFactory(executorFixture);
+    const executorFixture = isolated(); readyFactory(executorFixture); readyCursor(executorFixture);
     const fakeNode = join(executorFixture.root, 'not-node'); const fakeCli = join(executorFixture.root, 'caveat.js');
     writeFileSync(fakeNode, '#!/bin/sh\nexit 0\n', { mode: 0o755 }); writeFileSync(fakeCli, '/* not Caveat */\n', { mode: 0o644 });
     writeFileSync(join(executorFixture.home, '.claude.json'), JSON.stringify({ mcpServers: { caveat: { type: 'stdio', command: fakeNode, args: ['--disable-warning=ExperimentalWarning', fakeCli, 'mcp-server'], env: {} } } }));
     writeFileSync(join(executorFixture.home, '.claude', 'settings.json'), JSON.stringify({ hooks: Object.fromEntries([['UserPromptSubmit', 'user-prompt-submit'], ['PostToolUse', 'post-tool-use'], ['PostToolUseFailure', 'post-tool-use'], ['Stop', 'stop']].map(([event, subcommand]) => [event, [{ hooks: [{ command: `${fakeNode} ${fakeCli} hook ${subcommand}` }] }]])) }));
     writeFileSync(join(executorFixture.codexHome, 'hooks.json'), JSON.stringify({ hooks: Object.fromEntries([['UserPromptSubmit', 'user-prompt-submit'], ['PostToolUse', 'post-tool-use'], ['Stop', 'stop']].map(([event, subcommand]) => [event, [{ hooks: [{ command: `${fakeNode} ${fakeCli} codex-hook ${subcommand}` }] }]])) }));
-    const fakeExecutor = json(run(['factory-diagnostics', '--json'], executorFixture.env));
-    expect(fakeExecutor.connectors.claude.status).toBe('not_ready'); expect(fakeExecutor.connectors.codex.status).toBe('not_ready'); expect(fakeExecutor.overall.status).toBe('not_ready');
+    writeFileSync(join(executorFixture.home, '.cursor', 'hooks.json'), JSON.stringify({ version: 1, hooks: Object.fromEntries([['beforeSubmitPrompt', 'user-prompt-submit'], ['postToolUse', 'post-tool-use'], ['postToolUseFailure', 'post-tool-use'], ['stop', 'stop']].map(([event, subcommand]) => [event, [{ command: `${fakeNode} ${fakeCli} cursor-hook ${subcommand}`, timeout: 10 }]])) }));
+    const fakeExecutor = json(run(['factory-diagnostics', '--json', '--require-connector', 'cursor'], executorFixture.env));
+    expect(fakeExecutor.connectors.claude.status).toBe('not_ready'); expect(fakeExecutor.connectors.codex.status).toBe('not_ready'); expect(fakeExecutor.connectors.cursor.compatibility_status).toBe('not_ready'); expect(fakeExecutor.overall.status).toBe('not_ready');
 
     if (process.platform === 'win32') {
       const unquotedWindows = isolated(); readyFactory(unquotedWindows);

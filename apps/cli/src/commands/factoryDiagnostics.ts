@@ -5,10 +5,12 @@ import { DatabaseSync } from 'node:sqlite';
 import { parse as parseToml } from 'smol-toml';
 import { isCanonicalCaveatCodexHookEntry } from '../codexHookInstall.js';
 import { isCanonicalCaveatClaudeHookCommand, isCaveatClaudeMcpRegistration } from '../claudeInstall.js';
+import { diagnoseCursorHookConnector } from '../cursorInstall.js';
 import type { CliContext } from '../context.js';
 import { CAVEAT_VERSION } from '../version.js';
 
 type Status = 'ready' | 'not_ready' | 'unverified';
+export type FactoryConnector = 'cursor';
 const status = (ok: boolean, reason: string): { status: Status; reason_code: string } => ({ status: ok ? 'ready' : 'not_ready', reason_code: ok ? 'ready' : reason });
 const unverified = (reason: string): { status: Status; reason_code: string } => ({ status: 'unverified', reason_code: reason });
 function hook(present: boolean) { return status(present, 'not_installed'); }
@@ -78,14 +80,20 @@ function sync(own: string) {
     return status(false, counts[0] && counts[1] ? 'diverged' : counts[0] ? 'behind' : 'ahead');
   } catch { return unverified('upstream_unavailable'); }
 }
-export function factoryDiagnostics(ctx: CliContext, codexHome = process.env.CODEX_HOME ?? join(ctx.userHome, '.codex')) {
+export function factoryDiagnostics(
+  ctx: CliContext,
+  codexHome = process.env.CODEX_HOME ?? join(ctx.userHome, '.codex'),
+  requiredConnectors: readonly FactoryConnector[] = [],
+) {
   const nodePath = process.execPath; const cliScriptPath = process.argv[1] ?? '';
   const db = database(ctx.paths.dbPath); const feature = codexFeature(codexHome); let installedCodexHooks: { userPromptSubmit: boolean; postToolUse: boolean; stop: boolean } | null = null; try { installedCodexHooks = codexHooks(codexHome, nodePath, cliScriptPath); } catch {}
   const codexHook = (present: boolean | undefined) => present === undefined ? unverified('config_unreadable') : !present ? hook(false) : feature.status === 'ready' ? hook(true) : { ...feature };
-  const output = { schema: 'caveat.native_factory_diagnostics.v1', product: 'caveat', version: CAVEAT_VERSION, overall: { status: 'unverified' as Status }, database: db, sync: sync(ctx.paths.knowledgeRepo), connectors: { claude: { status: 'unverified' as Status, mcp: claudeRegistration(ctx.userHome, nodePath, cliScriptPath), hooks: claudeHooks(ctx.userHome, nodePath, cliScriptPath) }, codex: { status: 'unverified' as Status, hooks: { user_prompt_submit: codexHook(installedCodexHooks?.userPromptSubmit), post_tool_use: codexHook(installedCodexHooks?.postToolUse), stop: codexHook(installedCodexHooks?.stop) } } } };
+  const output = { schema: 'caveat.native_factory_diagnostics.v1', product: 'caveat', version: CAVEAT_VERSION, overall: { status: 'unverified' as Status }, database: db, sync: sync(ctx.paths.knowledgeRepo), connectors: { claude: { status: 'unverified' as Status, mcp: claudeRegistration(ctx.userHome, nodePath, cliScriptPath), hooks: claudeHooks(ctx.userHome, nodePath, cliScriptPath) }, codex: { status: 'unverified' as Status, hooks: { user_prompt_submit: codexHook(installedCodexHooks?.userPromptSubmit), post_tool_use: codexHook(installedCodexHooks?.postToolUse), stop: codexHook(installedCodexHooks?.stop) } }, cursor: diagnoseCursorHookConnector(join(ctx.userHome, '.cursor'), nodePath, cliScriptPath) } };
   const aggregate = (all: Status[]): Status => all.includes('not_ready') ? 'not_ready' : all.includes('unverified') ? 'unverified' : 'ready';
   const connectorStatus = (connector: { mcp?: { status: Status }; hooks: Record<string, { status: Status }> }): Status => aggregate([...Object.values(connector.hooks), ...(connector.mcp ? [connector.mcp] : [])].map((v) => v.status));
   output.connectors.claude.status = connectorStatus(output.connectors.claude); output.connectors.codex.status = connectorStatus(output.connectors.codex);
-  const statuses = [output.database.status, output.sync.status, output.connectors.claude.status, output.connectors.codex.status]; output.overall.status = aggregate(statuses);
+  const statuses = [output.database.status, output.sync.status, output.connectors.claude.status, output.connectors.codex.status];
+  if (requiredConnectors.includes('cursor')) statuses.push(output.connectors.cursor.compatibility_status);
+  output.overall.status = aggregate(statuses);
   return output;
 }
