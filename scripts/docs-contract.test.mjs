@@ -2,14 +2,26 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { assertPackedMarkdownClosed, documentTargets } from './docs-contract.mjs';
 
-test('extracts nested links, balanced destinations, escaped labels, and HTML image candidates', () => {
+test('extracts effective Markdown links, references, and HTML image candidates through ASTs', () => {
   const targets = documentTargets(`
 [![badge](https://img.example/badge.svg)](docs/badges.md)
 [API](docs/api_(v1).md)
 [escaped \\] label](docs/escaped.md)
-<source srcset="images/one.png 1x, images/two.png 2x">
-<img srcset="images/three.png, images/four.png">
-\\![literal bang link](docs/literal-bang.md)
+
+[guide]:
+  docs/guide.md
+
+[guide]
+
+> [quoted]: docs/quoted.md
+>
+> [quoted]
+
+- [listed]: docs/listed.md
+  [listed]
+
+<a href="docs/a&amp;b.md"><img src="images/direct.png" srcset="data:image/svg+xml,%3Csvg%3E 1x, images/two.png 2x">
+<template><img src="images/template.png"></template>
 `);
 
   assert.deepEqual(targets, [
@@ -17,12 +29,37 @@ test('extracts nested links, balanced destinations, escaped labels, and HTML ima
     'https://img.example/badge.svg',
     'docs/api_(v1).md',
     'docs/escaped.md',
-    'docs/literal-bang.md',
-    'images/one.png',
+    'docs/guide.md',
+    'docs/quoted.md',
+    'docs/listed.md',
+    'docs/a&b.md',
+    'images/direct.png',
+    'data:image/svg+xml,%3Csvg%3E',
     'images/two.png',
-    'images/three.png',
-    'images/four.png',
+    'images/template.png',
   ]);
+});
+
+test('ignores CommonMark code, escaped definitions, malformed links, and fake HTML attributes', () => {
+  const targets = documentTargets(`
+    [indented code](missing-indented.md)
+
+\`\` \`[unequal backticks](missing-inline.md)\` \`\`
+
+\\[escaped]: missing-escaped.md
+
+[escaped]
+
+[unterminated title](missing-title.md "title)
+
+[blank line](
+
+missing-blank.md)
+
+<div title='href="missing-html.md"' data-example="src='missing-src.md'"></div>
+`);
+
+  assert.deepEqual(targets, []);
 });
 
 test('rejects a relative target missing from the packed manifest', () => {
@@ -51,5 +88,16 @@ test('rejects a packed Markdown target that escapes the package', () => {
   assert.throws(
     () => assertPackedMarkdownClosed(new Set(['README.md']), 'README.md', '[Secret](../secret.md)'),
     /package外を参照しています/,
+  );
+});
+
+test('parses single-character and comma-bearing srcset URLs without dropping targets', () => {
+  assert.deepEqual(
+    documentTargets('<img srcset="a 1x, data:image/svg+xml,%3Csvg%3E 2x, images/a,b.png 3x">'),
+    ['a', 'data:image/svg+xml,%3Csvg%3E', 'images/a,b.png'],
+  );
+  assert.throws(
+    () => assertPackedMarkdownClosed(new Set(['README.md']), 'README.md', '<img srcset="a">'),
+    /同梱されないtargetを参照しています: a/,
   );
 });

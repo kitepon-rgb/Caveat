@@ -35,6 +35,7 @@
 - 製品内部のinstall、config、state、schema、migration、diagnostics、recovery、update、releaseは
   Caveat repositoryが所有する。dotagentsには複製しない。
 - `corepack pnpm check:docs`は現行索引、archive移動後を含むlocal link、未解決marker、
-  個人host固定pathに加え、実際の`npm pack --dry-run --ignore-scripts --json`に入る
-  Markdownの相対link・image targetが同じtarball内に存在することを検査する。
+  個人host固定pathに加え、CommonMark/GFM ASTとHTML parserで得た実効link・image targetを
+  検査する。公開packageは実際の`npm pack --dry-run --ignore-scripts --json`に入る
+  Markdownの相対targetが同じtarball内に存在しなければ失敗する。
   Markdown-only CIもこの製品所有commandを実行する。

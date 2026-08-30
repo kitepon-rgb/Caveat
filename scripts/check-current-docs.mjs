@@ -33,7 +33,10 @@ for (const file of new Set([overviewPath, ...indexed])) {
 const markdownFiles = walkMarkdown(repo);
 for (const file of markdownFiles) {
   const source = readFileSync(file, 'utf8');
-  for (const target of localMarkdownTargets(source, file)) {
+  let targets;
+  try { targets = localMarkdownTargets(source, file); }
+  catch (error) { fail(`${relative(repo, file)}の文書構文を解析できません: ${error.message}`); }
+  for (const target of targets) {
     if (!existsSync(target)) fail(`${relative(repo, file)}のlocal linkが切れています: ${relative(repo, target)}`);
   }
 }

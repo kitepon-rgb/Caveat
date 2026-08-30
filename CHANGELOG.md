@@ -14,9 +14,10 @@ All notable changes are documented here. Format follows [Keep a Changelog](https
 - Markdown-only CI now runs Caveat's own current-document index, archive-link,
   unresolved-marker, and fixed-host-path checks. Windows native product CI uses
   PowerShell 7 instead of Git Bash.
-- The documentation check now reads the CLI's actual npm dry-run pack manifest
-  and rejects relative links or images in packed Markdown when their targets are
-  absent from the published tarball.
+- The documentation check now parses CommonMark/GFM through `unified`/`remark`,
+  parses raw HTML attributes and character references through `parse5`, and
+  checks `srcset` candidates before comparing every effective relative target
+  with the CLI's actual npm dry-run pack manifest.
 
 ### Fixed
 - Runtime error collection now resolves the Windows user config through
